@@ -224,12 +224,109 @@ CANONICAL_NOISE_WORDS = [
     'مجم', 'مج', 'mg', 'جم', 'جرام', 'g', 'gm', 'مكجم', 'mcg', 'مل', 'ملل', 'ml', 'ج', 'س'
 ]
 
+ARABIC_TO_ENGLISH_BRANDS = {
+    'بانادول': 'panadol',
+    'بنادول': 'panadol',
+    'اوجمنتين': 'augmentin',
+    'اوجمانتين': 'augmentin',
+    'كتافلام': 'cataflam',
+    'كونكور': 'concor',
+    'بروفين': 'brufen',
+    'فلاجيل': 'flagyl',
+    'نيكسيوم': 'nexium',
+    'فولتارين': 'voltaren',
+    'انتينال': 'antinal',
+    'اماريل': 'amaryl',
+    'كاربامازيبين': 'carbamazepine',
+    'كابوتن': 'capoten',
+    'سيبرازول': 'ciprazole',
+    'سبرالكس': 'cipralex',
+    'اتور': 'ator',
+    'كريستور': 'crestor',
+    'جلوكوفاج': 'glucophage',
+    'كوزار': 'cozaar',
+    'زانتاك': 'zantac',
+    'لانتوس': 'lantus',
+    'كلارينيز': 'clarinase',
+    'تلفاست': 'telfast',
+    'زيرتك': 'zyrtec',
+    'اوترفين': 'otrivin',
+    'موبيك': 'mobic',
+    'سيردالود': 'sirdalud',
+    'كولونا': 'colona',
+    'دوفاستون': 'duphaston',
+    'سيلدينافيل': 'sildenafil',
+    'سياليس': 'cialis',
+    'فياجرا': 'viagra',
+    'ليبيتور': 'lipitor',
+    'بلافيكس': 'plavix',
+    'دافلون': 'daflon',
+    'دورميكوم': 'dormicum',
+    'لاسيكس': 'lasix',
+    'داونيل': 'daonil',
+    'داياميكرون': 'diamicron',
+    'جانوفيا': 'januvia',
+    'جالفوس': 'galvus',
+    'فورسيجا': 'forxiga',
+    'جاردينس': 'jardiance',
+    'سوبرافيت': 'supravit',
+    'كيروفيت': 'kerovit',
+    'بيتادين': 'betadine',
+    'ميبو': 'mebo',
+    'كتافاست': 'catafast',
+    'سيبتازول': 'septazole',
+    'كلافيموكس': 'klavimox',
+    'هاي بيوتك': 'hibiotic',
+    'هايبيوتك': 'hibiotic',
+    'كيورام': 'curam',
+    'ميجا موكس': 'megamox',
+    'ميجاموكس': 'megamox',
+    'زيثروماكس': 'zithromax',
+    'زيثرون': 'zithron',
+    'ازيثروسين': 'azithrocin',
+    'سيبروفلوكساسين': 'ciprofloxacin',
+    'سيبروفار': 'ciprofar',
+    'سيبروسين': 'ciprocin',
+    'تارجوسيد': 'targocid',
+    'يوناسين': 'unasyn',
+    'افيل': 'avil',
+    'اتينولول': 'atenolol',
+    'بلوكيم': 'blokium',
+    'كابوزيد': 'capozide',
+    'كاردورا': 'cardura',
+    'ديلتيازم': 'diltiazem',
+    'الداكتون': 'aldactone',
+    'اندرال': 'inderal',
+    'موديوريتيك': 'moduretic',
+    'نورفاسك': 'norvasc',
+    'تنورمين': 'tenormin',
+    'تريتاس': 'tritace',
+    'موتيفال': 'motival',
+    'نيوروتون': 'neuroton',
+    'نيوروبيون': 'neurobion',
+    'ميلجا': 'milga',
+    'ثيروجلوبين': 'thyroglobulin',
+    'التروكسين': 'eltroxin',
+    'يوريفين': 'urivin',
+    'راني': 'rani',
+    'جاست ريج': 'gastreg',
+    'ديجستين': 'digestin',
+    'سبازموفري': 'spasmofree',
+    'سبازمو ديجستين': 'spasmodigestin',
+}
+
 def extract_canonical_brand(text: str) -> str:
     """Canonical brand extraction matching medicine-price-comparator-new skill."""
     t = normalize_drug_text(text)
     for w in sorted(CANONICAL_NOISE_WORDS, key=len, reverse=True):
         t = re.sub(rf'\b{w}\b', ' ', t)
     t = re.sub(r'\b\d+(?:\.\d+)?\b', ' ', t)
+    
+    # Check for direct or substring Arabic brand match
+    for ar_b, en_b in sorted(ARABIC_TO_ENGLISH_BRANDS.items(), key=lambda x: len(x[0]), reverse=True):
+        if ar_b in t or ar_b in text:
+            return en_b
+            
     t = re.sub(r'[^a-z0-9\u0600-\u06FF]', '', t)
     return t
 

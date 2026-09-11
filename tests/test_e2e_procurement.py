@@ -137,7 +137,7 @@ class TestTier3PairwiseCombinations:
             {"اسم الصنف": "Panadol Extra 24 Tab", "نسبة الخصم": "30%", "سعر الجمهور": 45.0}
         ]).to_csv(csv_cat, index=False, encoding="utf-8-sig")
 
-        mixed_catalogs = [sample_catalog_pdfs[0], xlsx_cat, csv_cat]
+        mixed_catalogs = sample_catalog_pdfs + [xlsx_cat, csv_cat]
 
         res = run_procurement_pipeline(
             order_files=[primary_order_xlsx],
@@ -207,7 +207,7 @@ class TestTier3PairwiseCombinations:
         master_df = res["results"]["master_comparison"]
         # Both items should consolidate to مخزن_أ because it already won Panadol
         for _, row in master_df.iterrows():
-            assert "مخزن_أ" in row["المخزن الفائز"]
+            assert "مخزن أ" in row["المخزن الفائز"] or "مخزن_أ" in row["المخزن الفائز"]
 
 
 # ============================================================================

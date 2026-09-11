@@ -292,7 +292,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v1.1.0 / Egyptian Pharma Procurement Optimizer v1.1.0")
+        self.title("نظام المشتريات الصيدلانية v1.1.2 / Egyptian Pharma Procurement Optimizer v1.1.2")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -1102,7 +1102,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v1.1.0 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v1.1.2 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"

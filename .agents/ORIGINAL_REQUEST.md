@@ -231,8 +231,28 @@ DEVELOPER INSTRUCTIONS & READY-MADE SCRIPTS:
 3. In `tests/test_gui.py`, the 2-row layout assertions are aligned.
 4. Execute `python build_exe.py` and `ISCC.exe installer.iss` autonomously to finish R2, R3, and R4. Proceed without pausing.
 
+## 2026-09-11T11:09:20Z
 
+This is a single self-contained fix; keep it small and focused.
 
+Fix the output directory write permission error in packaged Windows builds and ensure robust RapidOCR / RapidTable catalog extraction.
 
+Working directory: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search
 
+## Requirements
 
+### R1. Safe User-Writable Default Output Directory
+The application must never default to writing output inside the application installation path (`_internal` or `Program Files`). It must default to a user-writable directory (e.g., `~/Desktop/Pharma_Output` or user Documents folder) with automatic fallback if the configured directory is not writable.
+
+### R2. OCR Engine Reliability & Frozen Build Packaging
+Ensure `RapidOCR` and `RapidTable` work seamlessly both in development and in PyInstaller packaged builds (`.spec` / `build_exe.py`), with descriptive error logging and fallbacks for scanned PDFs.
+
+## Acceptance Criteria
+
+### Execution & Permissions
+- [ ] Running pipeline with default settings never fails with `[WinError 5] Access is denied` in `Program Files`.
+- [ ] Directory creation validates write permissions before executing pipeline stages.
+
+### OCR Pipeline
+- [ ] `PDFCatalogParser.parse_ocr()` succeeds on test PDF files without missing ONNX runtime assets.
+- [ ] Error messages for missing OCR dependencies or corrupted files are surfaced clearly in the UI without crashing the worker thread.

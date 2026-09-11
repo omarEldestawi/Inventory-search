@@ -1,13 +1,14 @@
-# BRIEFING — 2026-09-10T23:49:10Z
+# BRIEFING — 2026-09-11T11:10:00Z
 
 ## Mission
-Sentinel monitoring and lifecycle orchestration for Egyptian Pharmaceutical Procurement Engine: R1 (M1 verification & gate), R2 (PyInstaller standalone executable packaging), R3 (Inno Setup wizard creation), and R4 (Git backup to GitHub).
+Sentinel monitoring and lifecycle orchestration for Egyptian Pharmaceutical Procurement Engine: Output directory write permission safety in packaged Windows builds and robust RapidOCR / RapidTable catalog extraction.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\sentinel
 - Orchestrator: 3b92a196-eb1c-46f3-8ecb-542eb14e48e6
 - Orchestrator (active): 252346bb-95c8-4cac-bd1a-61888a6081bc
+- Orchestrator (swe_light): c0a0d0ec-ed0b-42c4-a16e-05395f7e1a22
 - Victory Auditor: to be spawned on victory claim
 
 ## 🔒 Key Constraints
@@ -18,18 +19,18 @@ Sentinel monitoring and lifecycle orchestration for Egyptian Pharmaceutical Proc
 - Clean up crons and subagents upon completion
 
 ## User Context
-- **Last user request**: Continue building Egyptian Pharma Procurement Engine: verify M1 gate, build PyInstaller standalone executable, create Inno Setup wizard, and push to GitHub.
+- **Last user request**: Fix the output directory write permission error in packaged Windows builds and ensure robust RapidOCR / RapidTable catalog extraction.
 - **Pending clarifications**: none
-- **Delivered results**: Core procurement engine, GUI with OCR inspection, pipeline bridge, test suite (prior milestones).
+- **Delivered results**: Recorded in ORIGINAL_REQUEST.md
 
 ## Project Status
 - **Phase**: in progress
-- **Active Subagent**: teamwork_preview_orchestrator (252346bb-95c8-4cac-bd1a-61888a6081bc) at `.agents/orchestrator_3`
-- **Cron Tasks**: task-28 (progress reporting, */8), task-30 (liveness check, */10)
+- **Active Subagent**: teamwork_preview_swe (c0a0d0ec-ed0b-42c4-a16e-05395f7e1a22) at `.agents/swe_light_1`
+- **Cron Tasks**: task-24 (progress reporting, */8), task-26 (liveness check, */10)
 
 ## Routing Decision
-- **Execution Path**: General (teamwork_preview_orchestrator)
-- **Rationale**: Multi-part software engineering and devops delivery task across 4 requirements (GUI/OCR test gating, PyInstaller bundling, Inno Setup compilation, and GitHub repo push). Standard General path.
+- **Execution Path**: SWE Light (teamwork_preview_swe)
+- **Rationale**: User explicitly requested: "This is a single self-contained fix; keep it small and focused" targeting output directory write permissions and RapidOCR/RapidTable extraction reliability.
 
 ## Victory Audit Status
 - **Triggered**: no

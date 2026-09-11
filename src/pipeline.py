@@ -100,9 +100,15 @@ def is_in_installation_dir(dir_path: str) -> bool:
         "/private/etc",
         "/private/var/root",
     )
+    unix_targets = []
     for t in [norm_target.lower(), real_target.lower(), str(dir_path).lower()]:
+        unix_targets.append(t.replace("\\", "/"))
+        stripped = re.sub(r"^[a-zA-Z]:", "", t).replace("\\", "/")
+        unix_targets.append(stripped)
+
+    for t in unix_targets:
         for prefix in protected_unix_prefixes:
-            if t == prefix or t.startswith(prefix + "/") or t.startswith(prefix + "\\"):
+            if t == prefix or t.startswith(prefix + "/"):
                 return True
 
     # 4. Standard Windows system/installation directories & environment variables
@@ -113,9 +119,7 @@ def is_in_installation_dir(dir_path: str) -> bool:
         "CommonProgramFiles",
         "CommonProgramFiles(x86)",
         "SystemRoot",
-        "SystemDrive",
         "ProgramData",
-        "ALLUSERSPROFILE",
     ]
     for env_var in sys_env_vars:
         env_val = os.environ.get(env_var)
@@ -433,6 +437,8 @@ def run_procurement_pipeline(
             raise ValueError("No purchase order files provided. At least one order file (.xlsx/.csv) is required.")
         if not catalog_files:
             raise ValueError("No catalog files provided. At least one vendor catalog (.pdf/.xlsx/.csv) is required.")
+        if output_dir is not None and not str(output_dir).strip():
+            raise ValueError("Output directory cannot be empty.")
 
         # Safe User-Writable Output Directory Resolution and Write Permission Validation
         output_dir = resolve_safe_output_dir(output_dir)
