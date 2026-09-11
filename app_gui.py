@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 """
 Egyptian Pharmaceutical Procurement Optimizer - Modern Windows 11 Desktop GUI.
 CustomTkinter graphical interface with bilingual typography (Arabic & English),
@@ -18,24 +19,48 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+# Configure Windows AppUserModelID for crisp taskbar icon resolution and grouping
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.1.0")
+    except Exception:
+        pass
+
 try:
     from src.controller import (
         classify_files,
         ProcurementEngineBridge,
         inspect_catalog_counts,
+        inspect_single_catalog,
         reread_catalog_with_ocr,
         global_catalog_cache,
     )
-    from src.pipeline import run_procurement_pipeline, PipelineExecutionError
+    from src.pipeline import (
+        run_procurement_pipeline,
+        PipelineExecutionError,
+        get_default_output_dir,
+        resolve_safe_output_dir,
+        validate_directory_writable,
+        is_in_installation_dir,
+    )
 except ImportError:
     from controller import (
         classify_files,
         ProcurementEngineBridge,
         inspect_catalog_counts,
+        inspect_single_catalog,
         reread_catalog_with_ocr,
         global_catalog_cache,
     )
-    from pipeline import run_procurement_pipeline, PipelineExecutionError
+    from pipeline import (
+        run_procurement_pipeline,
+        PipelineExecutionError,
+        get_default_output_dir,
+        resolve_safe_output_dir,
+        validate_directory_writable,
+        is_in_installation_dir,
+    )
 
 
 logger = logging.getLogger("PharmaGUI")
@@ -63,9 +88,17 @@ COLOR_CARD_LIGHT = "#FFFFFF"
 FONT_FAMILY = "Segoe UI"
 
 
+_FONT_CACHE = {}
+
+
 def get_font(size: int = 12, weight: str = "normal") -> ctk.CTkFont:
-    """Returns a Segoe UI CTkFont instance."""
-    return ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
+    """Returns a cached Segoe UI CTkFont instance."""
+    key = (size, weight)
+    font = _FONT_CACHE.get(key)
+    if font is None:
+        font = ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
+        _FONT_CACHE[key] = font
+    return font
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -241,8 +274,10 @@ class FileListModel:
             return False, "يرجى إضافة أمر شراء واحد على الأقل (.xlsx / .csv) / At least 1 order required"
         if not catalogs:
             return False, "يرجى إضافة كتالوج مخزن واحد على الأقل (.pdf / .xlsx) / At least 1 catalog required"
-        if not output_dir or not output_dir.strip():
+        if not output_dir or not str(output_dir).strip():
             return False, "يرجى تحديد مجلد حفظ المخرجات / Output directory must be specified"
+        if is_in_installation_dir(output_dir):
+            return False, "المجلد المحدد يقع ضمن ملفات تثبيت البرنامج المحمية / Selected directory is in protected installation path"
 
         return True, "جاهز للبدء والتوزيع / Ready to optimize"
 
@@ -257,7 +292,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية / Egyptian Pharma Procurement Optimizer")
+        self.title("نظام المشتريات الصيدلانية v1.1.0 / Egyptian Pharma Procurement Optimizer v1.1.0")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -276,8 +311,8 @@ class PharmaProcurementApp(ctk.CTk):
         self.last_kpi_data: Optional[dict] = None
         self._file_card_widgets: Dict[str, ctk.CTkFrame] = {}
 
-        # Default Output Destination
-        default_out = os.path.normpath(os.path.abspath(os.path.join(os.path.dirname(__file__), "output")))
+        # Default Output Destination: Guaranteed safe user-writable directory outside installation path
+        default_out = get_default_output_dir()
         self.output_dir_var = tk.StringVar(value=default_out)
 
         # Layout Setup
@@ -413,14 +448,26 @@ class PharmaProcurementApp(ctk.CTk):
         self.theme_menu.grid(row=0, column=1, sticky="e", pady=4)
         self.theme_menu.set("System")
 
+        self.update_btn = ctk.CTkButton(
+            self.sidebar_frame,
+            text="🔄 معالج التحديثات / Update Wizard",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_CATALOG_BADGE,
+            text_color="white",
+            hover_color=("blue", "darkblue"),
+            height=32,
+            command=self._open_update_wizard
+        )
+        self.update_btn.grid(row=9, column=0, padx=20, pady=(0, 8), sticky="ew")
+
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v1.0 Windows 11 Edition • Engine Ready",
+            text="v1.1.0 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
         )
-        app_info_label.grid(row=9, column=0, padx=20, pady=(0, 15), sticky="ew")
+        app_info_label.grid(row=10, column=0, padx=20, pady=(0, 15), sticky="ew")
 
     # -------------------------------------------------------------------------
     # Right Main Panel
@@ -484,6 +531,18 @@ class PharmaProcurementApp(ctk.CTk):
             command=self._on_clear_all
         )
         self.clear_all_btn.grid(row=0, column=2, padx=(0, 8), sticky="w")
+
+        self.top_update_btn = ctk.CTkButton(
+            self.toolbar_frame,
+            text="🔄 التحديثات / Updates (v1.1)",
+            font=get_font(11, "bold"),
+            width=165,
+            fg_color=("gray75", "gray25"),
+            hover_color=("gray65", "gray35"),
+            text_color=("black", "white"),
+            command=self._open_update_wizard
+        )
+        self.top_update_btn.grid(row=0, column=3, padx=(0, 8), sticky="w")
 
         # File Counter Badge
         self.counter_badge = ctk.CTkLabel(
@@ -637,11 +696,29 @@ class PharmaProcurementApp(ctk.CTk):
     def _on_browse_destination(self):
         """Opens folder picker to select destination directory."""
         initial = self.output_dir_var.get()
-        if not os.path.isdir(initial):
-            initial = os.getcwd()
+        if not initial or not os.path.isdir(initial) or is_in_installation_dir(initial):
+            initial = get_default_output_dir()
         selected = filedialog.askdirectory(initialdir=initial, title="اختر مجلد حفظ تقرير المشتريات / Select Output Folder")
         if selected:
-            self.output_dir_var.set(os.path.normpath(selected))
+            norm_selected = os.path.normpath(os.path.abspath(selected))
+            if is_in_installation_dir(norm_selected):
+                messagebox.showwarning(
+                    "تحذير مسار التثبيت / Protected Directory",
+                    "لا يمكن اختيار مجلد تثبيت البرنامج لحفظ التقارير منعاً لمشاكل الصلاحيات.\n"
+                    "يرجى اختيار مجلد في مجلدات المستخدم الخاصة بك (مثل سطح المكتب أو المستندات).\n\n"
+                    "Cannot select application installation directory for output.\n"
+                    "Please choose a user folder such as Desktop or Documents."
+                )
+                return
+            try:
+                validate_directory_writable(norm_selected)
+            except (PermissionError, OSError) as exc:
+                messagebox.showwarning(
+                    "صلاحيات المجلد / Permission Error",
+                    f"المجلد المحدد غير قابل للكتابة:\n{exc}\n\nSelected folder is not writable."
+                )
+                return
+            self.output_dir_var.set(norm_selected)
             self._update_ui_state()
 
     def _on_add_files(self):
@@ -682,11 +759,16 @@ class PharmaProcurementApp(ctk.CTk):
         added, dups = self.file_model.add_paths(file_paths)
         if added > 0:
             self._render_file_list()
-            self._async_inspect_counts(self.file_model.get_catalog_files())
-        self._update_ui_state()
+            self._update_ui_state()
+            try:
+                self.after(50, lambda: self._async_inspect_counts(self.file_model.get_catalog_files()))
+            except Exception:
+                self._async_inspect_counts(self.file_model.get_catalog_files())
+        else:
+            self._update_ui_state()
 
     def _async_inspect_counts(self, file_paths: List[str]):
-        """Inspects medication counts in catalogs asynchronously without freezing GUI."""
+        """Inspects medication counts in catalogs asynchronously in parallel without freezing GUI."""
         uninspected = [
             f.path for f in self.file_model.files
             if f.category == "Catalog" and f.item_count is None and f.path in file_paths
@@ -694,14 +776,15 @@ class PharmaProcurementApp(ctk.CTk):
         if not uninspected:
             return
 
-        def _worker():
-            try:
-                counts = inspect_catalog_counts(uninspected)
-                self._ocr_queue.put(("INSPECT_DONE", counts))
-            except Exception as e:
-                logger.debug(f"Catalog inspection thread error: {e}")
+        def _worker(paths_to_inspect):
+            for p in paths_to_inspect:
+                try:
+                    norm, count, _ = inspect_single_catalog(p)
+                    self._ocr_queue.put(("INSPECT_FILE_DONE", norm, count))
+                except Exception as e:
+                    logger.debug(f"Catalog inspection thread error for {p}: {e}")
 
-        t = threading.Thread(target=_worker, name="CatalogInspectWorker", daemon=True)
+        t = threading.Thread(target=_worker, args=(uninspected,), name="CatalogInspectWorker", daemon=True)
         t.start()
 
     def _start_ocr_reread(self, path: str):
@@ -727,22 +810,57 @@ class PharmaProcurementApp(ctk.CTk):
         self._active_ocr_threads[path] = t
         t.start()
 
+    def _update_file_card_badge(self, path: str):
+        """Updates the item count badge label on an existing card widget directly without re-rendering."""
+        norm_path = os.path.normpath(os.path.abspath(path))
+        target_f = None
+        for f in self.file_model.files:
+            if os.path.normpath(f.path) == norm_path:
+                target_f = f
+                break
+        if not target_f or target_f.category != "Catalog":
+            return
+
+        card = self._file_card_widgets.get(target_f.path)
+        if card and hasattr(card, "_count_badge"):
+            if target_f.item_count is not None:
+                if target_f.item_count > 0:
+                    ocr_tag = " [OCR]" if target_f.is_ocr else ""
+                    count_text = f"📦 {target_f.item_count} صنف / items{ocr_tag}"
+                    count_color = COLOR_SUCCESS if target_f.is_ocr else COLOR_CATALOG_BADGE
+                else:
+                    count_text = "⚠️ 0 صنف (يحتاج OCR) / 0 items (needs OCR)"
+                    count_color = COLOR_WARN_BADGE
+            else:
+                count_text = "⏳ جاري فحص الأصناف... / Checking count..."
+                count_color = ("gray50", "gray60")
+            try:
+                card._count_badge.configure(text=count_text, text_color=count_color)
+            except Exception:
+                self._render_file_list()
+        else:
+            self._render_file_list()
+
     def _poll_ocr_queue(self):
         """Polls OCR and inspection queue without freezing GUI."""
         try:
             while True:
                 msg = self._ocr_queue.get_nowait()
                 m_type = msg[0]
-                if m_type == "INSPECT_DONE":
+                if m_type == "INSPECT_FILE_DONE":
+                    norm_path, count = msg[1], msg[2]
+                    for f in self.file_model.files:
+                        if os.path.normpath(f.path) == norm_path:
+                            f.item_count = count
+                            break
+                    self._update_file_card_badge(norm_path)
+                elif m_type == "INSPECT_DONE":
                     counts = msg[1]
-                    updated = False
                     for f in self.file_model.files:
                         norm = os.path.normpath(f.path)
-                        if norm in counts and f.item_count is None:
+                        if norm in counts:
                             f.item_count = counts[norm]
-                            updated = True
-                    if updated:
-                        self._render_file_list()
+                            self._update_file_card_badge(norm)
                 elif m_type == "OCR_PROGRESS":
                     path, pct, status = msg[1], msg[2], msg[3]
                     for f in self.file_model.files:
@@ -800,8 +918,252 @@ class PharmaProcurementApp(ctk.CTk):
         self._update_ui_state()
 
     # -------------------------------------------------------------------------
-    # File List Rendering
+    # File List Rendering & Item Viewer Modal
     # -------------------------------------------------------------------------
+    def _open_catalog_item_viewer(self, path: str):
+        """Opens a modern searchable modal showing extracted catalog items and discounts."""
+        norm_path = os.path.normpath(os.path.abspath(path))
+        fname = os.path.basename(norm_path)
+        w_raw = os.path.splitext(fname)[0]
+
+        # Retrieve or inspect dataframe
+        cached_df = global_catalog_cache.get(norm_path)
+        if cached_df is None or cached_df.empty:
+            _, _, cached_df = inspect_single_catalog(norm_path)
+
+        viewer = ctk.CTkToplevel(self)
+        viewer.title(f"عرض الأصناف والخصومات - {fname} / Items & Discounts Viewer")
+        viewer.geometry("880x600")
+        viewer.minsize(700, 450)
+        viewer.transient(self)
+        viewer.grab_set()
+
+        viewer.grid_columnconfigure(0, weight=1)
+        viewer.grid_rowconfigure(1, weight=1)
+
+        # Header Frame
+        header_frame = ctk.CTkFrame(viewer, fg_color="transparent")
+        header_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 10))
+        header_frame.grid_columnconfigure(0, weight=1)
+
+        title_lbl = ctk.CTkLabel(
+            header_frame,
+            text=f"📦 كتالوج: {fname}  |  المورد: {w_raw}",
+            font=get_font(14, "bold"),
+            anchor="w"
+        )
+        title_lbl.grid(row=0, column=0, sticky="w", pady=(0, 6))
+
+        # Search Bar and Count Frame
+        filter_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        filter_frame.grid(row=1, column=0, sticky="ew")
+        filter_frame.grid_columnconfigure(0, weight=1)
+
+        search_var = tk.StringVar()
+        search_entry = ctk.CTkEntry(
+            filter_frame,
+            textvariable=search_var,
+            font=get_font(12),
+            placeholder_text="🔍 بحث في أسماء الأصناف أو الأسعار أو نسب الخصم... / Search items, price, discount...",
+            height=34
+        )
+        search_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+
+        count_info_lbl = ctk.CTkLabel(
+            filter_frame,
+            text="0 صنف",
+            font=get_font(11, "bold"),
+            text_color=COLOR_CATALOG_BADGE
+        )
+        count_info_lbl.grid(row=0, column=1, sticky="e")
+
+        # Table Container using ttk.Treeview
+        table_frame = ctk.CTkFrame(viewer, corner_radius=6)
+        table_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=5)
+        table_frame.grid_columnconfigure(0, weight=1)
+        table_frame.grid_rowconfigure(0, weight=1)
+
+        import tkinter.ttk as ttk
+        columns = ("seq", "name", "price", "discount", "status")
+        tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
+        
+        tree.heading("seq", text="#")
+        tree.heading("name", text="اسم الصنف / Medicine Name")
+        tree.heading("price", text="سعر الجمهور / Public Price")
+        tree.heading("discount", text="نسبة الخصم / Discount %")
+        tree.heading("status", text="الحالة / Status")
+
+        tree.column("seq", width=50, anchor="center")
+        tree.column("name", width=420, anchor="w")
+        tree.column("price", width=120, anchor="center")
+        tree.column("discount", width=120, anchor="center")
+        tree.column("status", width=100, anchor="center")
+
+        scroll_y = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        scroll_x = ttk.Scrollbar(table_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
+
+        # Convert cached_df to records
+        raw_records = []
+        if cached_df is not None and not cached_df.empty:
+            for idx, r in cached_df.iterrows():
+                name = str(r.get('item_name', '')).strip()
+                if not name:
+                    continue
+                price = float(r.get('base_price', 0.0) or 0.0)
+                disc = float(r.get('discount_rate', 0.0) or 0.0)
+                if 0 < disc <= 1.0:
+                    disc_pct = disc * 100.0
+                else:
+                    disc_pct = disc
+                stock = "متوفر ✓" if r.get('stock_status', True) else "غير متوفر ✕"
+                raw_records.append({
+                    "seq": len(raw_records) + 1,
+                    "name": name,
+                    "price_str": f"{price:,.2f} ج.م" if price > 0 else "غير محدد",
+                    "price_num": price,
+                    "disc_str": f"{disc_pct:.1f}%",
+                    "disc_num": disc_pct,
+                    "status": stock,
+                    "raw_text": f"{name} {price} {disc_pct:.1f}% {stock}".lower()
+                })
+
+        def _populate_tree(query: str = ""):
+            tree.delete(*tree.get_children())
+            q = query.strip().lower()
+            matching_count = 0
+            for item in raw_records:
+                if not q or q in item["raw_text"]:
+                    matching_count += 1
+                    tree.insert("", "end", values=(
+                        matching_count,
+                        item["name"],
+                        item["price_str"],
+                        item["disc_str"],
+                        item["status"]
+                    ))
+            count_info_lbl.configure(
+                text=f"معروض: {matching_count} من {len(raw_records)} صنف / Showing {matching_count} of {len(raw_records)}"
+            )
+
+        def _on_search_changed(*args):
+            _populate_tree(search_var.get())
+
+        search_var.trace_add("write", _on_search_changed)
+        _populate_tree("")
+
+        # Bottom Bar
+        bottom_bar = ctk.CTkFrame(viewer, fg_color="transparent")
+        bottom_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(10, 15))
+        bottom_bar.grid_columnconfigure(0, weight=1)
+
+        close_btn = ctk.CTkButton(
+            bottom_bar,
+            text="إغلاق / Close",
+            font=get_font(12, "bold"),
+            width=120,
+            command=viewer.destroy
+        )
+        close_btn.grid(row=0, column=1, sticky="e")
+
+    # -------------------------------------------------------------------------
+    # Software Update Wizard
+    # -------------------------------------------------------------------------
+    def _open_update_wizard(self):
+        """Opens the modern Software Update Wizard modal dialog."""
+        wizard = ctk.CTkToplevel(self)
+        wizard.title("معالج تحديث البرنامج / Software Update Wizard")
+        wizard.geometry("560x420")
+        wizard.minsize(500, 380)
+        wizard.transient(self)
+        wizard.grab_set()
+
+        wizard.grid_columnconfigure(0, weight=1)
+        wizard.grid_rowconfigure(1, weight=1)
+
+        header = ctk.CTkFrame(wizard, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=24, pady=(20, 10))
+        header.grid_columnconfigure(1, weight=1)
+
+        icon_lbl = ctk.CTkLabel(header, text="🚀", font=get_font(28))
+        icon_lbl.grid(row=0, column=0, rowspan=2, padx=(0, 14), sticky="nw")
+
+        title_lbl = ctk.CTkLabel(
+            header,
+            text="معالج تحديث البرنامج الذكي / Software Update Wizard",
+            font=get_font(15, "bold"),
+            anchor="w"
+        )
+        title_lbl.grid(row=0, column=1, sticky="w")
+
+        sub_lbl = ctk.CTkLabel(
+            header,
+            text="النسخة المثبتة حالياً: v1.1.0 Windows 11 Edition",
+            font=get_font(11),
+            text_color=("gray40", "gray60"),
+            anchor="w"
+        )
+        sub_lbl.grid(row=1, column=1, sticky="w")
+
+        # Content Card
+        card = ctk.CTkFrame(wizard, corner_radius=8)
+        card.grid(row=1, column=0, sticky="nsew", padx=24, pady=10)
+        card.grid_columnconfigure(0, weight=1)
+
+        info_text = (
+            "✨ مميزات نظام التحديث التلقائي (Inno Setup In-Place Upgrade):\n\n"
+            "• ترقية آمنة 100%: يتم تثبيت التحديث فوق النسخة الحالية مباشرة.\n"
+            "• الحفاظ على البيانات: لا يتم حذف ملفات الطلبيات أو المخرجات المحفوظة.\n"
+            "• أيقونة وسطح مكتب موحد: يتم تحديث الاختصارات وأيقونة شريط المهام تلقائياً.\n\n"
+            "لترقية النظام إلى النسخة الأحدث:\n"
+            "1. يمكنك تحميل أحدث مثبت Setup.exe عبر صفحة التحديثات.\n"
+            "2. أو تشغيل ملف التثبيت الجديد وسيقوم باستبدال الملفات تلقائياً."
+        )
+
+        txt_widget = ctk.CTkLabel(
+            card,
+            text=info_text,
+            font=get_font(11),
+            justify="right",
+            anchor="e",
+            wraplength=480
+        )
+        txt_widget.grid(row=0, column=0, padx=16, pady=16, sticky="nsew")
+
+        # Bottom Action Bar
+        bottom = ctk.CTkFrame(wizard, fg_color="transparent")
+        bottom.grid(row=2, column=0, sticky="ew", padx=24, pady=(10, 20))
+        bottom.grid_columnconfigure(0, weight=1)
+
+        def _open_releases():
+            import webbrowser
+            webbrowser.open("https://github.com/omarEldestawi/Inventory-search/releases")
+
+        check_btn = ctk.CTkButton(
+            bottom,
+            text="🌐 فحص التحديثات في GitHub / Check Online",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_ACCENT,
+            hover_color=COLOR_ACCENT_HOVER,
+            command=_open_releases
+        )
+        check_btn.grid(row=0, column=0, sticky="w")
+
+        close_w_btn = ctk.CTkButton(
+            bottom,
+            text="إغلاق / Close",
+            font=get_font(11),
+            width=100,
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            command=wizard.destroy
+        )
+        close_w_btn.grid(row=0, column=1, sticky="e", padx=(10, 0))
+
     def _render_file_list(self):
         """Renders individual file cards inside the scrollable container."""
         # Clear existing card widgets
@@ -887,11 +1249,11 @@ class PharmaProcurementApp(ctk.CTk):
 
             # Row 1: Catalog Inspection & OCR Re-read Action
             if f_item.category == "Catalog":
-                # Medication Count Badge
+                # Medication Count Badge (Formatted cleanly without duplicate number)
                 if f_item.item_count is not None:
                     if f_item.item_count > 0:
                         ocr_tag = " [OCR]" if f_item.is_ocr else ""
-                        count_text = f"📦 {f_item.item_count} صنف{ocr_tag} / {f_item.item_count} items"
+                        count_text = f"📦 {f_item.item_count} صنف / items{ocr_tag}"
                         count_color = COLOR_SUCCESS if f_item.is_ocr else COLOR_CATALOG_BADGE
                     else:
                         count_text = "⚠️ 0 صنف (يحتاج OCR) / 0 items (needs OCR)"
@@ -908,6 +1270,20 @@ class PharmaProcurementApp(ctk.CTk):
                     anchor="w"
                 )
                 count_badge.grid(row=1, column=0, columnspan=2, padx=(10, 5), pady=(0, 6), sticky="w")
+                card._count_badge = count_badge
+
+                # Action button: View Items & Discounts
+                view_items_btn = ctk.CTkButton(
+                    card,
+                    text="👁️ عرض الأصناف والخصومات / View Items & Discounts",
+                    font=get_font(10, "bold"),
+                    width=210,
+                    height=24,
+                    fg_color=COLOR_ORDER_BADGE,
+                    hover_color="#047857",
+                    command=lambda p=f_item.path: self._open_catalog_item_viewer(p)
+                )
+                view_items_btn.grid(row=1, column=2, padx=5, pady=(0, 6), sticky="e")
 
                 # Action button: Re-read with OCR
                 if f_item.ocr_running:
@@ -931,7 +1307,7 @@ class PharmaProcurementApp(ctk.CTk):
                         hover_color="#0369A1",
                         command=lambda p=f_item.path: self._start_ocr_reread(p)
                     )
-                ocr_btn.grid(row=1, column=2, columnspan=2, padx=5, pady=(0, 6), sticky="e")
+                ocr_btn.grid(row=1, column=3, padx=5, pady=(0, 6), sticky="e")
 
                 # Status label
                 if f_item.ocr_status_msg:
@@ -1058,27 +1434,63 @@ class PharmaProcurementApp(ctk.CTk):
         report_path = results.get("report_path") or results.get("arabic_report_path")
         self.current_report_path = report_path
         self.last_kpi_data = results.get("kpis") or {}
+        if report_path:
+            actual_dir = os.path.dirname(os.path.abspath(report_path))
+            if actual_dir and os.path.isdir(actual_dir) and actual_dir != self.output_dir_var.get():
+                self.output_dir_var.set(actual_dir)
 
 
         # Populate KPI Cards
-        kpis = self.last_kpi_data
-        total_items = kpis.get("total_items", 0)
-        matched_items = kpis.get("matched_items", 0)
-        det_matches = kpis.get("deterministic_matches", 0)
-        oos_count = kpis.get("out_of_stock", 0)
-        avg_disc = kpis.get("avg_discount", 0.0)
-        tot_savings = kpis.get("total_savings", 0.0)
-        allocation_counts = kpis.get("allocation_counts", {}) or {}
+        kpis = self.last_kpi_data if isinstance(self.last_kpi_data, dict) else {}
+        try:
+            total_items = int(kpis.get("total_items", 0) or 0)
+        except (ValueError, TypeError):
+            total_items = 0
 
+        try:
+            matched_items = int(kpis.get("matched_items", 0) or 0)
+        except (ValueError, TypeError):
+            matched_items = 0
+
+        try:
+            det_matches = int(kpis.get("deterministic_matches", 0) or 0)
+        except (ValueError, TypeError):
+            det_matches = 0
+
+        try:
+            raw_oos = kpis.get("out_of_stock")
+            if raw_oos is not None:
+                oos_count = int(raw_oos)
+            else:
+                oos_count = max(0, total_items - matched_items)
+        except (ValueError, TypeError):
+            oos_count = max(0, total_items - matched_items)
+
+        avg_disc = kpis.get("avg_discount", 0.0)
         try:
             avg_disc_val = float(avg_disc)
+            if not (avg_disc_val == avg_disc_val):  # check NaN
+                avg_disc_val = 0.0
         except (ValueError, TypeError):
             avg_disc_val = 0.0
+        if 0 < avg_disc_val <= 1.0:
+            avg_disc_val = avg_disc_val * 100.0
 
+        tot_savings = kpis.get("total_savings", 0.0)
         try:
             tot_savings_val = float(tot_savings)
+            if not (tot_savings_val == tot_savings_val):  # check NaN
+                tot_savings_val = 0.0
         except (ValueError, TypeError):
             tot_savings_val = 0.0
+
+        allocation_counts = kpis.get("allocation_counts")
+        if not isinstance(allocation_counts, dict):
+            allocation_counts = {}
+
+        allocation_values = kpis.get("allocation_values")
+        if not isinstance(allocation_values, dict):
+            allocation_values = {}
 
 
         self.card_req.configure(text=str(total_items))
@@ -1088,10 +1500,17 @@ class PharmaProcurementApp(ctk.CTk):
         self.card_sav.configure(text=f"{tot_savings_val:,.2f} ج.م")
 
 
-        # Update Winning Wholesalers Pills
+        # Update Winning Wholesalers Pills (Listing wholesalers with count and total value)
         if allocation_counts:
             sorted_wh = sorted(allocation_counts.items(), key=lambda x: x[1], reverse=True)
-            pills_str = " | ".join([f"🏆 {w}: {cnt}" for w, cnt in sorted_wh])
+            pills_parts = []
+            for w, cnt in sorted_wh:
+                val = allocation_values.get(w, 0.0)
+                if val > 0:
+                    pills_parts.append(f"🏆 {w}: {cnt} ({val:,.2f} ج.م)")
+                else:
+                    pills_parts.append(f"🏆 {w}: {cnt}")
+            pills_str = " | ".join(pills_parts)
             self.wholesalers_pills_label.configure(text=f"المخازن الموزع عليها: {pills_str}")
         else:
             self.wholesalers_pills_label.configure(text="المخازن الموزع عليها: لا توجد عروض متطابقة")
@@ -1207,6 +1626,7 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     assert hasattr(app, "_active_ocr_threads"), "Missing _active_ocr_threads"
     assert callable(getattr(app, "_start_ocr_reread", None)), "Missing _start_ocr_reread"
     assert callable(getattr(app, "_async_inspect_counts", None)), "Missing _async_inspect_counts"
+    assert callable(getattr(app, "_open_catalog_item_viewer", None)), "Missing _open_catalog_item_viewer"
 
     # 2. Verify Initial State
     assert len(app.file_model.files) == 0, "Initial file list should be empty"

@@ -10,6 +10,9 @@ import sys
 import logging
 import datetime
 import traceback
+import tempfile
+import time
+import threading
 from typing import Callable, Optional, Union
 import pandas as pd
 
@@ -27,6 +30,252 @@ except ImportError:
     from normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
 
 logger = logging.getLogger("ProcurementPipeline")
+
+
+def is_in_installation_dir(dir_path: str) -> bool:
+    """
+    Checks if a path is located inside the application installation directory,
+    such as Program Files, _internal, /Applications, macOS .app bundle, or frozen executable folder.
+    Guarantees cross-platform protection across Windows, macOS, and Linux, including symlink resolution.
+    """
+    if not dir_path or not isinstance(dir_path, str):
+        return False
+
+    norm_target = os.path.normpath(os.path.abspath(dir_path))
+    try:
+        real_target = os.path.realpath(norm_target)
+    except Exception:
+        real_target = norm_target
+
+    targets_to_check = [norm_target, real_target, str(dir_path)]
+
+    # 1. PyInstaller frozen environment
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.normpath(os.path.dirname(sys.executable)).lower()
+        try:
+            real_exe = os.path.realpath(exe_dir).lower()
+        except Exception:
+            real_exe = exe_dir
+
+        for t in [norm_target.lower(), real_target.lower()]:
+            if t == exe_dir or t.startswith(exe_dir + os.sep.lower()) or t == real_exe or t.startswith(real_exe + os.sep.lower()):
+                return True
+
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            norm_mei = os.path.normpath(os.path.abspath(meipass)).lower()
+            try:
+                real_mei = os.path.realpath(norm_mei).lower()
+            except Exception:
+                real_mei = norm_mei
+            for t in [norm_target.lower(), real_target.lower()]:
+                if t == norm_mei or t.startswith(norm_mei + os.sep.lower()) or t == real_mei or t.startswith(real_mei + os.sep.lower()):
+                    return True
+
+    # 2. Path components containing _internal, Program Files, or .app bundle
+    protected_parts = {
+        "_internal",
+        "program files",
+        "program files (x86)",
+        "commonprogramfiles",
+        "commonprogramfiles(x86)",
+    }
+    for t in targets_to_check:
+        parts = set(p.lower() for p in re.split(r"[\\/]", t) if p)
+        if any(p in protected_parts for p in parts):
+            return True
+        if any(part.endswith(".app") for part in parts):
+            return True
+
+    # 3. macOS / Unix system & installation directories
+    protected_unix_prefixes = (
+        "/applications",
+        "/system",
+        "/library",
+        "/usr",
+        "/opt",
+        "/etc",
+        "/bin",
+        "/sbin",
+        "/private/etc",
+        "/private/var/root",
+    )
+    for t in [norm_target.lower(), real_target.lower(), str(dir_path).lower()]:
+        for prefix in protected_unix_prefixes:
+            if t == prefix or t.startswith(prefix + "/") or t.startswith(prefix + "\\"):
+                return True
+
+    # 4. Standard Windows system/installation directories & environment variables
+    sys_env_vars = [
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+        "CommonProgramFiles",
+        "CommonProgramFiles(x86)",
+        "SystemRoot",
+        "SystemDrive",
+        "ProgramData",
+        "ALLUSERSPROFILE",
+    ]
+    for env_var in sys_env_vars:
+        env_val = os.environ.get(env_var)
+        if env_val:
+            norm_env = os.path.normpath(os.path.abspath(env_val)).lower()
+            try:
+                real_env = os.path.realpath(norm_env).lower()
+            except Exception:
+                real_env = norm_env
+            for t in [norm_target.lower(), real_target.lower()]:
+                if (
+                    t == norm_env
+                    or t.startswith(norm_env + os.sep.lower())
+                    or t == real_env
+                    or t.startswith(real_env + os.sep.lower())
+                ):
+                    return True
+
+    # 5. Fallback checks for well-known Program Files / Windows substrings
+    for pf in [
+        r":\program files",
+        r":/program files",
+        r":\windows",
+        r":/windows",
+        r":\programdata",
+        r":/programdata",
+        r"c:\program files",
+        r"c:/program files",
+    ]:
+        for t in [norm_target.lower(), real_target.lower(), str(dir_path).lower()]:
+            if pf in t:
+                return True
+
+    return False
+
+
+def validate_directory_writable(dir_path: str) -> bool:
+    """
+    Validates write permissions by creating dir_path (if needed) and performing
+    a test file creation/deletion probe.
+    Returns True if writable; raises PermissionError or OSError otherwise.
+    """
+    if not dir_path or not isinstance(dir_path, str):
+        raise ValueError(f"Invalid directory path: {dir_path}")
+
+    # Explicitly reject existing regular files
+    if os.path.isfile(dir_path):
+        raise PermissionError(f"Target path '{dir_path}' is an existing regular file, not a directory.")
+
+    try:
+        os.makedirs(dir_path, exist_ok=True)
+    except (PermissionError, OSError) as exc:
+        raise PermissionError(
+            f"Output directory '{dir_path}' cannot be created or accessed ([WinError 5] or permission denied): {exc}"
+        ) from exc
+
+    test_file = os.path.join(
+        dir_path,
+        f".write_test_{os.getpid()}_{threading.get_ident()}_{time.time_ns()}.tmp"
+    )
+    try:
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("write_perm_check")
+    except (PermissionError, OSError) as exc:
+        raise PermissionError(
+            f"Output directory '{dir_path}' is not writable ([WinError 5] or permission denied): {exc}"
+        ) from exc
+    finally:
+        try:
+            if os.path.exists(test_file):
+                os.remove(test_file)
+        except Exception:
+            pass
+    return True
+
+
+def get_default_output_dir() -> str:
+    """
+    Returns a safe, user-writable default output directory.
+    Never defaults inside Program Files, _internal, or /Applications.
+    Checks Desktop first, then Documents, then user home, then temp.
+    """
+    home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(home, "Desktop", "Pharma_Output"),
+        os.path.join(home, "OneDrive", "Desktop", "Pharma_Output"),
+        os.path.join(home, "Documents", "Pharma_Output"),
+        os.path.join(home, "OneDrive", "Documents", "Pharma_Output"),
+        os.path.join(home, "Downloads", "Pharma_Output"),
+        os.path.join(home, "Pharma_Output"),
+        os.path.join(tempfile.gettempdir(), "Pharma_Output"),
+    ]
+    for candidate in candidates:
+        try:
+            if not is_in_installation_dir(candidate):
+                validate_directory_writable(candidate)
+                return os.path.normpath(os.path.abspath(candidate))
+        except (PermissionError, OSError):
+            continue
+
+    # Fallback to guaranteed temp directory
+    fallback = os.path.join(tempfile.gettempdir(), "Pharma_Output")
+    try:
+        if not is_in_installation_dir(fallback):
+            validate_directory_writable(fallback)
+            return os.path.normpath(os.path.abspath(fallback))
+    except (PermissionError, OSError):
+        pass
+
+    td = tempfile.mkdtemp(prefix="Pharma_Output_")
+    return os.path.normpath(os.path.abspath(td))
+
+
+def resolve_safe_output_dir(configured_dir: Optional[str] = None) -> str:
+    """
+    Resolves a guaranteed user-writable output directory.
+    - If configured_dir is None, empty, in installation dir, or not writable,
+      automatically falls back to safe user directory.
+    - Validates write permissions with probe before returning.
+    """
+    if not configured_dir or not str(configured_dir).strip():
+        logger.info("No output directory specified; using safe default user directory.")
+        return get_default_output_dir()
+
+    norm_dir = os.path.normpath(os.path.abspath(configured_dir))
+
+    # Reject installation paths immediately (including symlinks and UNC shares)
+    if is_in_installation_dir(norm_dir):
+        logger.warning(
+            f"Configured output directory '{configured_dir}' is inside protected installation path. "
+            f"Falling back to user-writable directory."
+        )
+        return get_default_output_dir()
+
+    # Check write permission with probe
+    try:
+        validate_directory_writable(norm_dir)
+        return norm_dir
+    except (PermissionError, OSError) as perm_err:
+        err_str = str(perm_err).lower()
+        is_permission_or_space_issue = (
+            isinstance(perm_err, PermissionError) or
+            "permission" in err_str or
+            "access is denied" in err_str or
+            "winerror 5" in err_str or
+            "read-only" in err_str or
+            "no space left" in err_str or
+            "enospc" in err_str or
+            getattr(perm_err, "errno", None) in (13, 1, 30, 28)  # EACCES, EPERM, EROFS, ENOSPC
+        )
+        if is_permission_or_space_issue:
+            logger.warning(
+                f"Configured output directory '{configured_dir}' is not writable ({perm_err}). "
+                f"Falling back to safe user directory."
+            )
+            fallback = get_default_output_dir()
+            logger.info(f"Using safe fallback output directory: {fallback}")
+            return fallback
+        # Re-raise non-permission filesystem errors (e.g. invalid syntax) for diagnostics
+        raise
 
 
 class PipelineExecutionError(RuntimeError):
@@ -119,7 +368,7 @@ def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
 def run_procurement_pipeline(
     order_files: list[str],
     catalog_files: list[str],
-    output_dir: str,
+    output_dir: Optional[str] = None,
     progress_callback: Optional[Callable[[float, str], None]] = None,
     custom_date_str: Optional[str] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
@@ -184,11 +433,13 @@ def run_procurement_pipeline(
             raise ValueError("No purchase order files provided. At least one order file (.xlsx/.csv) is required.")
         if not catalog_files:
             raise ValueError("No catalog files provided. At least one vendor catalog (.pdf/.xlsx/.csv) is required.")
-        if not output_dir:
-            raise ValueError("Output directory must be specified.")
+
+        # Safe User-Writable Output Directory Resolution and Write Permission Validation
+        output_dir = resolve_safe_output_dir(output_dir)
+        validate_directory_writable(output_dir)
+        diagnostics["output_dir"] = output_dir
 
         _notify(0.05, "التحقق من صحة الملفات المدخلة... / Validating input files...")
-        os.makedirs(output_dir, exist_ok=True)
 
 
         # 2. Ingest Catalogs
@@ -222,6 +473,16 @@ def run_procurement_pipeline(
                 try:
                     parser_inst = PDFCatalogParser(cat_file, warehouse_name=w_name)
                     df_cat = parser_inst.parse()
+                    # Fallback for scanned PDFs: if digital extraction yielded 0 items, attempt OCR extraction
+                    if df_cat.empty:
+                        logger.info(
+                            f"Digital extraction found 0 items for {base_name}. "
+                            f"Falling back to OCR extraction for scanned PDF..."
+                        )
+                        _notify(pct, f"مسح الكتالوج الممسوح ضوئياً بـ OCR: {w_name}...")
+                        df_cat = parser_inst.parse_ocr(progress_callback=progress_callback)
+                        if df_cat.empty and getattr(parser_inst, "last_error", None):
+                            logger.warning(f"OCR parsing for '{base_name}' reported: {parser_inst.last_error}")
                 except Exception as cat_err:
                     logger.warning(f"Error parsing PDF catalog '{base_name}': {cat_err}")
             elif cat_file.lower().endswith(('.xlsx', '.xls', '.csv')):
@@ -335,6 +596,7 @@ def run_procurement_pipeline(
             'results': results,
             'report_path': primary_report_path,
             'arabic_report_path': arabic_report_path,
+            'output_dir': output_dir,
             'kpis': kpis
         }
 

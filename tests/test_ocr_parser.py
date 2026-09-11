@@ -22,6 +22,8 @@ from src.pdf_parser import (
     html_table_to_df,
     get_ocr_engine,
     get_table_engine,
+    find_rapid_table_model,
+    find_rapid_ocr_assets,
 )
 from src.controller import (
     CatalogCache,
@@ -103,23 +105,126 @@ class TestHtmlTableParser:
 
 
 # ============================================================================
-# TEST SUITE 2: LAZY SINGLETON INITIALIZATION
+# TEST SUITE 2: LAZY SINGLETON INITIALIZATION & RELIABILITY
 # ============================================================================
 
 class TestLazySingletons:
-    """Verifies that RapidOCR and RapidTable engines load cleanly on demand."""
+    """Verifies that RapidOCR and RapidTable engines load cleanly on demand and degrade gracefully."""
 
     def test_get_ocr_engine_returns_singleton(self):
         ocr1 = get_ocr_engine()
-        assert ocr1 is not None
         ocr2 = get_ocr_engine()
         assert ocr1 is ocr2
+        try:
+            import rapidocr_onnxruntime
+            assert ocr1 is not None
+        except Exception:
+            assert ocr1 is None
 
     def test_get_table_engine_returns_singleton(self):
         tbl1 = get_table_engine()
-        assert tbl1 is not None
         tbl2 = get_table_engine()
         assert tbl1 is tbl2
+        try:
+            import rapid_table
+            assert tbl1 is not None
+        except Exception:
+            assert tbl1 is None
+
+    def test_ocr_engine_graceful_degradation_missing_dependency(self, monkeypatch):
+        """Verifies get_ocr_engine logs diagnostic and returns None when RapidOCR is missing."""
+        import src.pdf_parser as pp
+        import builtins
+        monkeypatch.setattr(pp, "_ocr_engine", None)
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if "rapidocr" in name:
+                raise ImportError("No module named 'rapidocr_onnxruntime'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        engine = pp.get_ocr_engine()
+        assert engine is None
+
+    def test_ocr_engine_graceful_degradation_corrupted_model(self, monkeypatch):
+        """Verifies get_ocr_engine logs diagnostic and returns None when model weights are corrupted."""
+        import src.pdf_parser as pp
+        monkeypatch.setattr(pp, "_ocr_engine", None)
+
+        class FailingRapidOCR:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("ONNX Runtime error: corrupted model weights")
+
+        fake_mod = type(sys)("rapidocr_onnxruntime")
+        fake_mod.RapidOCR = FailingRapidOCR
+        monkeypatch.setitem(sys.modules, "rapidocr_onnxruntime", fake_mod)
+
+        engine = pp.get_ocr_engine()
+        assert engine is None
+
+    def test_table_engine_graceful_degradation_missing_dependency(self, monkeypatch):
+        """Verifies get_table_engine logs diagnostic and returns None when RapidTable is missing."""
+        import src.pdf_parser as pp
+        import builtins
+        monkeypatch.setattr(pp, "_table_engine", None)
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if "rapid_table" in name:
+                raise ImportError("No module named 'rapid_table'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        engine = pp.get_table_engine()
+        assert engine is None
+
+    def test_table_engine_graceful_degradation_corrupted_model(self, monkeypatch):
+        """Verifies get_table_engine logs diagnostic and returns None when table model weights are corrupted."""
+        import src.pdf_parser as pp
+        monkeypatch.setattr(pp, "_table_engine", None)
+
+        class FailingRapidTable:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("Invalid ONNX model proto")
+
+        fake_mod = type(sys)("rapid_table")
+        fake_mod.RapidTable = FailingRapidTable
+        fake_mod.RapidTableInput = lambda **kwargs: None
+        monkeypatch.setitem(sys.modules, "rapid_table", fake_mod)
+
+        engine = pp.get_table_engine()
+        assert engine is None
+
+    def test_frozen_asset_discovery_meipass(self, monkeypatch, tmp_path):
+        """Verifies frozen asset discovery correctly resolves paths from PyInstaller sys._MEIPASS."""
+        import src.pdf_parser as pp
+
+        fake_meipass = str(tmp_path / "fake_meipass")
+        models_dir = os.path.join(fake_meipass, "models")
+        os.makedirs(models_dir, exist_ok=True)
+
+        fake_table_model = os.path.join(models_dir, "slanet-plus.onnx")
+        with open(fake_table_model, "wb") as f:
+            f.write(b"fake table model")
+
+        fake_config = os.path.join(fake_meipass, "rapidocr_onnxruntime", "config.yaml")
+        os.makedirs(os.path.dirname(fake_config), exist_ok=True)
+        with open(fake_config, "w") as f:
+            f.write("fake config")
+
+        fake_det_model = os.path.join(models_dir, "ch_PP-OCRv4_det_infer.onnx")
+        with open(fake_det_model, "wb") as f:
+            f.write(b"fake det model")
+
+        monkeypatch.setattr(sys, "_MEIPASS", fake_meipass, raising=False)
+
+        tbl_model = pp.find_rapid_table_model()
+        assert tbl_model == os.path.normpath(fake_table_model)
+
+        cfg_path, ocr_models = pp.find_rapid_ocr_assets()
+        assert cfg_path == os.path.normpath(fake_config)
+        assert ocr_models.get("det_model_path") == os.path.normpath(fake_det_model)
 
 
 # ============================================================================
@@ -189,6 +294,23 @@ class TestCatalogOCRExtraction:
         finally:
             if os.path.exists(tf_path):
                 os.remove(tf_path)
+
+    def test_parse_ocr_graceful_on_runtime_inference_error(self, real_catalog_pdf, monkeypatch):
+        """Verifies that runtime exceptions during OCR inference degrade safely to Tier 3 fallback."""
+        import src.pdf_parser as pp
+
+        class MockCrashEngine:
+            def __call__(self, img):
+                raise RuntimeError("Simulated inference crash on corrupted weights")
+
+        monkeypatch.setattr(pp, "get_ocr_engine", lambda: MockCrashEngine())
+        monkeypatch.setattr(pp, "get_table_engine", lambda: None)
+
+        parser = pp.PDFCatalogParser(real_catalog_pdf)
+        df = parser.parse_ocr()
+        assert isinstance(df, pd.DataFrame)
+        assert not df.empty
+        assert "item_name" in df.columns
 
 
 # ============================================================================

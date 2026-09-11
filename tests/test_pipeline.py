@@ -17,6 +17,10 @@ from src.pipeline import (
     run_procurement_pipeline,
     PipelineExecutionError,
     parse_excel_catalog,
+    is_in_installation_dir,
+    validate_directory_writable,
+    get_default_output_dir,
+    resolve_safe_output_dir,
 )
 
 
@@ -326,7 +330,9 @@ class TestTier2BoundaryAndCornerCases:
         xlsx_upper = os.path.join(temp_output_dir, "ORDER_0910.XLSX")
         with open(pdf_upper, "wb") as f:
             f.write(b"%PDF-1.4 dummy")
-        pd.DataFrame([{"الصنف": "Panadol", "الكمية": 5}]).to_excel(xlsx_upper, engine="openpyxl", index=False)
+        temp_xlsx = os.path.join(temp_output_dir, "order_0910_temp.xlsx")
+        pd.DataFrame([{"الصنف": "Panadol", "الكمية": 5}]).to_excel(temp_xlsx, engine="openpyxl", index=False)
+        os.rename(temp_xlsx, xlsx_upper)
 
 
         result = classify_files([pdf_upper, xlsx_upper])
@@ -512,3 +518,190 @@ class TestTier2BoundaryAndCornerCases:
         msg_types = [m[0] for m in messages]
         assert "PROGRESS" in msg_types
         assert "DONE" in msg_types
+
+
+# ============================================================================
+# HALF 1: OUTPUT DIRECTORY & PERMISSION SAFETY TESTS (R1 & R2)
+# ============================================================================
+
+class TestOutputDirectoryAndPermissionSafety:
+    """Tests for safe user-writable output directories and write permission validation."""
+
+    def test_is_in_installation_dir_windows_paths(self):
+        """R1: Detects protected Windows installation directories and _internal."""
+        assert is_in_installation_dir(r"C:\Program Files\EgyptianPharmaOptimizer") is True
+        assert is_in_installation_dir(r"C:\Program Files (x86)\EgyptianPharmaOptimizer") is True
+        assert is_in_installation_dir(r"C:\App\_internal\output") is True
+        assert is_in_installation_dir(r"D:\Tools\_internal") is True
+        # User directories must return False
+        assert is_in_installation_dir(r"C:\Users\Pharmacist\Desktop\Pharma_Output") is False
+        assert is_in_installation_dir(r"C:\Users\Pharmacist\Documents\Pharma_Output") is False
+
+    def test_is_in_installation_dir_macos_and_unix_paths(self):
+        """R1: Detects protected macOS/Linux installation paths and .app bundles."""
+        assert is_in_installation_dir("/Applications") is True
+        assert is_in_installation_dir("/Applications/EgyptianPharmaOptimizer.app") is True
+        assert is_in_installation_dir("/Applications/EgyptianPharmaOptimizer.app/Contents/Resources") is True
+        assert is_in_installation_dir("/Applications/Pharma_Output") is True
+        assert is_in_installation_dir("/System/Library/Output") is True
+        assert is_in_installation_dir("/usr/local/bin") is True
+        assert is_in_installation_dir("/opt/pharma_app") is True
+        # Safe user paths must return False
+        assert is_in_installation_dir("/Users/pharmacist/Desktop/Pharma_Output") is False
+        assert is_in_installation_dir("/Users/pharmacist/Documents/Pharma_Output") is False
+
+    def test_is_in_installation_dir_invalid_and_empty(self):
+        """R1: None and empty inputs return False safely."""
+        assert is_in_installation_dir("") is False
+        assert is_in_installation_dir(None) is False
+        assert is_in_installation_dir(123) is False
+
+    def test_validate_directory_writable_success(self, temp_output_dir):
+        """R2: Normal directory validates write permissions successfully."""
+        sub = os.path.join(temp_output_dir, "test_writable_sub")
+        assert validate_directory_writable(sub) is True
+        assert os.path.isdir(sub)
+
+    def test_validate_directory_writable_permission_denied(self, temp_output_dir):
+        """R2: Proactive write probe raises PermissionError when directory is not writable."""
+        from unittest.mock import patch
+        with patch("builtins.open", side_effect=PermissionError("Simulated [WinError 5] Access is denied")):
+            with pytest.raises(PermissionError) as exc_info:
+                validate_directory_writable(temp_output_dir)
+            assert "[WinError 5]" in str(exc_info.value) or "permission denied" in str(exc_info.value).lower()
+
+    def test_get_default_output_dir_is_safe_and_writable(self):
+        """R1/R2: Default output directory is user-writable and outside installation path."""
+        default_dir = get_default_output_dir()
+        assert default_dir is not None
+        assert isinstance(default_dir, str)
+        assert len(default_dir) > 0
+        assert is_in_installation_dir(default_dir) is False
+        assert os.path.isdir(default_dir)
+        assert validate_directory_writable(default_dir) is True
+
+    def test_resolve_safe_output_dir_empty_and_none(self):
+        """R1: Resolving empty or None returns guaranteed safe default output dir."""
+        res_none = resolve_safe_output_dir(None)
+        res_empty = resolve_safe_output_dir("")
+        res_ws = resolve_safe_output_dir("   \t  ")
+        assert is_in_installation_dir(res_none) is False
+        assert is_in_installation_dir(res_empty) is False
+        assert is_in_installation_dir(res_ws) is False
+
+    def test_resolve_safe_output_dir_installation_fallback(self):
+        """R1/R2: Installation directories automatically fallback to safe user directory."""
+        res_mac = resolve_safe_output_dir("/Applications/Pharma_Output")
+        assert is_in_installation_dir(res_mac) is False
+        assert validate_directory_writable(res_mac) is True
+
+        res_win = resolve_safe_output_dir(r"C:\Program Files\EgyptianPharmaOptimizer\output")
+        assert is_in_installation_dir(res_win) is False
+        assert validate_directory_writable(res_win) is True
+
+        res_internal = resolve_safe_output_dir("/opt/app/_internal/output")
+        assert is_in_installation_dir(res_internal) is False
+        assert validate_directory_writable(res_internal) is True
+
+    def test_resolve_safe_output_dir_permission_error_fallback(self, temp_output_dir):
+        """R2: If configured dir raises PermissionError, automatically falls back to safe directory."""
+        from unittest.mock import patch
+        target_dir = os.path.join(temp_output_dir, "unwritable_dir")
+
+        # Mock validate_directory_writable to simulate PermissionError on target_dir
+        orig_validate = validate_directory_writable
+        def mock_validate(path):
+            if os.path.abspath(path) == os.path.abspath(target_dir):
+                raise PermissionError("Simulated [WinError 5] Access is denied")
+            return orig_validate(path)
+
+        with patch("src.pipeline.validate_directory_writable", side_effect=mock_validate):
+            resolved = resolve_safe_output_dir(target_dir)
+            assert resolved != target_dir
+            assert is_in_installation_dir(resolved) is False
+
+    def test_pipeline_unwritable_output_dir_clean_fallback(self, sample_catalog_pdfs, sample_order_xlsx, temp_output_dir):
+        """R2: Supplying an unwritable/protected dir to pipeline falls back cleanly without crashing."""
+        protected_dir = "/Applications/EgyptianPharmaOptimizer/Output"
+        res = run_procurement_pipeline(
+            order_files=[sample_order_xlsx],
+            catalog_files=[sample_catalog_pdfs[0]],
+            output_dir=protected_dir,
+        )
+        assert res is not None
+        assert "report_path" in res
+        assert os.path.exists(res["report_path"])
+        # Report must NOT be in the protected /Applications directory
+        assert not res["report_path"].startswith("/Applications")
+        assert is_in_installation_dir(res["report_path"]) is False
+        assert "output_dir" in res
+        assert is_in_installation_dir(res["output_dir"]) is False
+
+    def test_is_in_installation_dir_symlinks(self, temp_output_dir):
+        """R1: Symlinks pointing into /Applications or other protected paths are detected."""
+        link_to_app = os.path.join(temp_output_dir, "symlink_to_apps")
+        try:
+            os.symlink("/Applications", link_to_app)
+            assert is_in_installation_dir(link_to_app) is True
+            # Child path inside symlink must also be detected
+            child_path = os.path.join(link_to_app, "SubFolder", "output")
+            assert is_in_installation_dir(child_path) is True
+        except (OSError, NotImplementedError):
+            pass  # Platform symlink restriction fallback
+
+    def test_is_in_installation_dir_unc_paths(self):
+        """R1: Windows UNC network share paths containing Program Files are detected."""
+        unc_pf = r"\\network_share\deploy\Program Files\EgyptianPharma"
+        unc_x86 = r"\\filer01\shared\Program Files (x86)\Pharma"
+        unc_slash = r"//network_share/deploy/Program Files/EgyptianPharma"
+        assert is_in_installation_dir(unc_pf) is True
+        assert is_in_installation_dir(unc_x86) is True
+        assert is_in_installation_dir(unc_slash) is True
+
+    def test_is_in_installation_dir_unix_system_paths(self):
+        """R1: Protected system directories (/bin, /sbin, /private/etc) are detected."""
+        assert is_in_installation_dir("/bin") is True
+        assert is_in_installation_dir("/sbin") is True
+        assert is_in_installation_dir("/private/etc") is True
+        assert is_in_installation_dir("/etc") is True
+
+    def test_validate_directory_writable_existing_file(self, temp_output_dir):
+        """R2: Passing an existing regular file raises PermissionError cleanly."""
+        file_path = os.path.join(temp_output_dir, "regular_file.txt")
+        with open(file_path, "w") as f:
+            f.write("content")
+        with pytest.raises(PermissionError) as exc_info:
+            validate_directory_writable(file_path)
+        assert "existing regular file" in str(exc_info.value).lower()
+
+    def test_resolve_safe_output_dir_enospc_fallback(self, temp_output_dir):
+        """R2: If configured dir encounters ENOSPC (full disk), automatically falls back to safe directory."""
+        from unittest.mock import patch
+        import errno
+        target_dir = os.path.join(temp_output_dir, "full_disk_dir")
+
+        def mock_validate(path):
+            if os.path.abspath(path) == os.path.abspath(target_dir):
+                err = OSError("No space left on device")
+                err.errno = errno.ENOSPC
+                raise err
+            return True
+
+        with patch("src.pipeline.validate_directory_writable", side_effect=mock_validate):
+            resolved = resolve_safe_output_dir(target_dir)
+            assert resolved != target_dir
+            assert is_in_installation_dir(resolved) is False
+
+    def test_pipeline_default_output_dir_none(self, sample_catalog_pdfs, sample_order_xlsx):
+        """R1: Running pipeline without supplying output_dir uses safe default user directory."""
+        res = run_procurement_pipeline(
+            order_files=[sample_order_xlsx],
+            catalog_files=[sample_catalog_pdfs[0]],
+            # output_dir is omitted / None
+        )
+        assert res is not None
+        assert "report_path" in res
+        assert os.path.exists(res["report_path"])
+        assert not is_in_installation_dir(res["report_path"])
+        assert not is_in_installation_dir(res["output_dir"])
+

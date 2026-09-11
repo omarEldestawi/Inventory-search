@@ -75,21 +75,39 @@ def extract_drug_strengths_smart(text: str) -> set:
     t = clean_arabic_string(text)
     
     # 1. Strip pack counts attached to packaging words
-    t_no_pack = re.sub(r'\b\d+(?:\.\d+)?\s*(?:قرص|اقراص|صارقا|صرق|كبسول|كبسولة|كبسولات|امبول|امبولات|فيال|فيالات|حقن|حقنه|كيس|اكياس|شريط|شرايط|باكت|باكو|علبة|علبه|ملل|مل|لتر|جرعة|جرعه)\b', ' ', t)
-    t_no_pack = re.sub(r'\b(?:قرص|اقراص|صارقا|صرق|كبسول|كبسولة|كبسولات|امبول|امبولات|فيال|فيالات|حقن|حقنه|كيس|اكياس|شريط|شرايط|باكت|باكو|علبة|علبه|ملل|مل|لتر|جرعة|جرعه)\s*\d+(?:\.\d+)?\b', ' ', t_no_pack)
+    pack_units = r'قرص|اقراص|صارقا|صرق|كبسول|كبسولة|كبسولات|امبول|امبولات|فيال|فيالات|حقن|حقنه|كيس|اكياس|شريط|شرايط|باكت|باكو|علبة|علبه|ملل|مل|لتر|جرعة|جرعه|tab|tabs|tablet|tablets|cap|caps|capsule|capsules|amp|amps|ampoule|ampoules|vial|vials|strip|strips|sachet|sachets'
+    t_no_pack = re.sub(rf'\b\d+(?:\.\d+)?\s*(?:{pack_units})\b', ' ', t, flags=re.IGNORECASE)
+    t_no_pack = re.sub(rf'\b(?:{pack_units})\s*\d+(?:\.\d+)?\b', ' ', t_no_pack, flags=re.IGNORECASE)
     
     # Strip price artifacts (e.g. ج 78, 96 جنيه)
     t_no_pack = re.sub(r'\b\d+\s*(?:ج|جنيه|س\.ج|س\.ق)\b', ' ', t_no_pack)
     t_no_pack = re.sub(r'\b(?:ج|جنيه|س\.ج|س\.ق)\s*\d+\b', ' ', t_no_pack)
     
-    # 2. Extract explicit pharmaceutical units (e.g. 2 مجم, 500mg, 1gm)
+    # 2. Extract explicit pharmaceutical units (e.g. 2 مجم, 500mg, 1gm, 5 رسم)
     explicit = set()
-    for n in re.findall(r'\b(\d+(?:\.\d+)?)\s*(?:مجم|جم|مج|غم|وحدة|ميكرو|mg|gm|g|mcg|iu)\b', t_no_pack):
+    unit_pattern = r'مجم|جم|مج|غم|وحدة|ميكرو|رسم|مسر|mg|gm|g|mcg|iu'
+    for n, unit in re.findall(rf'\b(\d+(?:\.\d+)?)\s*({unit_pattern})\b', t_no_pack, flags=re.IGNORECASE):
         val = float(n)
-        explicit.add(str(int(val)) if val.is_integer() else str(val))
-    for n in re.findall(r'\b(?:مجم|جم|مج|غم|وحدة|ميكرو|mg|gm|g|mcg|iu)\s*(\d+(?:\.\d+)?)\b', t_no_pack):
+        val_str = str(int(val)) if val.is_integer() else str(val)
+        explicit.add(val_str)
+        if unit.lower() in ['gm', 'g', 'جم', 'غم']:
+            mg_val = val * 1000.0
+            explicit.add(str(int(mg_val)) if mg_val.is_integer() else str(mg_val))
+        elif unit.lower() in ['mg', 'مجم', 'مج', 'رسم', 'مسر']:
+            g_val = val / 1000.0
+            if g_val.is_integer():
+                explicit.add(str(int(g_val)))
+    for unit, n in re.findall(rf'\b({unit_pattern})\s*(\d+(?:\.\d+)?)\b', t_no_pack, flags=re.IGNORECASE):
         val = float(n)
-        explicit.add(str(int(val)) if val.is_integer() else str(val))
+        val_str = str(int(val)) if val.is_integer() else str(val)
+        explicit.add(val_str)
+        if unit.lower() in ['gm', 'g', 'جم', 'غم']:
+            mg_val = val * 1000.0
+            explicit.add(str(int(mg_val)) if mg_val.is_integer() else str(mg_val))
+        elif unit.lower() in ['mg', 'مجم', 'مج', 'رسم', 'مسر']:
+            g_val = val / 1000.0
+            if g_val.is_integer():
+                explicit.add(str(int(g_val)))
         
     if explicit:
         return explicit
@@ -147,7 +165,7 @@ def extract_core_brand_root(text: str) -> str:
     
     # Remove packaging and dosage forms
     t = re.sub(r'\b(?:شريط|شرايط|باكو|باكت|كرتونه|كرتون|علبة|علبه|جرعة|جرعه|امبول|امبولات|فيال|فيالات|قرص|اقراص|اقرص|لرص|كبسول|كبسولة|كبسولات|كيس|اكياس|tab|cap|amp|vial|strip)\b', ' ', t)
-    t = re.sub(r'\b(?:شراب|شرب|مرهم|كريم|جل|جيل|قطرة|قطره|نقط|بخاخ|اسبراي|سبراي|فوار|حبيبات|لبوس|اقماع|قمع|غسول|شامبو|صابون|لوشن|لوسيون|سيرم|زيت|لبن|حليب|حقن|حقنه|مجم|جم|مج|غم|ملل|مل|وحدة|ميكرو|mg|gm|g|ml|iu|mcg|ق|ك|ش)\b', ' ', t)
+    t = re.sub(r'\b(?:شراب|شرب|مرهم|كريم|جل|جيل|قطرة|قطره|نقط|بخاخ|اسبراي|سبراي|فوار|حبيبات|لبوس|اقماع|قمع|غسول|شامبو|صابون|لوشن|لوسيون|سيرم|زيت|لبن|حليب|حقن|حقنه|مجم|جم|مج|غم|ملل|مل|وحدة|ميكرو|رسم|مسر|mg|gm|g|ml|iu|mcg|ق|ك|ش)\b', ' ', t)
     t = re.sub(r'\b(?:ث|ثلاجة|ثلاجه)\b', ' ', t)
     
     # Remove commercial tags & manufacturers
@@ -238,6 +256,7 @@ def _check_single_part_match(req_text: str, cand_text: str) -> bool:
 
 MODIFIERS = {
     'extra': ['extra', 'اكسترا', 'بلس', 'بلاس', 'بلص', 'plus'],
+    'forte': ['forte', 'فورت', 'فورتي', 'مضاعف', 'max', 'ماكس'],
     'extended_release': ['xr', 'sr', 'mr', 'cr', 'retard', 'ممتد'],
     'cold_flu': ['cold', 'flu', 'كولد', 'فلو', 'انفلونزا', 'كومبي', 'combi'],
     'day_night': ['day', 'night', 'ليل', 'نهار'],

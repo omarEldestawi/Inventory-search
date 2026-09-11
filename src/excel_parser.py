@@ -71,22 +71,29 @@ def load_purchase_order(file_path: str) -> pd.DataFrame:
     # Ensure quantity is at least 1
     df['quantity'] = df['quantity'].apply(lambda q: max(1, q))
     
-    # Normalize for deduplication
-    df['normalized_name'] = df['requested_item'].apply(normalize_arabic_text)
+    def clean_state_suffix(name_str: str) -> str:
+        t = re.sub(r'\s*(?:س[\s\.]*[جق]|جديد|قديم|سعر\s*جديد|سعر\s*قديم)\s*$', '', str(name_str), flags=re.IGNORECASE).strip()
+        return t
+
+    df['canonical_item'] = df['requested_item'].apply(clean_state_suffix)
+    df['normalized_name'] = df['canonical_item'].apply(normalize_arabic_text)
     
     if 'dosage' not in df.columns or 'unit_size' not in df.columns:
-        entities = df['requested_item'].apply(parse_dosage_and_pack)
+        entities = df['canonical_item'].apply(parse_dosage_and_pack)
         if 'dosage' not in df.columns:
             df['dosage'] = [e[0] for e in entities]
         if 'unit_size' not in df.columns:
             df['unit_size'] = [e[1] for e in entities]
 
     # Deduplicate requested items and sum quantities across repeated orders
-    df_dedup = df.groupby('requested_item', as_index=False).agg({
+    df_dedup = df.groupby('canonical_item', as_index=False).agg({
+        'requested_item': 'first',
         'quantity': 'sum',
         'normalized_name': 'first',
         'dosage': 'first',
         'unit_size': 'first'
     })
+    # Use canonical clean name as the primary requested item
+    df_dedup['requested_item'] = df_dedup['canonical_item']
             
     return df_dedup[['requested_item', 'normalized_name', 'dosage', 'unit_size', 'quantity']]

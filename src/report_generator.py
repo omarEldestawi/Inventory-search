@@ -6,15 +6,20 @@ exact formulas, financial totals, and side-by-side catalog comparison.
 """
 import os
 import datetime
+from typing import Optional
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 class ArabicExcelReportGenerator:
-    def __init__(self, allocation_result: dict, output_dir: str = "output"):
+    def __init__(self, allocation_result: dict, output_dir: Optional[str] = None):
         self.result = allocation_result
-        self.output_dir = output_dir
-        os.makedirs(self.output_dir, exist_ok=True)
+        try:
+            from .pipeline import resolve_safe_output_dir, validate_directory_writable
+        except ImportError:
+            from pipeline import resolve_safe_output_dir, validate_directory_writable
+        self.output_dir = resolve_safe_output_dir(output_dir)
+        validate_directory_writable(self.output_dir)
         
     def generate(self, custom_date_str: str = None) -> str:
         """
@@ -391,18 +396,28 @@ class ArabicExcelReportGenerator:
         # Save primary benchmark name: Procurement_Order_Optimized_YYYY-MM-DD.xlsx
         try:
             wb.save(filepath)
-        except PermissionError:
+        except (PermissionError, OSError):
             ts = datetime.datetime.now().strftime("%H%M%S")
             filename = f"Procurement_Order_Optimized_{today_str}_{ts}.xlsx"
             filepath = os.path.join(self.output_dir, filename)
-            wb.save(filepath)
+            try:
+                wb.save(filepath)
+            except (PermissionError, OSError):
+                try:
+                    from .pipeline import get_default_output_dir
+                except ImportError:
+                    from pipeline import get_default_output_dir
+                fallback_dir = get_default_output_dir()
+                self.output_dir = fallback_dir
+                filepath = os.path.join(fallback_dir, filename)
+                wb.save(filepath)
 
         # Also save Arabic name: أفضل_اسعار_YYYY-MM-DD.xlsx
         arabic_filename = f"أفضل_اسعار_{today_str}.xlsx"
         arabic_filepath = os.path.join(self.output_dir, arabic_filename)
         try:
             wb.save(arabic_filepath)
-        except PermissionError:
+        except (PermissionError, OSError):
             pass
             
         return filepath

@@ -281,8 +281,8 @@ class MedicineAllocator:
 
         # KPI Summary
         total_items = len(buying_list)
-        oos_count = len(oos_df)
         matched_count = len(matched_records)
+        oos_count = max(0, total_items - matched_count)
         avg_discount = 0.0
         total_qty = 0
         total_public_val = 0.0
@@ -298,6 +298,13 @@ class MedicineAllocator:
 
         savings_pct = round((total_savings_val / total_public_val * 100), 1) if total_public_val > 0 else 0.0
 
+        allocation_counts = {w: len(df) for w, df in allocated_orders.items()}
+        allocation_values = {
+            w: round(float(df['إجمالي القيمة الصافية'].sum()), 2)
+            for w, df in allocated_orders.items()
+            if 'إجمالي القيمة الصافية' in df.columns
+        }
+
         kpis = {
             'total_items': total_items,
             'matched_items': matched_count,
@@ -311,7 +318,8 @@ class MedicineAllocator:
             'total_savings': total_savings_val,
             'savings_pct': savings_pct,
             'num_warehouses': len(allocated_orders),
-            'allocation_counts': {w: len(df) for w, df in allocated_orders.items()}
+            'allocation_counts': allocation_counts,
+            'allocation_values': allocation_values
         }
 
         # Drop internal helper columns from master_df

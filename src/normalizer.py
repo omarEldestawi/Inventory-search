@@ -33,6 +33,40 @@ ARABIC_CHAR_MAP = {
     'ﻃ': 'ط',
 }
 
+GREEK_ARABIC_MAP = {
+    'ϳ': 'ي',
+    'ϛ': 'ك',
+    'Ύ': 'ا',
+    'Α': 'ب',
+    'ϗ': 'ق',
+    'Ϡ': 'ل',
+    'ϼ': 'لا',
+    'ϻ': 'لا',
+    'Λ': 'ث',
+    'Ο': 'ج',
+    'Δ': 'ة',
+    'Η': 'ت',
+    'ϣ': 'ش',
+    'Χ': 'خ',
+    '΋': 'ئ',
+    'ϓ': 'ف',
+    'ϊ': 'ع',
+    'Ϫ': 'غ',
+    'ϰ': 'ذ',
+    'Σ': 'س',
+    '́': '',
+    'ـ': '',
+}
+
+def decode_greek_arwasoft(text: str) -> str:
+    """Decodes custom ArwaSoft Greek glyph font encodings back into standard Arabic letters."""
+    if not text or not isinstance(text, str):
+        return ""
+    t = str(text)
+    for greek_char, arabic_char in GREEK_ARABIC_MAP.items():
+        t = t.replace(greek_char, arabic_char)
+    return t
+
 def normalize_vendor_name(filename_or_raw_name: str) -> str:
     """Standardizes raw catalog filename into a clean entity label."""
     if not filename_or_raw_name:
@@ -117,6 +151,10 @@ def normalize_vendor_name(filename_or_raw_name: str) -> str:
         return 'مخزن هنا جملة'
     if 'عروض' in name_clean or 'مميز' in name_clean:
         return 'عروض مميز'
+    if 'اوائل' in name_clean or 'أوائل' in name_clean or 'اوائل' in name_clean:
+        return 'الاوائل فارم'
+    if 'جمل' in name_clean:
+        return 'مخزن جمل'
     
     return name_clean.strip() if name_clean else name.strip()
 
@@ -124,6 +162,10 @@ def unreverse_arabic_text(text: str) -> str:
     """Detects reversed Arabic text inside PDF-extracted text and restores natural reading order without corrupting digits."""
     if not text or not isinstance(text, str):
         return ""
+    
+    # Decode ArwaSoft Greek glyphs if present
+    if any(k in text for k in GREEK_ARABIC_MAP):
+        text = decode_greek_arwasoft(text)
     
     # Normalize unicode presentation forms (e.g. ﺹﺍﺮﻗﺍ -> اقراص)
     text = unicodedata.normalize('NFKD', str(text))
