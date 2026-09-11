@@ -1065,6 +1065,7 @@ class PharmaProcurementApp(ctk.CTk):
         total_items = kpis.get("total_items", 0)
         matched_items = kpis.get("matched_items", 0)
         det_matches = kpis.get("deterministic_matches", 0)
+        oos_count = kpis.get("out_of_stock", 0)
         avg_disc = kpis.get("avg_discount", 0.0)
         tot_savings = kpis.get("total_savings", 0.0)
         allocation_counts = kpis.get("allocation_counts", {}) or {}
