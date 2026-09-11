@@ -1,7 +1,7 @@
-﻿# BRIEFING — 2026-09-10T21:24:00Z
+# BRIEFING — 2026-09-10T21:30:00Z
 
 ## Mission
-Review Milestone 2 CustomTkinter GUI Desktop App (pp_gui.py and 	ests/test_gui.py) for correctness, robustness, UI architecture, thread safety, bilingual formatting, and interface conformance against ORIGINAL_REQUEST.md § R1 & R2 and PROJECT.md.
+Review Milestone 2 CustomTkinter GUI Desktop App (`app_gui.py` and `tests/test_gui.py`) for correctness, robustness, UI architecture, thread safety, bilingual formatting, and interface conformance against ORIGINAL_REQUEST.md § R1 & R2 and PROJECT.md.
 
 ## 🔒 My Identity
 - Archetype: reviewer
@@ -22,25 +22,34 @@ Review Milestone 2 CustomTkinter GUI Desktop App (pp_gui.py and 	ests/test_gui.
 - Updated: 2026-09-10T21:24:00Z
 
 ## Review Scope
-- **Files to review**: pp_gui.py, 	ests/test_gui.py
-- **Interface contracts**: PROJECT.md, ORIGINAL_REQUEST.md (§ R1 & R2), 	ests/test_api_m1.py / pp_api.py
+- **Files to review**: `app_gui.py`, `tests/test_gui.py`
+- **Interface contracts**: `PROJECT.md`, `ORIGINAL_REQUEST.md` (§ R1 & R2), `src/controller.py`, `src/pipeline.py`
 - **Review criteria**: correctness, completeness, thread safety, queue polling, UI layout, bilingual Arabic/English formatting, error popups, adversarial edge cases
 
 ## Review Checklist
-- **Items reviewed**: [TBD]
-- **Verdict**: PENDING
-- **Unverified claims**: Worker M2 claims on test pass and self-test verification
+- **Items reviewed**: `app_gui.py`, `tests/test_gui.py`, `src/controller.py`, `src/pipeline.py`
+- **Verdict**: APPROVE
+- **Unverified claims**: None. Verified test execution (`25 passed in 7.59s`), `--self-test` (code 0), and stress tested.
 
 ## Attack Surface
-- **Hypotheses tested**: [TBD]
-- **Vulnerabilities found**: [TBD]
-- **Untested angles**: [TBD]
+- **Hypotheses tested**:
+  - Thread safety & queue draining in 50ms polling loop (verified)
+  - Integrity violation checks (no facade or hardcoded data) (verified)
+  - Card interaction while engine is running (minor UX observation)
+  - Window close during active run (minor finding, daemon threads terminate)
+  - High file count stress test (50 files handled smoothly)
+- **Vulnerabilities found**: 2 Minor UX findings (no blocker)
+- **Untested angles**: Interactive physical mouse drag-and-drop on physical Windows display (simulated headlessly)
 
 ## Key Decisions Made
-- Initialized briefing and plan. Starting review of inputs.
+- Confirmed zero integrity violations in `app_gui.py`.
+- Independently ran `python app_gui.py --self-test` (Exit code 0).
+- Independently ran `python tests/test_gui.py` (25 passed in 7.59s).
+- Verified full bilingual UI, Segoe UI typography, queue polling, and Windows shell integration.
+- Issued verdict: APPROVE.
 
 ## Artifact Index
-- .agents/teamwork_preview_reviewer_m2_1/DISPATCH.md — Inbound instructions
-- .agents/teamwork_preview_reviewer_m2_1/BRIEFING.md — Persistent state
-- .agents/teamwork_preview_reviewer_m2_1/progress.md — Liveness heartbeat
-- .agents/teamwork_preview_reviewer_m2_1/handoff.md — Final review handoff
+- `.agents/teamwork_preview_reviewer_m2_1/DISPATCH.md` — Inbound instructions
+- `.agents/teamwork_preview_reviewer_m2_1/BRIEFING.md` — Persistent state
+- `.agents/teamwork_preview_reviewer_m2_1/progress.md` — Liveness heartbeat
+- `.agents/teamwork_preview_reviewer_m2_1/handoff.md` — Final review handoff

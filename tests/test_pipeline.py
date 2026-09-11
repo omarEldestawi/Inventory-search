@@ -326,7 +326,8 @@ class TestTier2BoundaryAndCornerCases:
         xlsx_upper = os.path.join(temp_output_dir, "ORDER_0910.XLSX")
         with open(pdf_upper, "wb") as f:
             f.write(b"%PDF-1.4 dummy")
-        pd.DataFrame([{"الصنف": "Panadol", "الكمية": 5}]).to_excel(xlsx_upper, index=False)
+        pd.DataFrame([{"الصنف": "Panadol", "الكمية": 5}]).to_excel(xlsx_upper, engine="openpyxl", index=False)
+
 
         result = classify_files([pdf_upper, xlsx_upper])
         assert pdf_upper in result["catalogs"]

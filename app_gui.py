@@ -7,7 +7,9 @@ asynchronous thread-safe worker bridge, file management, and post-run KPI analyt
 import os
 import sys
 import queue
+import threading
 import logging
+
 import datetime
 import subprocess
 from typing import Optional, List, Dict, Tuple
@@ -17,11 +19,24 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 try:
-    from src.controller import classify_files, ProcurementEngineBridge
+    from src.controller import (
+        classify_files,
+        ProcurementEngineBridge,
+        inspect_catalog_counts,
+        reread_catalog_with_ocr,
+        global_catalog_cache,
+    )
     from src.pipeline import run_procurement_pipeline, PipelineExecutionError
 except ImportError:
-    from controller import classify_files, ProcurementEngineBridge
+    from controller import (
+        classify_files,
+        ProcurementEngineBridge,
+        inspect_catalog_counts,
+        reread_catalog_with_ocr,
+        global_catalog_cache,
+    )
     from pipeline import run_procurement_pipeline, PipelineExecutionError
+
 
 logger = logging.getLogger("PharmaGUI")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -124,6 +139,12 @@ class FileItem:
         except OSError:
             self.size_bytes = 0
         self.size_str = format_file_size(self.size_bytes)
+        # Milestone 1: Catalog Inspection & OCR State
+        self.item_count: Optional[int] = None
+        self.is_ocr: bool = False
+        self.ocr_running: bool = False
+        self.ocr_status_msg: str = ""
+
 
     def set_category(self, new_category: str):
         """Sets category and tracks if user manually overridden."""
@@ -264,8 +285,16 @@ class PharmaProcurementApp(ctk.CTk):
         self._build_sidebar()
         self._build_main_panel()
 
+        # Milestone 1: OCR & Inspection Async Queue & Threads
+        self._ocr_queue: queue.Queue = queue.Queue()
+        self._active_ocr_threads: Dict[str, threading.Thread] = {}
+
         # Update initial validation and state
         self._update_ui_state()
+
+        # Start OCR queue poller
+        self.after(100, self._poll_ocr_queue)
+
 
     def _setup_grid_layout(self):
         """Configures main responsive grid layout."""
@@ -653,7 +682,102 @@ class PharmaProcurementApp(ctk.CTk):
         added, dups = self.file_model.add_paths(file_paths)
         if added > 0:
             self._render_file_list()
+            self._async_inspect_counts(self.file_model.get_catalog_files())
         self._update_ui_state()
+
+    def _async_inspect_counts(self, file_paths: List[str]):
+        """Inspects medication counts in catalogs asynchronously without freezing GUI."""
+        uninspected = [
+            f.path for f in self.file_model.files
+            if f.category == "Catalog" and f.item_count is None and f.path in file_paths
+        ]
+        if not uninspected:
+            return
+
+        def _worker():
+            try:
+                counts = inspect_catalog_counts(uninspected)
+                self._ocr_queue.put(("INSPECT_DONE", counts))
+            except Exception as e:
+                logger.debug(f"Catalog inspection thread error: {e}")
+
+        t = threading.Thread(target=_worker, name="CatalogInspectWorker", daemon=True)
+        t.start()
+
+    def _start_ocr_reread(self, path: str):
+        """Triggers on-demand Arabic OCR re-read for a specific catalog in background thread."""
+        for f in self.file_model.files:
+            if f.path == path:
+                f.ocr_running = True
+                f.ocr_status_msg = "⏳ جاري بدء المسح بـ OCR..."
+                break
+        self._render_file_list()
+
+        def _worker():
+            try:
+                def _prog(pct, msg):
+                    self._ocr_queue.put(("OCR_PROGRESS", path, pct, msg))
+                ret_path, count, items = reread_catalog_with_ocr(path, progress_callback=_prog)
+                self._ocr_queue.put(("OCR_DONE", ret_path, count, items))
+            except Exception as e:
+                logger.error(f"OCR reread error for {path}: {e}")
+                self._ocr_queue.put(("OCR_ERROR", path, str(e)))
+
+        t = threading.Thread(target=_worker, name=f"OCRWorker-{os.path.basename(path)}", daemon=True)
+        self._active_ocr_threads[path] = t
+        t.start()
+
+    def _poll_ocr_queue(self):
+        """Polls OCR and inspection queue without freezing GUI."""
+        try:
+            while True:
+                msg = self._ocr_queue.get_nowait()
+                m_type = msg[0]
+                if m_type == "INSPECT_DONE":
+                    counts = msg[1]
+                    updated = False
+                    for f in self.file_model.files:
+                        norm = os.path.normpath(f.path)
+                        if norm in counts and f.item_count is None:
+                            f.item_count = counts[norm]
+                            updated = True
+                    if updated:
+                        self._render_file_list()
+                elif m_type == "OCR_PROGRESS":
+                    path, pct, status = msg[1], msg[2], msg[3]
+                    for f in self.file_model.files:
+                        if f.path == path:
+                            f.ocr_status_msg = status
+                            break
+                    self._render_file_list()
+                elif m_type == "OCR_DONE":
+                    path, count, items = msg[1], msg[2], msg[3]
+                    for f in self.file_model.files:
+                        if f.path == path:
+                            f.ocr_running = False
+                            f.item_count = count
+                            f.is_ocr = True
+                            f.ocr_status_msg = f"✓ اكتمل المسح ({count} صنف)"
+                            break
+                    self._active_ocr_threads.pop(path, None)
+                    self._render_file_list()
+                    self.status_label.configure(
+                        text=f"✓ اكتمل مسح الكتالوج بـ OCR: تم التعرف على {count} صنف بنجاح! / OCR completed ({count} items)"
+                    )
+                elif m_type == "OCR_ERROR":
+                    path, err_msg = msg[1], msg[2]
+                    for f in self.file_model.files:
+                        if f.path == path:
+                            f.ocr_running = False
+                            f.ocr_status_msg = f"✕ خطأ OCR"
+                            break
+                    self._active_ocr_threads.pop(path, None)
+                    self._render_file_list()
+                    self.status_label.configure(text=f"✕ فشل مسح OCR: {err_msg} / OCR failed")
+        except queue.Empty:
+            pass
+        finally:
+            self.after(100, self._poll_ocr_queue)
 
     def _on_clear_all(self):
         """Clears all files from model and GUI."""
@@ -761,7 +885,67 @@ class PharmaProcurementApp(ctk.CTk):
             )
             del_btn.grid(row=0, column=4, padx=(5, 10), pady=8, sticky="e")
 
+            # Row 1: Catalog Inspection & OCR Re-read Action
+            if f_item.category == "Catalog":
+                # Medication Count Badge
+                if f_item.item_count is not None:
+                    if f_item.item_count > 0:
+                        ocr_tag = " [OCR]" if f_item.is_ocr else ""
+                        count_text = f"📦 {f_item.item_count} صنف{ocr_tag} / {f_item.item_count} items"
+                        count_color = COLOR_SUCCESS if f_item.is_ocr else COLOR_CATALOG_BADGE
+                    else:
+                        count_text = "⚠️ 0 صنف (يحتاج OCR) / 0 items (needs OCR)"
+                        count_color = COLOR_WARN_BADGE
+                else:
+                    count_text = "⏳ جاري فحص الأصناف... / Checking count..."
+                    count_color = ("gray50", "gray60")
+
+                count_badge = ctk.CTkLabel(
+                    card,
+                    text=count_text,
+                    font=get_font(10, "bold"),
+                    text_color=count_color,
+                    anchor="w"
+                )
+                count_badge.grid(row=1, column=0, columnspan=2, padx=(10, 5), pady=(0, 6), sticky="w")
+
+                # Action button: Re-read with OCR
+                if f_item.ocr_running:
+                    ocr_btn = ctk.CTkButton(
+                        card,
+                        text="⏳ جاري المسح بـ OCR...",
+                        font=get_font(10, "bold"),
+                        width=180,
+                        height=24,
+                        state="disabled",
+                        fg_color=("gray60", "gray30")
+                    )
+                else:
+                    ocr_btn = ctk.CTkButton(
+                        card,
+                        text="🔄 إعادة قراءة بـ OCR / Re-read with OCR",
+                        font=get_font(10, "bold"),
+                        width=180,
+                        height=24,
+                        fg_color=COLOR_CATALOG_BADGE,
+                        hover_color="#0369A1",
+                        command=lambda p=f_item.path: self._start_ocr_reread(p)
+                    )
+                ocr_btn.grid(row=1, column=2, columnspan=2, padx=5, pady=(0, 6), sticky="e")
+
+                # Status label
+                if f_item.ocr_status_msg:
+                    ocr_status_lbl = ctk.CTkLabel(
+                        card,
+                        text=f_item.ocr_status_msg,
+                        font=get_font(9),
+                        text_color=("gray40", "gray60"),
+                        anchor="e"
+                    )
+                    ocr_status_lbl.grid(row=1, column=4, padx=(2, 10), pady=(0, 6), sticky="e")
+
             self._file_card_widgets[f_item.path] = card
+
 
     # -------------------------------------------------------------------------
     # State Synchronization & Validation Gate
@@ -869,25 +1053,39 @@ class PharmaProcurementApp(ctk.CTk):
             text="✓ اكتملت العملية بنجاح! تم إنشاء تقرير المشتريات المجمع / Completed successfully!"
         )
 
+        if not isinstance(results, dict):
+            results = {}
         report_path = results.get("report_path") or results.get("arabic_report_path")
         self.current_report_path = report_path
-        self.last_kpi_data = results.get("kpis", {})
+        self.last_kpi_data = results.get("kpis") or {}
+
 
         # Populate KPI Cards
         kpis = self.last_kpi_data
         total_items = kpis.get("total_items", 0)
         matched_items = kpis.get("matched_items", 0)
         det_matches = kpis.get("deterministic_matches", 0)
-        oos_count = kpis.get("out_of_stock", 0)
         avg_disc = kpis.get("avg_discount", 0.0)
         tot_savings = kpis.get("total_savings", 0.0)
-        allocation_counts = kpis.get("allocation_counts", {})
+        allocation_counts = kpis.get("allocation_counts", {}) or {}
+
+        try:
+            avg_disc_val = float(avg_disc)
+        except (ValueError, TypeError):
+            avg_disc_val = 0.0
+
+        try:
+            tot_savings_val = float(tot_savings)
+        except (ValueError, TypeError):
+            tot_savings_val = 0.0
+
 
         self.card_req.configure(text=str(total_items))
         self.card_alloc.configure(text=f"{matched_items} ({det_matches} مؤكد)")
         self.card_oos.configure(text=str(oos_count))
-        self.card_disc.configure(text=f"{avg_disc:.1f}%")
-        self.card_sav.configure(text=f"{tot_savings:,.2f} ج.م")
+        self.card_disc.configure(text=f"{avg_disc_val:.1f}%")
+        self.card_sav.configure(text=f"{tot_savings_val:,.2f} ج.م")
+
 
         # Update Winning Wholesalers Pills
         if allocation_counts:
@@ -1004,6 +1202,10 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     assert hasattr(app, "counter_badge"), "Missing counter_badge"
     assert hasattr(app, "open_report_btn"), "Missing open_report_btn"
     assert hasattr(app, "open_folder_btn"), "Missing open_folder_btn"
+    assert hasattr(app, "_ocr_queue"), "Missing _ocr_queue"
+    assert hasattr(app, "_active_ocr_threads"), "Missing _active_ocr_threads"
+    assert callable(getattr(app, "_start_ocr_reread", None)), "Missing _start_ocr_reread"
+    assert callable(getattr(app, "_async_inspect_counts", None)), "Missing _async_inspect_counts"
 
     # 2. Verify Initial State
     assert len(app.file_model.files) == 0, "Initial file list should be empty"
@@ -1013,6 +1215,18 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     app._on_change_theme("Dark")
     app._on_change_theme("Light")
     app._on_change_theme("System")
+
+    # 4. Verify Catalog Inspection and Card Rendering with Count Badge
+    test_item = FileItem("sample_warehouse_catalog.pdf", "Catalog")
+    test_item.item_count = 15
+    test_item.is_ocr = True
+    app.file_model.files.append(test_item)
+    app._render_file_list()
+    assert len(app._file_card_widgets) == 1, "Catalog card should be rendered"
+    app.file_model.clear()
+    app._render_file_list()
+    assert len(app.file_model.files) == 0, "File model should be clean after test"
+
 
     # 4. Clean destruction if created here
     if created_here:

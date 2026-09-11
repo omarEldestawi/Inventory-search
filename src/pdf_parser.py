@@ -5,18 +5,106 @@ Extracts items from Arabic PDF pharmaceutical catalogs in seconds.
 """
 import os
 import re
+import logging
 import unicodedata
 import pymupdf
 import pandas as pd
-from .normalizer import (
-    normalize_arabic_text,
-    parse_discount,
-    parse_dosage_and_pack,
-    unreverse_arabic_text,
-    normalize_vendor_name,
-    fix_arwasoft_arabic_numbers,
-    EASTERN_ARABIC_DIGITS
-)
+import numpy as np
+
+try:
+    from .normalizer import (
+        normalize_arabic_text,
+        parse_discount,
+        parse_dosage_and_pack,
+        unreverse_arabic_text,
+        normalize_vendor_name,
+        fix_arwasoft_arabic_numbers,
+        EASTERN_ARABIC_DIGITS
+    )
+except ImportError:
+    from normalizer import (
+        normalize_arabic_text,
+        parse_discount,
+        parse_dosage_and_pack,
+        unreverse_arabic_text,
+        normalize_vendor_name,
+        fix_arwasoft_arabic_numbers,
+        EASTERN_ARABIC_DIGITS
+    )
+
+logger = logging.getLogger("PDFCatalogParser")
+
+_ocr_engine = None
+_table_engine = None
+
+
+def get_ocr_engine():
+    """Lazy singleton initializer for RapidOCR."""
+    global _ocr_engine
+    if _ocr_engine is None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            _ocr_engine = RapidOCR()
+        except Exception as exc:
+            logger.error(f"Failed to initialize RapidOCR: {exc}")
+            raise RuntimeError(f"RapidOCR engine initialization failed: {exc}")
+    return _ocr_engine
+
+
+def get_table_engine():
+    """Lazy singleton initializer for RapidTable."""
+    global _table_engine
+    if _table_engine is None:
+        try:
+            from rapid_table import RapidTable
+            _table_engine = RapidTable()
+        except Exception as exc:
+            logger.error(f"Failed to initialize RapidTable: {exc}")
+            raise RuntimeError(f"RapidTable engine initialization failed: {exc}")
+    return _table_engine
+
+
+def html_table_to_rows(html_str: str) -> list[list[str]]:
+    """Converts HTML table string to 2D list of cells (zero external dependencies, no lxml required)."""
+    if not html_str or not isinstance(html_str, str):
+        return []
+    rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html_str, re.DOTALL | re.IGNORECASE)
+    table_data = []
+    for row in rows:
+        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.DOTALL | re.IGNORECASE)
+        clean_cells = [re.sub(r"<[^>]+>", "", c).strip() for c in cells]
+        if any(clean_cells):
+            table_data.append(clean_cells)
+    return table_data
+
+
+def html_table_to_df(html_str: str) -> pd.DataFrame:
+    """Converts HTML table string to DataFrame without lxml dependency."""
+    table_data = html_table_to_rows(html_str)
+    if not table_data:
+        return pd.DataFrame()
+    header = table_data[0]
+    clean_cols = []
+    seen = {}
+    for i, col in enumerate(header):
+        name = col.strip() if col and col.strip() else f"col_{i}"
+        if name in seen:
+            seen[name] += 1
+            clean_cols.append(f"{name}_{seen[name]}")
+        else:
+            seen[name] = 0
+            clean_cols.append(name)
+    data = table_data[1:]
+    fixed_data = []
+    num_cols = len(clean_cols)
+    for r in data:
+        if len(r) < num_cols:
+            r = r + [''] * (num_cols - len(r))
+        elif len(r) > num_cols:
+            r = r[:num_cols]
+        fixed_data.append(r)
+    return pd.DataFrame(fixed_data, columns=clean_cols)
+
 
 def fix_arabic_bidi_if_needed(text: str) -> str:
     """Detects reversed Arabic characters and returns normalized natural text."""
@@ -174,6 +262,31 @@ class PDFCatalogParser:
                 
                 raw_price = row[price_idx] if price_idx is not None and price_idx < len(row) else None
                 price_val = self._parse_price(raw_price)
+
+                # Recover glued price/discount if either was merged or missed
+                if discount_val <= 0.0 or price_val <= 0.0:
+                    for c_idx, cell in enumerate(row):
+                        if c_idx == name_idx or not cell:
+                            continue
+                        c_str = str(cell).strip().translate(EASTERN_ARABIC_DIGITS)
+                        m_both = re.search(r'(\d+(?:\.\d+)?)\s*%\s*(\d+(?:\.\d+)?)', c_str)
+                        if m_both:
+                            if discount_val <= 0.0:
+                                discount_val = parse_discount(m_both.group(1))
+                            if price_val <= 0.0:
+                                price_val = float(m_both.group(2))
+                            break
+                        m_both2 = re.search(r'(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*%', c_str)
+                        if m_both2:
+                            if price_val <= 0.0:
+                                price_val = float(m_both2.group(1))
+                            if discount_val <= 0.0:
+                                discount_val = parse_discount(m_both2.group(2))
+                            break
+                        m_both3 = re.search(r'(\d+(?:\.\d+)?)\s*%\s*$', c_str)
+                        if m_both3 and discount_val <= 0.0:
+                            discount_val = parse_discount(m_both3.group(1))
+
                 
                 stock_status = True
                 if stock_idx is not None and stock_idx < len(row) and row[stock_idx]:
@@ -425,4 +538,255 @@ class PDFCatalogParser:
                     'stock_status': True
                 })
         return items
+
+    def _parse_line_for_item(self, line_text: str) -> dict:
+        """Extracts a catalog item dict from a clustered text line containing name, price, and discount."""
+        if not line_text or len(line_text) < 4:
+            return None
+        clean_line = line_text.translate(EASTERN_ARABIC_DIGITS).strip()
+        # Case 1: Name ... Price ... Discount%
+        m1 = re.search(r'(\d+(?:\.\d+)?)\s*(?:ج|جنيه|egp)?\s+(\d+(?:\.\d+)?)\s*%\s*$', clean_line, re.IGNORECASE)
+        if m1:
+            price_val = float(m1.group(1))
+            disc_val = parse_discount(m1.group(2))
+            raw_name = clean_line[:m1.start()].strip()
+            if len(raw_name) >= 2 and disc_val > 0:
+                item_name = fix_arabic_bidi_if_needed(raw_name)
+                norm_name = normalize_arabic_text(item_name)
+                dosage, unit_size = parse_dosage_and_pack(item_name)
+                if len(norm_name) >= 2:
+                    return {
+                        'warehouse_name': self.warehouse_name,
+                        'item_name': item_name,
+                        'normalized_name': norm_name,
+                        'dosage': dosage,
+                        'unit_size': unit_size,
+                        'base_price': price_val,
+                        'discount_rate': disc_val,
+                        'stock_status': True
+                    }
+        # Case 2: Name ... Discount% ... Price
+        m2 = re.search(r'(\d+(?:\.\d+)?)\s*%\s+(\d+(?:\.\d+)?)\s*$', clean_line)
+        if m2:
+            disc_val = parse_discount(m2.group(1))
+            price_val = float(m2.group(2))
+            raw_name = clean_line[:m2.start()].strip()
+            if len(raw_name) >= 2 and disc_val > 0:
+                item_name = fix_arabic_bidi_if_needed(raw_name)
+                norm_name = normalize_arabic_text(item_name)
+                dosage, unit_size = parse_dosage_and_pack(item_name)
+                if len(norm_name) >= 2:
+                    return {
+                        'warehouse_name': self.warehouse_name,
+                        'item_name': item_name,
+                        'normalized_name': norm_name,
+                        'dosage': dosage,
+                        'unit_size': unit_size,
+                        'base_price': price_val,
+                        'discount_rate': disc_val,
+                        'stock_status': True
+                    }
+        # Case 3: Standard single price + discount pattern
+        m3 = re.search(r'(\d+(?:\.\d+)?)\s*%\s*$', clean_line)
+        if m3:
+            disc_val = parse_discount(m3.group(1))
+            prefix = clean_line[:m3.start()].strip()
+            m_pr = re.search(r'(\d+(?:\.\d+)?)\s*$', prefix)
+            if m_pr:
+                price_val = float(m_pr.group(1))
+                raw_name = prefix[:m_pr.start()].strip()
+                if len(raw_name) >= 2 and disc_val > 0:
+                    item_name = fix_arabic_bidi_if_needed(raw_name)
+                    norm_name = normalize_arabic_text(item_name)
+                    dosage, unit_size = parse_dosage_and_pack(item_name)
+                    if len(norm_name) >= 2:
+                        return {
+                            'warehouse_name': self.warehouse_name,
+                            'item_name': item_name,
+                            'normalized_name': norm_name,
+                            'dosage': dosage,
+                            'unit_size': unit_size,
+                            'base_price': price_val,
+                            'discount_rate': disc_val,
+                            'stock_status': True
+                        }
+        return None
+
+    def _process_ocr_lines(self, ocr_res: list) -> list:
+        """Clusters RapidOCR bounding boxes into horizontal lines and extracts catalog items."""
+        if not ocr_res:
+            return []
+
+        word_items = []
+        for item in ocr_res:
+            if not item or len(item) < 2:
+                continue
+            box = item[0]
+            txt = str(item[1]).strip()
+            if not txt:
+                continue
+            box_np = np.array(box)
+            y_center = float(np.mean(box_np[:, 1]))
+            x_left = float(np.min(box_np[:, 0]))
+            word_items.append({
+                'y': y_center,
+                'x': x_left,
+                'text': txt
+            })
+
+        if not word_items:
+            return []
+
+        # Group words by Y proximity (threshold ~18px for 300 DPI)
+        y_groups = []
+        for w in sorted(word_items, key=lambda i: i['y']):
+            matched_group = None
+            for group in y_groups:
+                if abs(group['y'] - w['y']) <= 18.0:
+                    matched_group = group
+                    break
+            if matched_group:
+                matched_group['words'].append(w)
+                matched_group['y'] = sum(x['y'] for x in matched_group['words']) / len(matched_group['words'])
+            else:
+                y_groups.append({'y': w['y'], 'words': [w]})
+
+        items = []
+        for group in sorted(y_groups, key=lambda g: g['y']):
+            sorted_words = sorted(group['words'], key=lambda w: w['x'])
+            line_str = ' '.join(w['text'] for w in sorted_words)
+            parsed_item = self._parse_line_for_item(line_str)
+            if parsed_item:
+                items.append(parsed_item)
+
+        return items
+
+    def parse_ocr(self, progress_callback=None) -> pd.DataFrame:
+        """
+        Extracts catalog items from PDF using RapidOCR (ONNX CPU) and RapidTable.
+        Uses 300 DPI PyMuPDF rasterization with a 3-tier degradation waterfall:
+          Tier 1: RapidTable HTML table reconstruction.
+          Tier 2: RapidOCR vertical line clustering.
+          Tier 3: PyMuPDF digital vector text block extraction.
+        """
+        items = []
+        try:
+            doc = pymupdf.open(self.pdf_path)
+            num_pages = len(doc)
+
+            ocr_engine = get_ocr_engine()
+            table_engine = get_table_engine()
+
+            for page_idx, page in enumerate(doc):
+                pct = page_idx / max(num_pages, 1)
+                if progress_callback:
+                    try:
+                        progress_callback(pct, f"مسح صفحة ({page_idx + 1}/{num_pages}) بـ OCR...")
+                    except Exception:
+                        pass
+
+                # Step 1: PyMuPDF 300 DPI rasterization directly into memory
+                pix = page.get_pixmap(dpi=300)
+                img_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.height, pix.width, pix.n))
+                if pix.n == 4:
+                    img_np = img_np[:, :, :3]
+                elif pix.n == 1:
+                    img_np = np.stack([img_np.squeeze(-1)] * 3, axis=-1)
+
+                del pix
+
+                # Step 2: RapidOCR ONNX extraction
+                ocr_res = None
+                try:
+                    ocr_res, _ = ocr_engine(img_np)
+                except Exception as ocr_err:
+                    logger.warning(f"RapidOCR error on page {page_idx}: {ocr_err}")
+
+                page_items = []
+
+                # Tier 1: RapidTable HTML Table Reconstruction
+                if ocr_res and len(ocr_res) > 0:
+                    try:
+                        dt_boxes = np.array([x[0] for x in ocr_res])
+                        rec_res = [str(x[1]) for x in ocr_res]
+                        scores = [float(x[2]) for x in ocr_res]
+                        batch_ocr = [(dt_boxes, rec_res, scores)]
+
+                        table_out = table_engine(img_np, ocr_results=batch_ocr)
+                        html_str = ""
+                        if hasattr(table_out, "pred_htmls") and table_out.pred_htmls:
+                            html_str = table_out.pred_htmls[0]
+                        elif hasattr(table_out, "pred_html") and table_out.pred_html:
+                            html_str = table_out.pred_html
+                        elif isinstance(table_out, str):
+                            html_str = table_out
+
+                        if html_str:
+                            table_rows = html_table_to_rows(html_str)
+                            if table_rows and len(table_rows) > 1:
+                                page_items = self._process_table(table_rows)
+                    except Exception as tbl_err:
+                        logger.debug(f"RapidTable error on page {page_idx}: {tbl_err}")
+
+                # Tier 2 Fallback: RapidOCR Line Clustering
+                if not page_items and ocr_res and len(ocr_res) > 0:
+                    try:
+                        page_items = self._process_ocr_lines(ocr_res)
+                    except Exception as line_err:
+                        logger.debug(f"OCR line clustering error on page {page_idx}: {line_err}")
+
+                # Tier 3 Fallback: PyMuPDF Digital Parsing
+                if not page_items:
+                    try:
+                        tables = page.find_tables()
+                        if tables and len(tables.tables) > 0:
+                            for t in tables:
+                                t_data = t.extract()
+                                if t_data and len(t_data) > 1:
+                                    page_items.extend(self._process_table(t_data))
+                        if not page_items:
+                            page_items = self._process_page_blocks(page)
+                    except Exception as dig_err:
+                        logger.debug(f"Digital fallback error on page {page_idx}: {dig_err}")
+
+                items.extend(page_items)
+
+            if progress_callback:
+                try:
+                    progress_callback(1.0, f"اكتمل المسح بـ OCR: تم العثور على {len(items)} صنف.")
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.warning(f"Error parsing PDF with OCR {self.warehouse_name} ({self.pdf_path}): {e}")
+
+        if not items:
+            return pd.DataFrame(columns=[
+                'warehouse_name', 'item_name', 'normalized_name', 'dosage',
+                'unit_size', 'base_price', 'discount_rate', 'stock_status'
+            ])
+
+        df = pd.DataFrame(items)
+        df = df.sort_values(by='discount_rate', ascending=False).drop_duplicates(
+            subset=['normalized_name', 'dosage', 'unit_size'], keep='first'
+        )
+        return df
+
+    @classmethod
+    def parse_catalog_ocr(cls, pdf_path: str, warehouse_name: str = None) -> list:
+        """
+        Public classmethod interface for Milestone 1 OCR parsing.
+        Extracts items from PDF using RapidOCR and RapidTable, returning a list of dicts
+        with canonical fields and compatibility aliases ('name', 'price', 'vendor', 'category').
+        """
+        parser = cls(pdf_path, warehouse_name=warehouse_name)
+        df = parser.parse_ocr()
+        records = df.to_dict(orient="records")
+        for rec in records:
+            rec["name"] = rec.get("item_name", "")
+            rec["price"] = rec.get("base_price", 0.0)
+            rec["vendor"] = rec.get("warehouse_name", "")
+            rec["category"] = "Catalog"
+        return records
+
 

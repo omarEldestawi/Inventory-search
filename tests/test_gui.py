@@ -9,6 +9,9 @@ import os
 import sys
 import queue
 import tempfile
+import time
+import threading
+import subprocess
 import unittest
 from unittest.mock import patch, MagicMock
 import pytest
@@ -17,6 +20,9 @@ import pandas as pd
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+import customtkinter as ctk
+from src.controller import ProcurementEngineBridge
 
 from app_gui import (
     PharmaProcurementApp,
@@ -498,6 +504,694 @@ class TestTier4RealWorldScenarios:
         assert gui_app.run_button.cget("state") == "normal"
 
 
+# =============================================================================
+# Tier 5: Empirical Challenger Boundary & Stress Tests
+# =============================================================================
+
+class TestTier5ChallengerStressTests:
+    """
+    Tier 5: Adversarial Boundary & Stress Harness for Milestone M2.
+    Tests scale to 100+ files, repeated category toggles, invalid output dirs,
+    CLI argument edge cases, UI responsiveness, and unhandled exception safety.
+    """
+
+    # --- Vector 1: Rapid 100+ Files Boundary Stress ---
+
+    def test_stress_vector1_add_150_mixed_files_bulk(self, gui_app):
+        """Boundary: Ingest 150 files in bulk (50 PDFs, 50 Orders, 50 Catalogs)."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_paths = []
+            # 50 PDFs
+            for i in range(50):
+                p = os.path.join(tmp_dir, f"catalog_wholesaler_{i:03d}.pdf")
+                with open(p, "wb") as f:
+                    f.write(b"%PDF-1.4 dummy catalog")
+                file_paths.append(p)
+
+            # 50 Excel Orders
+            df_order = pd.DataFrame([{"اسم العميل": f"صيدلية {i}", "الكمية المطلوبة": i + 1, "الصنف": f"Med_{i}"} for i in range(5)])
+            for i in range(50):
+                p = os.path.join(tmp_dir, f"order_daily_09{i:02d}.xlsx")
+                df_order.to_excel(p, index=False, engine="openpyxl")
+                file_paths.append(p)
+
+            # 50 CSV Catalogs
+            df_cat = pd.DataFrame([{"الصنف": f"Med_{i}", "خصم": 20.0, "سعر": 100.0} for i in range(5)])
+            for i in range(50):
+                p = os.path.join(tmp_dir, f"catalog_vendor_{i:03d}.csv")
+                df_cat.to_csv(p, index=False, encoding="utf-8-sig")
+                file_paths.append(p)
+
+            assert len(file_paths) == 150
+
+            start_t = time.time()
+            gui_app.add_files(file_paths)
+            elapsed = time.time() - start_t
+
+            summary = gui_app.file_model.get_summary()
+            assert summary["total"] == 150, f"Expected 150 files, got {summary['total']}"
+            assert summary["orders"] == 50, f"Expected 50 orders, got {summary['orders']}"
+            assert summary["catalogs"] == 100, f"Expected 100 catalogs (50 PDF + 50 CSV), got {summary['catalogs']}"
+
+            assert len(gui_app._file_card_widgets) == 150
+            gui_app.update_idletasks()
+            assert elapsed < 10.0, f"Adding 150 files took {elapsed:.2f}s, exceeding 10s budget."
+
+    def test_stress_vector1_add_25_files_sequential_rapid(self, gui_app):
+        """Boundary: Ingest 25 files in rapid individual successive calls (testing iterative re-rendering)."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_paths = []
+            for i in range(25):
+                p = os.path.join(tmp_dir, f"item_stream_{i:03d}.pdf")
+                with open(p, "wb") as f:
+                    f.write(b"%PDF-1.4 stream dummy")
+                file_paths.append(p)
+
+            start_t = time.time()
+            for p in file_paths:
+                gui_app.add_files([p])
+            elapsed = time.time() - start_t
+
+            assert len(gui_app.file_model.files) == 25
+            assert len(gui_app._file_card_widgets) == 25
+            gui_app.update_idletasks()
+            assert elapsed < 30.0
+
+    def test_stress_vector1_duplicate_mass_addition(self, gui_app):
+        """Boundary: Re-adding 100 files in duplicate must not double track or crash."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_paths = []
+            for i in range(100):
+                p = os.path.join(tmp_dir, f"dup_test_{i:03d}.pdf")
+                with open(p, "wb") as f:
+                    f.write(b"%PDF-1.4 dup")
+                file_paths.append(p)
+
+            added, dups = gui_app.file_model.add_paths(file_paths)
+            assert added == 100
+            assert dups == 0
+
+            added2, dups2 = gui_app.file_model.add_paths(file_paths)
+            assert added2 == 0
+            assert dups2 == 100
+            assert len(gui_app.file_model.files) == 100
+
+    def test_stress_vector1_extreme_and_malformed_paths(self, gui_app):
+        """Boundary: Handle extreme path lengths, Unicode, special characters, and non-existent paths."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            long_name = "catalog_" + ("very_long_subdomain_wholesaler_name_" * 5) + ".pdf"
+            p_long = os.path.join(tmp_dir, long_name)
+            with open(p_long, "wb") as f:
+                f.write(b"%PDF-1.4 long")
+
+            p_ar = os.path.join(tmp_dir, "طلبية_مستعجلة_أدوية_طوارئ_2026_نهائي.xlsx")
+            df = pd.DataFrame([{"الصنف": "Panadol", "الكمية المطلوبة": 5}])
+            df.to_excel(p_ar, index=False, engine="openpyxl")
+
+            p_spec = os.path.join(tmp_dir, "catalog [wholesaler] #1 & 2 (v3.0) {special}.pdf")
+            with open(p_spec, "wb") as f:
+                f.write(b"%PDF-1.4 special")
+
+            p_zero = os.path.join(tmp_dir, "zero_byte_order.csv")
+            with open(p_zero, "wb") as f:
+                pass
+
+            candidates = [p_long, p_ar, p_spec, p_zero, "", "   ", None, "Z:\\nonexistent\\file.pdf"]
+            valid_candidates = [c for c in candidates if c and os.path.isfile(c)]
+            assert len(valid_candidates) == 4
+
+            added, dups = gui_app.file_model.add_paths(candidates)
+            assert added == 4
+            assert len(gui_app.file_model.files) == 4
+
+            gui_app._render_file_list()
+            gui_app.update_idletasks()
+
+    def test_stress_vector1_add_clear_cycles(self, gui_app):
+        """Boundary: 5 rapid cycles of adding 100 files and clearing all."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_paths = []
+            for i in range(100):
+                p = os.path.join(tmp_dir, f"cycle_file_{i:03d}.pdf")
+                with open(p, "wb") as f:
+                    f.write(b"%PDF-1.4 cycle")
+                file_paths.append(p)
+
+            for cycle in range(5):
+                gui_app.add_files(file_paths)
+                assert len(gui_app.file_model.files) == 100
+                assert len(gui_app._file_card_widgets) == 100
+
+                gui_app._on_clear_all()
+                assert len(gui_app.file_model.files) == 0
+                assert len(gui_app._file_card_widgets) == 0
+                gui_app.update_idletasks()
+
+    # --- Vector 2: Category Toggle Stress ---
+
+    def test_stress_vector2_category_toggle_rapid_single_file(self, gui_app):
+        """Boundary: Toggle a single file's category back and forth 50 times."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p = os.path.join(tmp_dir, "order_sample.xlsx")
+            df = pd.DataFrame([{"اسم العميل": "صيدلية النور", "الكمية المطلوبة": 10, "الصنف": "Panadol"}])
+            df.to_excel(p, index=False, engine="openpyxl")
+
+            gui_app.add_files([p])
+            item = gui_app.file_model.files[0]
+            assert item.category == "Order"
+            assert not item.is_override
+
+            for i in range(50):
+                choice = "كتالوج مخزن (Catalog)" if i % 2 == 0 else "أمر شراء (Order)"
+                expected_cat = "Catalog" if i % 2 == 0 else "Order"
+                gui_app._on_override_category(p, choice)
+                assert item.category == expected_cat
+                assert item.is_override == (expected_cat != item.auto_category)
+
+            gui_app.update_idletasks()
+
+    def test_stress_vector2_category_toggle_mass_inversion(self, gui_app):
+        """Boundary: Invert categories of 80 files (40 orders, 40 catalogs) simultaneously."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            order_paths = []
+            cat_paths = []
+            df_order = pd.DataFrame([{"اسم العميل": "صيدلية", "الكمية المطلوبة": 1, "الصنف": "Med"}])
+            for i in range(40):
+                p_ord = os.path.join(tmp_dir, f"order_inv_{i:02d}.xlsx")
+                df_order.to_excel(p_ord, index=False, engine="openpyxl")
+                order_paths.append(p_ord)
+
+                p_cat = os.path.join(tmp_dir, f"catalog_inv_{i:02d}.pdf")
+                with open(p_cat, "wb") as f:
+                    f.write(b"%PDF-1.4 cat")
+                cat_paths.append(p_cat)
+
+            gui_app.add_files(order_paths + cat_paths)
+            assert gui_app.file_model.get_summary()["orders"] == 40
+            assert gui_app.file_model.get_summary()["catalogs"] == 40
+
+            # Invert all orders to Catalog
+            for p in order_paths:
+                gui_app.file_model.set_override(p, "Catalog")
+
+            # Invert all catalogs to Order
+            for p in cat_paths:
+                gui_app.file_model.set_override(p, "Order")
+
+            gui_app._render_file_list()
+            gui_app._update_ui_state()
+
+            assert len(gui_app.file_model.get_order_files()) == 40
+            assert len(gui_app.file_model.get_catalog_files()) == 40
+            for f in gui_app.file_model.files:
+                assert f.is_override is True
+
+            # Invert back
+            for p in order_paths:
+                gui_app.file_model.set_override(p, "Order")
+            for p in cat_paths:
+                gui_app.file_model.set_override(p, "Catalog")
+
+            gui_app._render_file_list()
+            gui_app._update_ui_state()
+
+            for f in gui_app.file_model.files:
+                assert f.is_override is False
+
+    def test_stress_vector2_validation_gate_state_transitions(self, gui_app):
+        """Boundary: Validation gate transitions cleanly across all category toggle combinations."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p_ord = os.path.join(tmp_dir, "order_state.xlsx")
+            df = pd.DataFrame([{"اسم العميل": "صيدلية", "الكمية المطلوبة": 1, "الصنف": "Med"}])
+            df.to_excel(p_ord, index=False, engine="openpyxl")
+
+            p_cat = os.path.join(tmp_dir, "catalog_state.pdf")
+            with open(p_cat, "wb") as f:
+                f.write(b"%PDF-1.4 cat")
+
+            gui_app.add_files([p_ord, p_cat])
+            # State 1: 1 Order, 1 Catalog -> Valid
+            is_valid, _ = gui_app.file_model.validate(gui_app.output_dir_var.get())
+            assert is_valid is True
+            assert gui_app.run_button.cget("state") == "normal"
+
+            # State 2: Toggle Order -> Catalog (0 Orders, 2 Catalogs) -> Invalid
+            gui_app._on_override_category(p_ord, "كتالوج مخزن (Catalog)")
+            is_valid, reason = gui_app.file_model.validate(gui_app.output_dir_var.get())
+            assert is_valid is False
+            assert "أمر شراء واحد على الأقل" in reason
+            assert gui_app.run_button.cget("state") == "disabled"
+
+            # State 3: Toggle Catalog -> Order (1 Order, 1 Catalog) -> Valid
+            gui_app._on_override_category(p_cat, "أمر شراء (Order)")
+            is_valid, _ = gui_app.file_model.validate(gui_app.output_dir_var.get())
+            assert is_valid is True
+            assert gui_app.run_button.cget("state") == "normal"
+
+            # State 4: Toggle p_ord to Order (2 Orders, 0 Catalogs) -> Invalid
+            gui_app._on_override_category(p_ord, "أمر شراء (Order)")
+            is_valid, reason = gui_app.file_model.validate(gui_app.output_dir_var.get())
+            assert is_valid is False
+            assert "كتالوج مخزن واحد على الأقل" in reason
+            assert gui_app.run_button.cget("state") == "disabled"
+
+    # --- Vector 3: Empty and Invalid Output Directories ---
+
+    def test_stress_vector3_output_dir_empty_and_whitespace(self, gui_app):
+        """Boundary: Empty and whitespace output directories must close validation gate."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p_ord = os.path.join(tmp_dir, "order.xlsx")
+            df = pd.DataFrame([{"اسم العميل": "صيدلية", "الكمية المطلوبة": 1, "الصنف": "Med"}])
+            df.to_excel(p_ord, index=False, engine="openpyxl")
+
+            p_cat = os.path.join(tmp_dir, "catalog.pdf")
+            with open(p_cat, "wb") as f:
+                f.write(b"%PDF-1.4 cat")
+
+            gui_app.add_files([p_ord, p_cat])
+
+            gui_app.output_dir_var.set("")
+            gui_app._update_ui_state()
+            is_valid, reason = gui_app.file_model.validate(gui_app.output_dir_var.get())
+            assert is_valid is False
+            assert "مجلد حفظ المخرجات" in reason
+            assert gui_app.run_button.cget("state") == "disabled"
+
+            for ws in ["   ", "\t", "\n", " \t \n "]:
+                gui_app.output_dir_var.set(ws)
+                gui_app._update_ui_state()
+                is_valid, reason = gui_app.file_model.validate(gui_app.output_dir_var.get())
+                assert is_valid is False
+                assert gui_app.run_button.cget("state") == "disabled"
+
+    def test_stress_vector3_run_button_click_when_output_dir_empty(self, gui_app):
+        """Boundary: Calling _on_run_optimization when output dir is empty warns and does not start bridge."""
+        gui_app.output_dir_var.set("")
+        with patch("tkinter.messagebox.showwarning") as mock_warn:
+            gui_app._on_run_optimization()
+            assert mock_warn.called
+            assert gui_app.bridge is None
+
+    def test_stress_vector3_output_dir_nonexistent_and_invalid_chars(self, gui_app):
+        """Boundary: Pipeline execution with invalid or unwritable directory is caught safely."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p_ord = os.path.join(tmp_dir, "order.xlsx")
+            df = pd.DataFrame([{"اسم العميل": "صيدلية", "الكمية المطلوبة": 1, "الصنف": "Med"}])
+            df.to_excel(p_ord, index=False, engine="openpyxl")
+
+            p_cat = os.path.join(tmp_dir, "catalog.pdf")
+            with open(p_cat, "wb") as f:
+                f.write(b"%PDF-1.4 cat")
+
+            gui_app.add_files([p_ord, p_cat])
+
+            illegal_dir = "Z:\\invalid<>:\"/\\|?*\\dir"
+            gui_app.output_dir_var.set(illegal_dir)
+
+            is_valid, _ = gui_app.file_model.validate(illegal_dir)
+            assert is_valid is True
+
+            bridge = ProcurementEngineBridge()
+            bridge.start(
+                order_files=[p_ord],
+                catalog_files=[p_cat],
+                output_dir=illegal_dir
+            )
+
+            start_t = time.time()
+            error_found = False
+            while time.time() - start_t < 10.0:
+                while not bridge.queue.empty():
+                    msg = bridge.get_message(block=False)
+                    if msg and msg[0] == "ERROR":
+                        error_found = True
+                        break
+                if error_found:
+                    break
+                time.sleep(0.05)
+
+            assert error_found, "Expected bridge to safely catch invalid directory error and emit ERROR message."
+            assert not bridge.is_running
+
+    # --- Vector 4: Invalid CLI Arguments ---
+
+    def test_stress_vector4_cli_self_test_flag(self):
+        """CLI Contract: python app_gui.py --self-test exits 0."""
+        cmd = [sys.executable, "app_gui.py", "--self-test"]
+        res = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=20)
+        assert res.returncode == 0
+        assert "[SELF-TEST]" in res.stdout
+        assert "verified cleanly" in res.stdout
+
+    def test_stress_vector4_cli_self_test_with_superfluous_arguments(self):
+        """CLI Contract: python app_gui.py --self-test --unknown-flag -v random_arg still executes self-test cleanly."""
+        cmd = [sys.executable, "app_gui.py", "--self-test", "--unknown-flag", "-v", "bogus_arg"]
+        res = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=20)
+        assert res.returncode == 0
+        assert "[SELF-TEST]" in res.stdout
+
+    def test_stress_vector4_headless_self_test_function_direct(self, gui_app):
+        """CLI Direct Call: run_headless_self_test() executes without throwing exception."""
+        code = run_headless_self_test(existing_app=gui_app)
+        assert code == 0
+
+    # --- Vector 5: Asynchronous Worker Safety and Mocking ---
+
+    def test_stress_vector5_ui_thread_responsive_during_async_polling(self, gui_app):
+        """Anti-Freeze: UI event loop responds promptly (< 100ms) while worker thread emits messages."""
+        msg_q = queue.Queue()
+        bridge = ProcurementEngineBridge(message_queue=msg_q)
+        gui_app.bridge = bridge
+
+        def _simulated_worker():
+            for i in range(20):
+                pct = (i + 1) / 20.0
+                msg_q.put(("PROGRESS", pct, f"Step {i+1}/20"))
+                time.sleep(0.02)
+            msg_q.put(("DONE", {
+                "report_path": "dummy.xlsx",
+                "kpis": {
+                    "total_items": 10,
+                    "matched_items": 10,
+                    "deterministic_matches": 8,
+                    "out_of_stock": 0,
+                    "avg_discount": 22.5,
+                    "total_savings": 1500.0,
+                    "allocation_counts": {"المتحدة": 10}
+                }
+            }))
+
+        worker = threading.Thread(target=_simulated_worker, daemon=True)
+        worker.start()
+
+        start_wait = time.time()
+        max_tick_duration = 0.0
+        while worker.is_alive() or not msg_q.empty():
+            tick_start = time.time()
+            gui_app.poll_queue()
+            gui_app.update_idletasks()
+            tick_duration = time.time() - tick_start
+            if tick_duration > max_tick_duration:
+                max_tick_duration = tick_duration
+            time.sleep(0.01)
+            if time.time() - start_wait > 10.0:
+                pytest.fail("Async polling took longer than 10 seconds.")
+
+        assert max_tick_duration < 0.10, f"UI tick took {max_tick_duration*1000:.1f}ms, exceeding 100ms budget."
+
+        assert gui_app.progress_bar.get() == 1.0
+        assert gui_app.card_req.cget("text") == "10"
+        assert gui_app.card_alloc.cget("text") == "10 (8 مؤكد)"
+
+    def test_stress_vector5_error_queue_propagation_does_not_crash(self, gui_app):
+        """Anti-Freeze: Bridge error message gracefully resets progress and does not raise unhandled exception."""
+        msg_q = queue.Queue()
+        bridge = ProcurementEngineBridge(message_queue=msg_q)
+        gui_app.bridge = bridge
+
+        msg_q.put(("ERROR", "Fatal simulated engine parsing failure", "Traceback details dummy"))
+
+        with patch.object(gui_app, "_show_error_dialog") as mock_err_dialog:
+            gui_app.poll_queue()
+            gui_app.update_idletasks()
+            assert mock_err_dialog.called
+            assert gui_app.progress_bar.get() == 0.0
+            assert "فشلت العملية" in gui_app.status_label.cget("text")
+
+    def test_stress_vector5_rapid_double_trigger_guard(self, gui_app):
+        """Anti-Freeze: Rapid double invocation of _on_run_optimization does not crash."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p_ord = os.path.join(tmp_dir, "order.xlsx")
+            df = pd.DataFrame([{"اسم العميل": "صيدلية", "الكمية المطلوبة": 1, "الصنف": "Med"}])
+            df.to_excel(p_ord, index=False, engine="openpyxl")
+
+            p_cat = os.path.join(tmp_dir, "catalog.pdf")
+            with open(p_cat, "wb") as f:
+                f.write(b"%PDF-1.4 cat")
+
+            gui_app.add_files([p_ord, p_cat])
+            gui_app.output_dir_var.set(tmp_dir)
+
+            with patch("src.controller.run_procurement_pipeline") as mock_pipe:
+                mock_pipe.return_value = {
+                    "report_path": os.path.join(tmp_dir, "report.xlsx"),
+                    "kpis": {"total_items": 1, "matched_items": 1}
+                }
+                gui_app._on_run_optimization()
+                try:
+                    gui_app._on_run_optimization()
+                except Exception as e:
+                    pytest.fail(f"Second rapid call to _on_run_optimization crashed with: {e}")
+
+                gui_app.update_idletasks()
+
+    def test_stress_vector5_kpi_binding_with_null_and_malformed_values(self, gui_app):
+        """Boundary: _on_pipeline_completed safely handles missing/empty/corrupted KPI dictionaries."""
+        malformed_cases = [
+            {},
+            {"kpis": None},
+            {"kpis": {}},
+            {"kpis": {"total_items": "invalid_type", "total_savings": "NaN"}},
+            {"kpis": {"allocation_counts": None}},
+        ]
+        for case in malformed_cases:
+            try:
+                gui_app._on_pipeline_completed(case)
+            except Exception as e:
+                pytest.fail(f"_on_pipeline_completed crashed on malformed KPI dict {case}: {e}")
+
+    def test_stress_vector5_shell_actions_with_empty_or_forbidden_paths(self, gui_app):
+        """Boundary: Shell actions (open report / open folder) handle non-existent paths gracefully."""
+        gui_app.current_report_path = None
+        gui_app._on_open_report()
+        gui_app._on_open_folder()
+
+        gui_app.current_report_path = "Z:\\nonexistent_procurement_file.xlsx"
+        with patch("tkinter.messagebox.showerror") as mock_err:
+            gui_app._on_open_report()
+            assert mock_err.called
+
+        with patch("tkinter.messagebox.showerror") as mock_err:
+            gui_app._on_open_folder()
+            assert mock_err.called
+
+
+# =============================================================================
+# Tier 5: Challenger 2 Lifecycle, Handle Hygiene & Error Dialog Tests
+# =============================================================================
+
+def _get_win32_handles():
+    """Returns (kernel_handles, gdi_handles, user_handles) on Windows, or (0, 0, 0) otherwise."""
+    if sys.platform != "win32":
+        return 0, 0, 0
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+        user32 = ctypes.windll.user32
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetProcessHandleCount.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel32.GetProcessHandleCount.restype = wintypes.BOOL
+        user32.GetGuiResources.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        user32.GetGuiResources.restype = wintypes.DWORD
+
+        h = kernel32.GetCurrentProcess()
+        count = wintypes.DWORD()
+        kernel32.GetProcessHandleCount(h, ctypes.byref(count))
+        gdi = user32.GetGuiResources(h, 0)
+        user = user32.GetGuiResources(h, 1)
+        return count.value, gdi, user
+    except Exception:
+        return 0, 0, 0
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Checks if a process with the given PID is still active in Windows."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            SYNCHRONIZE = 0x00100000
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid)
+            if not handle:
+                return False
+            exit_code = ctypes.c_ulong()
+            kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            kernel32.CloseHandle(handle)
+            STILL_ACTIVE = 259
+            return exit_code.value == STILL_ACTIVE
+        except Exception:
+            return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+
+class TestTier5Challenger2LifecycleAndErrorDialog:
+    """
+    Empirical Challenger 2 Test Suite for Milestone M2:
+    1. Repeated rapid execution of --self-test (10 runs) verifying zero zombie processes,
+       deterministic exit codes, execution timing, and Windows resource handle hygiene.
+    2. In-process lifecycle repetition (10 iterations) testing widget/Tcl teardown and handle stability.
+    3. Simulated error queue message delivery with REAL rendering of _show_error_dialog
+       (no mocks), verifying CTkToplevel creation, widget hierarchy, Arabic text,
+       large tracebacks, missing tracebacks, grab handling, and clean close destruction.
+    """
+
+    def test_c2_error_queue_real_dialog_rendering(self, gui_app):
+        """Task 2: Simulated ERROR queue delivery renders real CTkToplevel error dialog without crashing."""
+        msg_q = queue.Queue()
+        bridge = ProcurementEngineBridge(message_queue=msg_q)
+        gui_app.bridge = bridge
+
+        error_text = "خطأ فادح: فشل في قراءة ترويسة ملف الكتالوج (PDF Corrupted Header)"
+        tb_text = (
+            "Traceback (most recent call last):\n"
+            "  File 'src/pdf_parser.py', line 42, in extract_catalog\n"
+            "    raise ValueError('Corrupted catalog header')\n"
+            "ValueError: Corrupted catalog header"
+        )
+        msg_q.put(("ERROR", error_text, tb_text))
+
+        # Real execution: DO NOT mock _show_error_dialog!
+        gui_app.poll_queue()
+        gui_app.update_idletasks()
+
+        # 1. Verify main app status label and progress bar
+        assert "فشلت العملية" in gui_app.status_label.cget("text")
+        assert "PDF Corrupted Header" in gui_app.status_label.cget("text")
+        assert gui_app.progress_bar.get() == 0.0
+
+        # 2. Inspect rendered CTkToplevel
+        toplevels = [w for w in gui_app.winfo_children() if isinstance(w, ctk.CTkToplevel)]
+        assert len(toplevels) >= 1, "Expected at least 1 CTkToplevel error window to be rendered"
+        err_win = toplevels[-1]
+        assert "خطأ في المعالجة" in err_win.title()
+        assert "Optimization Error" in err_win.title()
+
+        # 3. Find and verify child widgets inside the error dialog
+        descendants = err_win.winfo_children()
+        labels = [w for w in descendants if isinstance(w, ctk.CTkLabel)]
+        textboxes = [w for w in descendants if isinstance(w, ctk.CTkTextbox)]
+        buttons = [w for w in descendants if isinstance(w, ctk.CTkButton)]
+
+        assert len(labels) >= 2, f"Expected header and message labels, found {len(labels)}"
+        assert len(textboxes) >= 1, "Expected CTkTextbox for traceback"
+        assert len(buttons) >= 1, "Expected Close button"
+
+        # Verify error message label text
+        msg_found = any(error_text in lbl.cget("text") for lbl in labels)
+        assert msg_found, "Error dialog label does not contain expected error text"
+
+        # Verify traceback textbox content
+        tb_box = textboxes[0]
+        tb_content = tb_box.get("1.0", "end")
+        assert "ValueError: Corrupted catalog header" in tb_content
+
+        # 4. Clean destruction via close button command
+        close_btn = buttons[0]
+        assert "إغلاق" in close_btn.cget("text") or "Close" in close_btn.cget("text")
+        err_win.destroy()
+        gui_app.update_idletasks()
+
+    def test_c2_error_queue_edge_cases_real_rendering(self, gui_app):
+        """Task 2: Error queue message delivery with various boundary inputs renders without crashing."""
+        edge_cases = [
+            # Case 1: Tuple with only 2 items (missing traceback)
+            ("ERROR", "Error with no traceback tuple item"),
+            # Case 2: Empty error message and empty traceback
+            ("ERROR", "", ""),
+            # Case 3: Massive traceback string (50 KB)
+            ("ERROR", "Massive traceback error", "Traceback line\n" * 2000),
+            # Case 4: Rich Arabic text with punctuation and emojis
+            ("ERROR", "❌ خطأ فادح: الكتالوج غير مطابق للمعايير المصرية ⚠️ [2026-09-11]", "تفاصيل: خطأ ترميزي"),
+        ]
+
+        for case in edge_cases:
+            msg_q = queue.Queue()
+            bridge = ProcurementEngineBridge(message_queue=msg_q)
+            gui_app.bridge = bridge
+            msg_q.put(case)
+
+            # Poll and render real dialog
+            gui_app.poll_queue()
+            gui_app.update_idletasks()
+
+            # Verify dialog created
+            toplevels = [w for w in gui_app.winfo_children() if isinstance(w, ctk.CTkToplevel)]
+            assert len(toplevels) >= 1, f"Failed to create error dialog for case: {case[1]}"
+            err_win = toplevels[-1]
+
+            # Destroy to clean up for next iteration
+            err_win.destroy()
+            gui_app.update_idletasks()
+
+    def test_c2_in_process_repeated_self_test_lifecycle(self, gui_app):
+        """Task 1: 10 rapid in-process self-test iterations verify Tcl/widget teardown and handle stability."""
+        initial_k, initial_g, initial_u = _get_win32_handles()
+
+        for iteration in range(10):
+            # Run headless self test using existing app
+            code = run_headless_self_test(existing_app=gui_app)
+            assert code == 0, f"Self-test iteration {iteration+1} failed with code {code}"
+            gui_app.update_idletasks()
+
+        final_k, final_g, final_u = _get_win32_handles()
+
+        # Verify GDI and USER handle stability (should not explode)
+        if sys.platform == "win32" and initial_k > 0:
+            user_delta = final_u - initial_u
+            gdi_delta = final_g - initial_g
+            assert user_delta < 50, f"USER handles leaked excessively: +{user_delta}"
+            assert gdi_delta < 50, f"GDI handles leaked excessively: +{gdi_delta}"
+
+    def test_c2_out_of_process_10_rapid_self_test_zombies_and_handles(self):
+        """Task 1: 10 rapid CLI invocations of python app_gui.py --self-test verify 0 zombies and exit 0."""
+        durations = []
+        pids_seen = []
+
+        for i in range(10):
+            start_t = time.time()
+            proc = subprocess.Popen(
+                [sys.executable, "app_gui.py", "--self-test"],
+                cwd=project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            pid = proc.pid
+            pids_seen.append(pid)
+
+            stdout_data, stderr_data = proc.communicate(timeout=25)
+            elapsed = time.time() - start_t
+            durations.append(elapsed)
+
+            # Assert exit code 0
+            assert proc.returncode == 0, f"Run {i+1} failed with code {proc.returncode}. Stderr: {stderr_data}"
+            assert "[SELF-TEST]" in stdout_data, f"Run {i+1} missing [SELF-TEST] tag. Output: {stdout_data}"
+            assert "verified cleanly" in stdout_data
+
+            # Assert process is terminated (NO zombie process remaining in OS)
+            time.sleep(0.05)
+            assert not _is_pid_alive(pid), f"PID {pid} from run {i+1} is still active as a zombie or orphaned process!"
+
+        # Timing and stability analysis
+        avg_duration = sum(durations) / len(durations)
+        max_duration = max(durations)
+        min_duration = min(durations)
+
+        assert len(pids_seen) == 10
+        assert len(set(pids_seen)) == 10, "PIDs should all be distinct across 10 fresh process invocations"
+        assert avg_duration < 10.0, f"Average execution duration {avg_duration:.2f}s is too slow"
+        assert max_duration < 15.0, f"Max execution duration {max_duration:.2f}s exceeded 15s budget"
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-v"]))
+
+

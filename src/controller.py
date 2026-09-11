@@ -128,6 +128,128 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
 
     return categorized
 
+class CatalogCache:
+    """Thread-safe in-memory cache for parsed catalog DataFrames."""
+    def __init__(self):
+        self._cache: Dict[str, pd.DataFrame] = {}
+        self._lock = threading.Lock()
+
+    def get(self, file_path: str) -> Optional[pd.DataFrame]:
+        with self._lock:
+            norm = os.path.normpath(os.path.abspath(file_path))
+            df = self._cache.get(norm)
+            return df.copy() if df is not None else None
+
+    def set(self, file_path: str, df: pd.DataFrame):
+        with self._lock:
+            norm = os.path.normpath(os.path.abspath(file_path))
+            self._cache[norm] = df.copy() if df is not None else pd.DataFrame()
+
+    def remove(self, file_path: str):
+        with self._lock:
+            norm = os.path.normpath(os.path.abspath(file_path))
+            self._cache.pop(norm, None)
+
+    def clear(self):
+        with self._lock:
+            self._cache.clear()
+
+    def all_cached(self) -> Dict[str, pd.DataFrame]:
+        with self._lock:
+            return {k: v.copy() for k, v in self._cache.items()}
+
+
+global_catalog_cache = CatalogCache()
+
+
+def inspect_catalog_counts(catalog_files: list[str]) -> dict[str, int]:
+    """
+    Inspects medication count for a list of catalog files.
+    Reads from in-memory cache if available; otherwise uses fast digital parser and caches.
+    Returns mapping of normalized file path to detected medication count.
+    """
+    counts = {}
+    for f in catalog_files:
+        if not f or not isinstance(f, str):
+            continue
+        norm = os.path.normpath(os.path.abspath(f))
+        if not os.path.isfile(norm):
+            continue
+
+        cached_df = global_catalog_cache.get(norm)
+        if cached_df is not None:
+            counts[norm] = len(cached_df)
+            continue
+
+        df = pd.DataFrame()
+        fname = os.path.basename(norm)
+        w_raw = os.path.splitext(fname)[0]
+        try:
+            if norm.lower().endswith('.pdf'):
+                try:
+                    from .pdf_parser import PDFCatalogParser
+                except ImportError:
+                    from pdf_parser import PDFCatalogParser
+                parser = PDFCatalogParser(norm)
+                df = parser.parse()
+            elif norm.lower().endswith(('.xlsx', '.xls', '.csv')):
+                try:
+                    from .pipeline import parse_excel_catalog
+                    from .normalizer import normalize_vendor_name
+                except ImportError:
+                    from pipeline import parse_excel_catalog
+                    from normalizer import normalize_vendor_name
+                df = parse_excel_catalog(norm, normalize_vendor_name(w_raw))
+        except Exception as exc:
+            logger.debug(f"Fast inspection failed for {norm}: {exc}")
+
+        global_catalog_cache.set(norm, df)
+        counts[norm] = len(df)
+    return counts
+
+
+def reread_catalog_with_ocr(catalog_file: str, progress_callback=None) -> tuple[str, int, list[dict]]:
+    """
+    On-demand re-reads an individual catalog using RapidOCR and RapidTable.
+    Caches the parsed DataFrame in memory and returns (normalized_path, count, item_records).
+    """
+    if not catalog_file or not isinstance(catalog_file, str):
+        raise ValueError("Invalid catalog file path provided.")
+
+    norm_path = os.path.normpath(os.path.abspath(catalog_file))
+    if not os.path.isfile(norm_path):
+        raise FileNotFoundError(f"Catalog file not found: {norm_path}")
+
+    fname = os.path.basename(norm_path)
+    w_raw = os.path.splitext(fname)[0]
+
+    df = pd.DataFrame()
+    if norm_path.lower().endswith('.pdf'):
+        try:
+            from .pdf_parser import PDFCatalogParser
+        except ImportError:
+            from pdf_parser import PDFCatalogParser
+        parser = PDFCatalogParser(norm_path)
+        df = parser.parse_ocr(progress_callback=progress_callback)
+    else:
+        try:
+            from .pipeline import parse_excel_catalog
+            from .normalizer import normalize_vendor_name
+        except ImportError:
+            from pipeline import parse_excel_catalog
+            from normalizer import normalize_vendor_name
+        df = parse_excel_catalog(norm_path, normalize_vendor_name(w_raw))
+
+    global_catalog_cache.set(norm_path, df)
+    records = df.to_dict(orient="records") if not df.empty else []
+    for rec in records:
+        rec["name"] = rec.get("item_name", "")
+        rec["price"] = rec.get("base_price", 0.0)
+        rec["vendor"] = rec.get("warehouse_name", "")
+        rec["category"] = "Catalog"
+
+    return norm_path, len(df), records
+
 
 class ProcurementEngineBridge:
     """
@@ -161,6 +283,7 @@ class ProcurementEngineBridge:
         catalog_files: list[str],
         output_dir: str,
         custom_date_str: Optional[str] = None,
+        catalog_cache: Optional[Dict[str, pd.DataFrame]] = None,
     ) -> threading.Thread:
         """
         Launches the procurement pipeline in a daemon background thread.
@@ -183,6 +306,7 @@ class ProcurementEngineBridge:
                 def _cancel_check() -> bool:
                     return self._cancel_event.is_set()
 
+                cache_to_use = catalog_cache if catalog_cache is not None else global_catalog_cache.all_cached()
                 results = run_procurement_pipeline(
                     order_files=order_files,
                     catalog_files=catalog_files,
@@ -190,6 +314,7 @@ class ProcurementEngineBridge:
                     progress_callback=_progress_cb,
                     custom_date_str=custom_date_str,
                     cancel_check=_cancel_check,
+                    catalog_cache=cache_to_use,
                 )
                 self.last_result = results
                 self.queue.put(("DONE", results))
@@ -198,6 +323,7 @@ class ProcurementEngineBridge:
                 tb = traceback.format_exc()
                 self.last_error = (msg, tb)
                 self.queue.put(("ERROR", f"Pipeline Cancelled: {msg}", tb))
+
             except Exception as exc:
                 msg = str(exc)
                 tb = traceback.format_exc()

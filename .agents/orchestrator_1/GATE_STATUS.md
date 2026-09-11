@@ -14,8 +14,8 @@ Gate Result: **PASS**
 | Agent | Role | Verdict | Source |
 |-------|------|---------|--------|
 | worker_m2 | teamwork_preview_worker | DONE (25/25 tests passed, self-test OK) | handoff.md |
-| reviewer_m2_1 | teamwork_preview_reviewer | PENDING | handoff.md |
-| reviewer_m2_2 | teamwork_preview_reviewer | PENDING | handoff.md |
+| reviewer_m2_1 | teamwork_preview_reviewer | APPROVE | handoff.md |
+| reviewer_m2_2 | teamwork_preview_reviewer | APPROVE | handoff.md |
 | challenger_m2_1 | teamwork_preview_challenger | PENDING | handoff.md |
 | challenger_m2_2 | teamwork_preview_challenger | PENDING | handoff.md |
 | auditor_m2_1 | teamwork_preview_auditor | CLEAN | handoff.md |

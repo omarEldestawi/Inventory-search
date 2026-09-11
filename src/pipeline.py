@@ -123,10 +123,12 @@ def run_procurement_pipeline(
     progress_callback: Optional[Callable[[float, str], None]] = None,
     custom_date_str: Optional[str] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
+    catalog_cache: Optional[dict] = None,
 ) -> dict:
     """
     Executes catalog ingestion, purchase order loading & combining, clinical safety allocation,
     and multi-sheet RTL Excel report generation.
+
 
     Args:
         order_files: List of paths to purchase order files (.xlsx, .xls, .csv).
@@ -176,7 +178,6 @@ def run_procurement_pipeline(
         # 1. Validation Stage
         current_stage = "input_validation"
         diagnostics["stage"] = current_stage
-        _notify(0.05, "التحقق من صحة الملفات المدخلة... / Validating input files...")
         _check_cancellation()
 
         if not order_files:
@@ -186,7 +187,9 @@ def run_procurement_pipeline(
         if not output_dir:
             raise ValueError("Output directory must be specified.")
 
+        _notify(0.05, "التحقق من صحة الملفات المدخلة... / Validating input files...")
         os.makedirs(output_dir, exist_ok=True)
+
 
         # 2. Ingest Catalogs
         current_stage = "catalog_ingestion"
@@ -210,7 +213,12 @@ def run_procurement_pipeline(
             _notify(pct, f"قراءة كتالوج ({idx+1}/{catalog_count}): {w_name}...")
 
             df_cat = pd.DataFrame()
-            if cat_file.lower().endswith('.pdf'):
+            norm_cat = os.path.normpath(os.path.abspath(cat_file))
+            if catalog_cache and norm_cat in catalog_cache and catalog_cache[norm_cat] is not None and not catalog_cache[norm_cat].empty:
+                df_cat = catalog_cache[norm_cat].copy()
+            elif catalog_cache and cat_file in catalog_cache and catalog_cache[cat_file] is not None and not catalog_cache[cat_file].empty:
+                df_cat = catalog_cache[cat_file].copy()
+            elif cat_file.lower().endswith('.pdf'):
                 try:
                     parser_inst = PDFCatalogParser(cat_file, warehouse_name=w_name)
                     df_cat = parser_inst.parse()
@@ -221,6 +229,7 @@ def run_procurement_pipeline(
                     df_cat = parse_excel_catalog(cat_file, warehouse_name=w_name)
                 except Exception as cat_err:
                     logger.warning(f"Error parsing Excel/CSV catalog '{base_name}': {cat_err}")
+
 
             if df_cat is not None and not df_cat.empty:
                 all_catalogs.append(df_cat)

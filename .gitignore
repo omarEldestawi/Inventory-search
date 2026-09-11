@@ -28,3 +28,4 @@ Thumbs.db
 # Large temporary files
 *.log
 *.tmp
+.tmp.driveupload/
