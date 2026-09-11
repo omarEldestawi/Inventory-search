@@ -8,9 +8,10 @@ __pycache__/
 
 # Distribution / packaging
 build/
-# Keep dist/Setup.exe or release binaries if desired, but ignore temporary pyinstaller build dirs
 dist/
+dist_installer/
 *.egg-info/
+
 
 # Environments
 .env
