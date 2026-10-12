@@ -19,7 +19,7 @@ Both standalone and installer deliverables for version 1.1.5 have been compiled,
 
 ## 2. Desktop/train Calibration & Benchmarks (25 Files Verified)
 
-The entire dataset in `C:\Users\omart\Desktop\train` (23 wholesaler PDF catalogs + 2 purchase order Excel files) was processed, calibrated, and benchmarked:
+The entire dataset in `Desktop/train` (23 wholesaler PDF catalogs + 2 purchase order Excel files) was processed, calibrated, and benchmarked:
 
 ### A. Wholesaler Catalogs (23 PDF Files Ingested)
 - **Total Valid Offers Extracted**: **11,056 inventory items** (exceeding the target of 11,000).

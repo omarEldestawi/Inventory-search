@@ -1,5 +1,5 @@
 r"""
-Fast survey of 23 PDFs and 2 Excel POs in C:\Users\omart\Desktop\train.
+Fast survey of 23 PDFs and 2 Excel POs in train dataset.
 Optimized with O(1) index lookups, real-time stdout flushing, and detailed breakdown.
 """
 import os
@@ -37,7 +37,7 @@ from src.pharma_matcher import (
 )
 from src.allocator import MedicineAllocator
 
-TRAIN_DIR = r"C:\Users\omart\Desktop\train"
+TRAIN_DIR = os.getenv("TRAIN_DIR", os.path.join(os.path.expanduser("~"), "Desktop", "train"))
 OUTPUT_REPORT = os.path.join(PROJECT_ROOT, "scripts", "fast_survey_report.json")
 
 def main():

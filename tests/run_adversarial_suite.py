@@ -48,7 +48,7 @@ print("=" * 80)
 
 train_dir = os.path.join(PROJECT_ROOT, "train")
 if not os.path.isdir(train_dir):
-    train_dir = r"C:\Users\omart\Desktop\train"
+    train_dir = os.getenv("TRAIN_DIR", os.path.join(os.path.expanduser("~"), "Desktop", "train"))
 
 from src.pdf_parser import PDFCatalogParser
 

@@ -1,5 +1,5 @@
 r"""
-Survey Inventory and Matching Coverage across 23 PDFs and 2 Excel POs in C:\Users\omart\Desktop\train.
+Survey Inventory and Matching Coverage across 23 PDFs and 2 Excel POs in train dataset.
 """
 import os
 import sys
@@ -38,7 +38,7 @@ from src.pharma_matcher import (
 )
 from src.allocator import MedicineAllocator
 
-TRAIN_DIR = r"C:\Users\omart\Desktop\train"
+TRAIN_DIR = os.getenv("TRAIN_DIR", os.path.join(os.path.expanduser("~"), "Desktop", "train"))
 if not os.path.isdir(TRAIN_DIR):
     TRAIN_DIR = os.path.join(PROJECT_ROOT, "train")
 OUTPUT_REPORT = os.path.join(PROJECT_ROOT, "scripts", "survey_report.json")

@@ -34,7 +34,7 @@ from src.pharma_matcher import (
     clean_arabic_string
 )
 
-TRAIN_DIR = r"C:\Users\omart\Desktop\train"
+TRAIN_DIR = os.getenv("TRAIN_DIR", os.path.join(os.path.expanduser("~"), "Desktop", "train"))
 
 # Load all catalog items
 catalog_files = sorted([f for f in os.listdir(TRAIN_DIR) if f.endswith(".pdf")])

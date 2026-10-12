@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 r"""
 Audit Diff Comparison Script
-Compares current procurement allocation against legacy benchmark:
-C:\Users\omart\Downloads\Procurement_Order_Optimized_2026-09-24 (1).xlsx
+Compares current procurement allocation against legacy benchmark.
 """
 import os
 import sys
@@ -26,7 +25,10 @@ from src.report_generator import ArabicExcelReportGenerator
 from src.normalizer import normalize_vendor_name
 from src.pharma_matcher import is_safe_pharmaceutical_match, extract_form_category, check_infant_milk_compatibility
 
-LEGACY_BENCHMARK_PATH = r"C:\Users\omart\Downloads\Procurement_Order_Optimized_2026-09-24 (1).xlsx"
+LEGACY_BENCHMARK_PATH = os.getenv(
+    "LEGACY_BENCHMARK_PATH",
+    os.path.join(os.path.expanduser("~"), "Downloads", "Procurement_Order_Optimized_2026-09-24 (1).xlsx")
+)
 ORDER_PATH = os.path.join(PROJECT_ROOT, "input", "orders", "0924.xlsx")
 CATALOGS_DIR = os.path.join(PROJECT_ROOT, "input", "catalogs")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")

@@ -34,7 +34,7 @@ EXPECTED_SCHEMA = [
 
 TRAIN_DIR = os.path.join(PROJECT_ROOT, "train")
 if not os.path.isdir(TRAIN_DIR):
-    TRAIN_DIR = r"C:\Users\omart\Desktop\train"
+    TRAIN_DIR = os.getenv("TRAIN_DIR", os.path.join(os.path.expanduser("~"), "Desktop", "train"))
 
 
 class TestAdversarialDeepCatalogAudit(unittest.TestCase):

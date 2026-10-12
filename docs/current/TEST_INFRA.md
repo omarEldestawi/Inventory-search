@@ -112,7 +112,7 @@ Tests pairwise interactions across pipeline stages:
 - Tie-breaking logic under equal discounts with supplier consolidation.
 
 ### Tier 4: Real-World Acceptance Workload
-Opaque-box execution on actual production files (`C:\Users\omart\Downloads\279.xlsx` + 7 PDFs):
+Opaque-box execution on benchmark order and catalog files (`279.xlsx` + 7 PDFs):
 - Total requested items: **exactly 572** items (0 missing, no `'AE'` row).
 - Total allocated items: **exactly 154** items.
 - Total shortage items: **exactly 418** items.
@@ -157,4 +157,4 @@ All expected values in the test suite are derived from:
 1. `ORIGINAL_REQUEST.md` (authoritative customer specification).
 2. `survey_spec.md` (empirical inspection of golden reference `أفضل_اسعار_2026-09-28.xlsx`).
 3. `survey_clinical_build.md` (clinical safety gate and build survey).
-4. Physical golden reference workbook `C:\Users\omart\Downloads\أفضل_اسعار_2026-09-28.xlsx`.
+4. Physical golden reference workbook `أفضل_اسعار_2026-09-28.xlsx`.

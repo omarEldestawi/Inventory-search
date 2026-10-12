@@ -3,7 +3,7 @@
 E2E Requirement-Driven Test Suite: Egyptian Pharmacy Procurement Reconciliation Engine
 Authoritative Specification: ORIGINAL_REQUEST.md, PROJECT.md, survey_spec.md, survey_clinical_build.md
 Reference Benchmark: أفضل_اسعار_2026-09-28.xlsx
-Daily Inputs: 279.xlsx + 7 Wholesaler PDFs in C:\\Users\\omart\\Downloads
+Daily Inputs: 279.xlsx + 7 Wholesaler PDFs in benchmark dataset
 
 Structure:
   - Tier 1: Feature Coverage (≥5 tests per feature across 9 core features)
@@ -55,7 +55,7 @@ from src.pipeline import run_procurement_pipeline, PipelineExecutionError
 # FIXTURES & PATH CONSTANTS
 # ============================================================================
 
-DOWNLOADS_DIR = r"C:\Users\omart\Downloads"
+DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR", os.path.expanduser("~/Downloads"))
 ORDER_279_PATH = os.path.join(DOWNLOADS_DIR, "279.xlsx")
 GOLDEN_BENCHMARK_PATH = os.path.join(DOWNLOADS_DIR, "أفضل_اسعار_2026-09-28.xlsx")
 
@@ -1254,7 +1254,7 @@ class TestTier3CrossFeatureCombinations:
 class TestTier4RealWorldAcceptanceWorkload:
     """
     Tier 4: Real-World Acceptance Workload against physical daily inputs
-    (279.xlsx + 7 Wholesaler PDFs in C:\\Users\\omart\\Downloads).
+    (279.xlsx + 7 Wholesaler PDFs in benchmark dataset).
     Asserts exact golden reference metrics from أفضل_اسعار_2026-09-28.xlsx.
     """
 
@@ -1278,7 +1278,7 @@ class TestTier4RealWorldAcceptanceWorkload:
 
     @pytest.mark.skipif(
         not all(os.path.exists(os.path.join(DOWNLOADS_DIR, f)) for f in EXPECTED_PDF_FILES),
-        reason="One or more of the 7 wholesaler PDFs is missing in C:\\Users\\omart\\Downloads"
+        reason=f"One or more of the 7 wholesaler PDFs is missing in {DOWNLOADS_DIR}"
     )
     def test_t4_02_all_7_wholesaler_pdfs_normalize_to_canonical_names(self):
         """
@@ -1290,12 +1290,14 @@ class TestTier4RealWorldAcceptanceWorkload:
             for f in EXPECTED_PDF_FILES
         ]
         assert normalized_names == EXPECTED_WHOLESALERS, (
+            f"Normalized names mismatch:\nExpected: {EXPECTED_WHOHALERS}\nActual:   {normalized_names}"
+            if "EXPECTED_WHOHALERS" in locals() else
             f"Normalized names mismatch:\nExpected: {EXPECTED_WHOLESALERS}\nActual:   {normalized_names}"
         )
 
     @pytest.mark.skipif(
         not (os.path.exists(ORDER_279_PATH) and all(os.path.exists(os.path.join(DOWNLOADS_DIR, f)) for f in EXPECTED_PDF_FILES)),
-        reason="Daily order or wholesaler PDFs missing in C:\\Users\\omart\\Downloads"
+        reason=f"Daily order or wholesaler PDFs missing in {DOWNLOADS_DIR}"
     )
     def test_t4_03_full_pipeline_acceptance_on_2026_09_28_daily_inputs(self, temp_workspace):
         """

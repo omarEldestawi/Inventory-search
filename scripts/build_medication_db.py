@@ -428,7 +428,6 @@ def build_from_workspace(db_path: Optional[str] = None, rebuild_fresh: bool = Tr
     po_search_patterns = [
         os.path.join(PROJECT_ROOT, "train", "*.xlsx"),
         os.path.join(os.path.expanduser("~"), "Desktop", "train", "*.xlsx"),
-        r"C:\Users\omart\Desktop\train\*.xlsx",
         os.path.join(PROJECT_ROOT, "input", "orders", "*.xlsx"),
         os.path.join(PROJECT_ROOT, "test1", "*.xlsx"),
     ]
@@ -481,7 +480,6 @@ def build_from_workspace(db_path: Optional[str] = None, rebuild_fresh: bool = Tr
     cat_search_patterns = [
         os.path.join(PROJECT_ROOT, "train", "*.pdf"),
         os.path.join(os.path.expanduser("~"), "Desktop", "train", "*.pdf"),
-        r"C:\Users\omart\Desktop\train\*.pdf",
         os.path.join(PROJECT_ROOT, "input", "catalogs", "*.pdf"),
     ]
     seen_cat_names = set()
