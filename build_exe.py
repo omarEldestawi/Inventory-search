@@ -7,8 +7,26 @@ import os
 import sys
 import subprocess
 import site
+import shutil
+import stat
+
+def safe_rmtree(path):
+    if not os.path.exists(path):
+        return
+    def on_rm_error(func, p, exc_info):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+    try:
+        shutil.rmtree(path, onerror=on_rm_error)
+    except Exception:
+        subprocess.run(["powershell", "-NoProfile", "-Command", f"Remove-Item -Recurse -Force '{path}'"], capture_output=True)
 
 def build():
+    dist_dir = os.path.join("dist", "EgyptianPharmaOptimizer")
+    safe_rmtree(dist_dir)
     datas = []
 
     def add_data_item(src: str, dst: str):
@@ -24,10 +42,11 @@ def build():
     except Exception as e:
         print(f"Warning: Could not resolve customtkinter path: {e}")
 
-    # 2. Source code, input templates, and application assets
+    # 2. Source code, input templates, application assets, and medication knowledge base
     add_data_item("src", "src")
     add_data_item("input", "input")
     add_data_item("assets", "assets")
+    add_data_item("data", "data")
 
     # 3. Models directory and standalone ONNX model files
     add_data_item("models", "models")
@@ -79,6 +98,10 @@ def build():
         "--hidden-import", "rapidocr_onnxruntime",
         "--hidden-import", "rapid_table",
         "--hidden-import", "onnxruntime",
+        "--hidden-import", "rapidfuzz",
+        "--hidden-import", "google",
+        "--hidden-import", "sqlite3",
+        "--hidden-import", "src.medication_db",
     ]
 
     for d in datas:
@@ -91,6 +114,17 @@ def build():
     if res.returncode != 0:
         print("PyInstaller build failed.")
         sys.exit(res.returncode)
+
+    # Ensure data/ is bundled directly in dist/EgyptianPharmaOptimizer/data for standalone runs
+    out_data = os.path.join("dist", "EgyptianPharmaOptimizer", "data")
+    if os.path.exists("data"):
+        os.makedirs(out_data, exist_ok=True)
+        for fname in os.listdir("data"):
+            src_f = os.path.join("data", fname)
+            dst_f = os.path.join(out_data, fname)
+            if os.path.isfile(src_f):
+                shutil.copy2(src_f, dst_f)
+
     print("PyInstaller build succeeded. Output located at dist/EgyptianPharmaOptimizer/")
 
 if __name__ == "__main__":

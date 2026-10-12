@@ -5,11 +5,49 @@ Generates Right-to-Left (RTL) multi-sheet workbooks with identical typography, K
 exact formulas, financial totals, and side-by-side catalog comparison.
 """
 import os
+import re
 import datetime
-from typing import Optional
+from typing import Optional, Any
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import pandas as pd
+
+# XML 1.0 illegal characters regex for openpyxl safety
+# Prohibits ASCII control characters (0-8, 11-12, 14-31) and surrogate/non-character code points
+ILLEGAL_CHARACTERS_RE = re.compile(
+    r'[\000-\010]|[\013-\014]|[\016-\037]|[\ud800-\udfff]|[\ufffe-\uffff]'
+)
+
+
+def clean_excel_str(val: Any) -> str:
+    """
+    Sanitizes string values by removing illegal XML characters to avoid
+    openpyxl.utils.exceptions.IllegalCharacterError. Converts None / NaN to empty string.
+    """
+    if val is None:
+        return ""
+    if isinstance(val, float) and (val != val):  # Fast NaN check
+        return ""
+    val_str = str(val)
+    if val_str.strip().lower() == 'nan':
+        return ""
+    return ILLEGAL_CHARACTERS_RE.sub("", val_str)
+
+
+def clean_sheet_title(title: str) -> str:
+    r"""
+    Sanitizes sheet tab title for openpyxl:
+    - Removes invalid characters: \ / ? * : [ ]
+    - Removes XML illegal characters
+    - Truncates to max 31 characters
+    """
+    if not title:
+        return "Sheet"
+    cleaned = re.sub(r'[\\*?:/\[\]]', '_', str(title))
+    cleaned = ILLEGAL_CHARACTERS_RE.sub("", cleaned).strip()
+    return cleaned[:31] or "Sheet"
+
 
 class ArabicExcelReportGenerator:
     def __init__(self, allocation_result: dict, output_dir: Optional[str] = None):
@@ -82,6 +120,7 @@ class ArabicExcelReportGenerator:
         master_df = self.result.get('master_comparison')
         allocated = self.result.get('allocated_orders', {})
         oos_df = self.result.get('out_of_stock')
+        rec_df = self.result.get('recommendations')
 
         # -------------------------------------------------------------
         # SHEET 1: Master Comparison (المقارنة الشاملة وتوزيع الأصناف)
@@ -95,7 +134,7 @@ class ArabicExcelReportGenerator:
         # Row 1: Title
         ws_master.merge_cells(f"A1:{end_col_letter}1")
         c_title = ws_master["A1"]
-        c_title.value = "تقرير مقارنة أسعار الأدوية وخطة الشراء المحسنة"
+        c_title.value = clean_excel_str("تقرير مقارنة أسعار الأدوية وخطة الشراء المحسنة")
         c_title.font = font_main_title
         c_title.alignment = align_center
 
@@ -103,7 +142,7 @@ class ArabicExcelReportGenerator:
         ws_master.merge_cells(f"A2:{end_col_letter}2")
         c_sub = ws_master["A2"]
         num_wh = kpis.get('num_warehouses', len(allocated))
-        c_sub.value = f"تحليل عروض {num_wh} مخازن أدوية وتوزيع الأصناف حسب أعلى نسبة خصم مع مطابقة تامة بدون بدائل | {arabic_date_text}"
+        c_sub.value = clean_excel_str(f"تحليل عروض {num_wh} مخازن أدوية وتوزيع الأصناف حسب أعلى نسبة خصم مع مطابقة تامة بدون بدائل | {arabic_date_text}")
         c_sub.font = font_subtitle
         c_sub.alignment = align_center
 
@@ -124,12 +163,12 @@ class ArabicExcelReportGenerator:
             c_top = ws_master[r_top.split(":")[0]]
             c_val = ws_master[r_val.split(":")[0]]
             
-            c_top.value = lbl
+            c_top.value = clean_excel_str(lbl)
             c_top.font = font_kpi_lbl
             c_top.alignment = align_center
             c_top.fill = fill_kpi
             
-            c_val.value = val
+            c_val.value = clean_excel_str(val)
             c_val.font = font_kpi_val
             c_val.alignment = align_center
             c_val.fill = fill_kpi
@@ -141,10 +180,12 @@ class ArabicExcelReportGenerator:
         # Row 8: Table Headers
         start_row = 8
         if master_df is not None and not master_df.empty:
-            headers = list(master_df.columns)
+            if 'اسم الصنف في أمر الشراء' in master_df.columns and 'اسم الصنف المطلوب (في طلب الشراء)' in master_df.columns:
+                master_df = master_df.drop(columns=['اسم الصنف في أمر الشراء'])
+            headers = [clean_excel_str(h) for h in master_df.columns]
             for col_idx, h in enumerate(headers, 1):
                 c = ws_master.cell(row=start_row, column=col_idx)
-                c.value = h
+                c.value = clean_excel_str(h)
                 c.font = font_tbl_header
                 c.fill = fill_navy_header
                 c.alignment = align_center
@@ -161,43 +202,55 @@ class ArabicExcelReportGenerator:
                     
                     # Col 1: Serial No
                     if c_i == 1:
-                        c.value = int(val) if val is not None else r_i - start_row
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - start_row
+                        except (ValueError, TypeError):
+                            c.value = r_i - start_row
                         c.alignment = align_center
                     # Col 2, 3: Item Names
                     elif c_i in (2, 3):
-                        c.value = str(val) if val is not None else ""
+                        c.value = clean_excel_str(val)
                         c.alignment = align_right
                     # Col 4: Qty
                     elif c_i == 4:
-                        c.value = int(val) if val is not None else 1
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else 1
+                        except (ValueError, TypeError):
+                            c.value = 1
                         c.alignment = align_center
                     # Col 5: Winning Warehouse
                     elif c_i == 5:
-                        c.value = str(val) if val is not None else ""
+                        c.value = clean_excel_str(val)
                         c.alignment = align_center
                     # Col 6: Highest Discount %
                     elif c_i == 6:
                         try:
-                            c.value = float(val)
-                            c.number_format = '0.0%'
+                            if val is not None and not (isinstance(val, float) and val != val):
+                                c.value = float(val)
+                                c.number_format = '0.0%'
+                            else:
+                                c.value = ""
                         except (ValueError, TypeError):
-                            c.value = val
+                            c.value = clean_excel_str(val)
                         c.alignment = align_center
                     # Col 7..11: Currency amounts
                     elif c_i in (7, 8, 9, 10, 11):
                         try:
-                            c.value = float(val)
-                            c.number_format = '#,##0.00'
+                            if val is not None and not (isinstance(val, float) and val != val):
+                                c.value = float(val)
+                                c.number_format = '#,##0.00'
+                            else:
+                                c.value = ""
                         except (ValueError, TypeError):
-                            c.value = val
+                            c.value = clean_excel_str(val)
                         c.alignment = align_center
                     # Warehouse discount columns
                     else:
-                        if isinstance(val, (int, float)):
+                        if isinstance(val, (int, float)) and not (isinstance(val, float) and val != val):
                             c.value = float(val)
                             c.number_format = '0.0%'
                         else:
-                            c.value = val
+                            c.value = clean_excel_str(val)
                         c.alignment = align_center
 
                     if is_even:
@@ -234,23 +287,33 @@ class ArabicExcelReportGenerator:
         # -------------------------------------------------------------
         # SHEETS 2+: Winning Supplier PO Sheets (طلب شراء - [اسم المخزن])
         # -------------------------------------------------------------
+        existing_sheet_titles = set(wb.sheetnames)
         for w_name, po_df in allocated.items():
-            clean_tab_name = w_name.replace("مخزن ", "").replace(".pdf", "").strip()[:20]
-            sheet_title = f"طلب شراء - {clean_tab_name}"[:31]
+            w_name_clean = clean_excel_str(w_name)
+            clean_tab_name = w_name_clean.replace("مخزن ", "").replace(".pdf", "").strip()[:20]
+            base_sheet_title = clean_sheet_title(f"طلب شراء - {clean_tab_name}")
+            sheet_title = base_sheet_title
+            suffix = 1
+            while sheet_title in existing_sheet_titles:
+                tag = f"_{suffix}"
+                sheet_title = f"{base_sheet_title[:31-len(tag)]}{tag}"
+                suffix += 1
+            existing_sheet_titles.add(sheet_title)
+
             ws_po = wb.create_sheet(title=sheet_title)
             ws_po.views.sheetView[0].rightToLeft = True
 
             # Row 1: Title
             ws_po.merge_cells("A1:J1")
             po_title = ws_po["A1"]
-            po_title.value = f"أمر توريد أدوية - {w_name}"
+            po_title.value = clean_excel_str(f"أمر توريد أدوية - {w_name}")
             po_title.font = font_main_title
             po_title.alignment = align_center
 
             # Row 2: Subtitle
             ws_po.merge_cells("A2:J2")
             po_sub = ws_po["A2"]
-            po_sub.value = f"تاريخ الطلب: {arabic_date_text} | عدد الأصناف المعتمدة: {len(po_df)} صنف"
+            po_sub.value = clean_excel_str(f"تاريخ الطلب: {arabic_date_text} | عدد الأصناف المعتمدة: {len(po_df)} صنف")
             po_sub.font = font_subtitle
             po_sub.alignment = align_center
 
@@ -263,7 +326,7 @@ class ArabicExcelReportGenerator:
             ]
             for c_i, h in enumerate(po_headers, 1):
                 c = ws_po.cell(row=4, column=c_i)
-                c.value = h
+                c.value = clean_excel_str(h)
                 c.font = font_tbl_header
                 c.fill = fill_navy_header
                 c.alignment = align_center
@@ -279,30 +342,42 @@ class ArabicExcelReportGenerator:
                     c.border = thin_border
                     
                     if c_i == 1:
-                        c.value = int(val) if val is not None else r_i - 4
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - 4
+                        except (ValueError, TypeError):
+                            c.value = r_i - 4
                         c.alignment = align_center
                     elif c_i in (2, 3):
-                        c.value = str(val) if val is not None else ""
+                        c.value = clean_excel_str(val)
                         c.alignment = align_right
                     elif c_i == 4:
-                        c.value = int(val) if val is not None else 1
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else 1
+                        except (ValueError, TypeError):
+                            c.value = 1
                         c.alignment = align_center
                     elif c_i == 5:
                         try:
-                            c.value = float(val)
-                            c.number_format = '0.0%'
+                            if val is not None and not (isinstance(val, float) and val != val):
+                                c.value = float(val)
+                                c.number_format = '0.0%'
+                            else:
+                                c.value = ""
                         except (ValueError, TypeError):
-                            c.value = val
+                            c.value = clean_excel_str(val)
                         c.alignment = align_center
                     elif c_i in (6, 7, 8, 9):
                         try:
-                            c.value = float(val)
-                            c.number_format = '#,##0.00'
+                            if val is not None and not (isinstance(val, float) and val != val):
+                                c.value = float(val)
+                                c.number_format = '#,##0.00'
+                            else:
+                                c.value = ""
                         except (ValueError, TypeError):
-                            c.value = val
+                            c.value = clean_excel_str(val)
                         c.alignment = align_center
                     else:
-                        c.value = str(val) if val is not None else ""
+                        c.value = clean_excel_str(val)
                         c.alignment = align_center
 
                     if is_even:
@@ -338,13 +413,17 @@ class ArabicExcelReportGenerator:
         # -------------------------------------------------------------
         # SHEET LAST: Out of Stock - نواقص غير متوفرة
         # -------------------------------------------------------------
-        ws_oos = wb.create_sheet(title="نواقص غير متوفرة")
+        oos_sheet_title = clean_sheet_title("نواقص غير متوفرة")
+        if oos_sheet_title in existing_sheet_titles:
+            oos_sheet_title = f"{oos_sheet_title[:28]}_1"
+        existing_sheet_titles.add(oos_sheet_title)
+        ws_oos = wb.create_sheet(title=oos_sheet_title)
         ws_oos.views.sheetView[0].rightToLeft = True
 
         # Row 1: Title
         ws_oos.merge_cells("A1:E1")
         oos_title = ws_oos["A1"]
-        oos_title.value = "بيان الأصناف غير المتوفرة في المخازن (نواقص الشراء)"
+        oos_title.value = clean_excel_str("بيان الأصناف غير المتوفرة في المخازن (نواقص الشراء)")
         oos_title.font = font_main_title
         oos_title.alignment = align_center
 
@@ -352,7 +431,7 @@ class ArabicExcelReportGenerator:
         ws_oos.merge_cells("A2:E2")
         oos_sub = ws_oos["A2"]
         oos_count = len(oos_df) if oos_df is not None else 0
-        oos_sub.value = f"إجمالي النواقص: {oos_count} صنف | يتطلب المتابعة مع الموردين أو البحث عن بدائل معتمدة"
+        oos_sub.value = clean_excel_str(f"إجمالي النواقص: {oos_count} صنف | يتطلب المتابعة مع الموردين أو البحث عن بدائل معتمدة")
         oos_sub.font = font_subtitle
         oos_sub.alignment = align_center
 
@@ -360,7 +439,7 @@ class ArabicExcelReportGenerator:
         oos_headers = ['م', 'اسم الصنف المطلوب', 'الكمية المطلوبة', 'حالة التوفر', 'ملاحظات المتابعة والبحث']
         for c_i, h in enumerate(oos_headers, 1):
             c = ws_oos.cell(row=4, column=c_i)
-            c.value = h
+            c.value = clean_excel_str(h)
             c.font = font_tbl_header
             c.fill = PatternFill(start_color="595959", end_color="595959", fill_type="solid")
             c.alignment = align_center
@@ -376,22 +455,130 @@ class ArabicExcelReportGenerator:
                     c.border = thin_border
                     
                     if c_i == 1:
-                        c.value = int(val) if val is not None else r_i - 4
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - 4
+                        except (ValueError, TypeError):
+                            c.value = r_i - 4
                         c.alignment = align_center
                     elif c_i == 2:
-                        c.value = str(val) if val is not None else ""
+                        c.value = clean_excel_str(val)
                         c.alignment = align_right
                     elif c_i == 3:
-                        c.value = int(val) if val is not None else 1
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else 1
+                        except (ValueError, TypeError):
+                            c.value = 1
                         c.alignment = align_center
                     else:
-                        c.value = str(val) if val is not None else ""
+                        c.value = clean_excel_str(val)
                         c.alignment = align_center
                         
                     if is_even:
                         c.fill = fill_oos_row
 
         self._autofit_columns(ws_oos)
+
+        # -------------------------------------------------------------
+        # SHEET FINAL: Recommendations & Alternatives - توصيات وبدائل النواقص
+        # -------------------------------------------------------------
+        rec_sheet_title = clean_sheet_title("توصيات وبدائل النواقص")
+        if rec_sheet_title in existing_sheet_titles:
+            rec_sheet_title = f"{rec_sheet_title[:28]}_1"
+        existing_sheet_titles.add(rec_sheet_title)
+        ws_rec = wb.create_sheet(title=rec_sheet_title)
+        ws_rec.views.sheetView[0].rightToLeft = True
+
+        # Build fallback rec_df if not provided
+        if rec_df is None or (isinstance(rec_df, pd.DataFrame) and rec_df.empty):
+            rec_rows = []
+            if oos_df is not None and not oos_df.empty:
+                for idx, r in enumerate(oos_df.values, 1):
+                    rec_rows.append({
+                        'م': idx,
+                        'الصنف الأصلي المطلوب (الناقص)': r[1] if len(r) > 1 else '',
+                        'الكمية المطلوبة': r[2] if len(r) > 2 else 1,
+                        'البديل التجاري المقترح': 'لا يوجد بديل تجاري متوفر حالياً بالمخازن',
+                        'المخزن المتاح لديه': '-',
+                        'سعر الجمهور': '-',
+                        'نسبة الخصم %': '-',
+                        'السعر بعد الخصم': '-',
+                        'ملاحظات الصيدلي والتوصيات': 'يتطلب المتابعة مع الوكلاء أو توفير صنف بديل معتمد'
+                    })
+            rec_df_render = pd.DataFrame(rec_rows) if rec_rows else pd.DataFrame(columns=[
+                'م', 'الصنف الأصلي المطلوب (الناقص)', 'الكمية المطلوبة',
+                'البديل التجاري المقترح', 'المخزن المتاح لديه', 'سعر الجمهور',
+                'نسبة الخصم %', 'السعر بعد الخصم', 'ملاحظات الصيدلي والتوصيات'
+            ])
+        else:
+            rec_df_render = rec_df
+
+        # Row 1: Title
+        ws_rec.merge_cells("A1:I1")
+        rec_title = ws_rec["A1"]
+        rec_title.value = clean_excel_str("توصيات وبدائل النواقص التجارية للأصناف غير المتوفرة (مراجعة الصيدلي)")
+        rec_title.font = font_main_title
+        rec_title.alignment = align_center
+
+        # Row 2: Subtitle / Pharmacist Guidance
+        ws_rec.merge_cells("A2:I2")
+        rec_sub = ws_rec["A2"]
+        rec_sub.value = clean_excel_str("تنبيه مهني للصيدلي: هذه البدائل التجارية مقترحة كخيارات اختيارية للمراجعة المهنية ولا تضاف تلقائياً لطلبيات التوريد حفاظاً على سلامة التوريد")
+        rec_sub.font = font_subtitle
+        rec_sub.alignment = align_center
+
+        # Row 4: Headers
+        rec_headers = [
+            'م', 'الصنف الأصلي المطلوب (الناقص)', 'الكمية المطلوبة',
+            'البديل التجاري المقترح', 'المخزن المتاح لديه', 'سعر الجمهور',
+            'نسبة الخصم %', 'السعر بعد الخصم', 'ملاحظات الصيدلي والتوصيات'
+        ]
+        fill_rec_header = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+        for c_i, h in enumerate(rec_headers, 1):
+            c = ws_rec.cell(row=4, column=c_i)
+            c.value = clean_excel_str(h)
+            c.font = font_tbl_header
+            c.fill = fill_rec_header
+            c.alignment = align_center
+            c.border = thin_border
+
+        # Row 5+: Data Rows
+        if not rec_df_render.empty:
+            for r_i, row_data in enumerate(rec_df_render.values, 5):
+                is_even = (r_i % 2 == 0)
+                for c_i, val in enumerate(row_data, 1):
+                    c = ws_rec.cell(row=r_i, column=c_i)
+                    c.font = font_cell
+                    c.border = thin_border
+
+                    if c_i == 1:
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - 4
+                        except (ValueError, TypeError):
+                            c.value = r_i - 4
+                        c.alignment = align_center
+                    elif c_i in [2, 4]:
+                        c.value = clean_excel_str(val)
+                        c.alignment = align_right
+                    elif c_i == 3:
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else 1
+                        except (ValueError, TypeError):
+                            c.value = 1
+                        c.alignment = align_center
+                    elif c_i in [6, 7, 8]:
+                        try:
+                            c.value = float(val) if val is not None and str(val).strip() != '-' else str(val)
+                        except (ValueError, TypeError):
+                            c.value = str(val)
+                        c.alignment = align_center
+                    else:
+                        c.value = clean_excel_str(val)
+                        c.alignment = align_center
+
+                    if is_even:
+                        c.fill = fill_zebra
+
+        self._autofit_columns(ws_rec)
 
         # Save primary benchmark name: Procurement_Order_Optimized_YYYY-MM-DD.xlsx
         try:
@@ -435,3 +622,14 @@ class ArabicExcelReportGenerator:
                         continue
                     max_len = max(max_len, len(val_str))
             ws.column_dimensions[col_letter].width = max(max_len + 5, 14)
+
+    @classmethod
+    def generate_report(cls, allocation_result: dict, output_dir: Optional[str] = None, custom_date_str: Optional[str] = None) -> str:
+        """Convenience class method matching ReportGenerator.generate_report()."""
+        generator = cls(allocation_result, output_dir=output_dir)
+        return generator.generate(custom_date_str=custom_date_str)
+
+
+# Alias for domain benchmark compliance
+ReportGenerator = ArabicExcelReportGenerator
+

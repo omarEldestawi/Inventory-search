@@ -1,258 +1,148 @@
 # Original User Request
 
-## 2026-09-10T20:40:22Z
+## Initial Request — 2026-09-27T04:27:39+03:00
 
-Build a modern Windows 11 desktop GUI application (using CustomTkinter) for the Egyptian Pharmaceutical Procurement Engine, and package it into a standalone Windows installer wizard (`Setup.exe`) for distribution to other laptops.
+You are teamwork_preview_swe, the orchestrator for SWE Light.
+Your working directory is: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\swe_light_2
+Project workspace: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search
+Authoritative user request: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\ORIGINAL_REQUEST.md
 
-Working directory: c:/Users/omart/.gemini/antigravity/scratch/Inventory-search
-Integrity mode: development
-
-## Requirements
-
-### R1. Modern Windows 11 Graphical Interface (CustomTkinter)
-Create an intuitive, modern desktop interface supporting Arabic and English:
-- **Input 1 (Files Selection)**: Browse and multi-select input files (order list `.xlsx` and wholesaler catalogs `.pdf`, `.xlsx`, `.csv`), with a clean list widget displaying selected files and allowing items to be added or removed.
-- **Input 2 (Output Destination)**: Browse and select the destination directory where the resulting procurement report will be saved.
-- **Run & Feedback**: An action button to start optimization with an active progress bar and a post-run summary card showing key KPIs (matched items, average discount, winning wholesalers, and a direct button to open the generated Excel file / folder).
-
-### R2. Core Procurement Engine Integration
-Connect the GUI controller to the existing local deterministic engine (`src/allocator.py`, `src/pdf_parser.py`, `src/normalizer.py`, `src/pharma_matcher.py`, `src/report_generator.py`):
-- Automatically categorize selected files into daily orders vs wholesaler catalogs based on file content and naming patterns.
-- Execute allocation asynchronously in a background thread to keep the GUI responsive and prevent "Not Responding" freezes.
-- Generate the final multi-sheet Arabic procurement Excel report directly in the user-selected output directory.
-
-### R3. Standalone Executable Packaging (PyInstaller)
-Package the desktop application and its dependencies (`pymupdf`, `pandas`, `openpyxl`, `rapidfuzz`, `customtkinter`) into a standalone Windows executable.
-
-### R4. Windows Installer Wizard (Setup.exe)
-Create an automated Windows installation wizard (`Setup.exe` via Inno Setup or NSIS script):
-- Installs the application to standard Windows user directories (`AppData` or `Program Files`).
-- Automatically creates Desktop and Start Menu shortcuts with an application icon.
-- Includes a clean uninstaller accessible via Windows Settings / Add or Remove Programs.
-- Runs on any Windows 10/11 laptop without requiring Python or manual configuration.
-
-## Acceptance Criteria
-
-### GUI Functionality & Usability
-- [ ] Application launches cleanly into a modern Windows 11 styled window with dark/light mode support.
-- [ ] File picker dialog allows selecting multiple `.pdf` and `.xlsx` files, displayed in a scrollable list with item counts.
-- [ ] Folder picker dialog allows selecting any valid output destination path.
-- [ ] Execution runs smoothly with a progress indicator and finishes without UI freezing.
-- [ ] Generates the exact multi-sheet procurement workbook in the chosen folder.
-- [ ] Completion modal displays summary KPIs and offers a "Open Output File" button.
-
-### Packaging & Distribution
-- [ ] PyInstaller build script/spec cleanly compiles the application without missing module errors.
-- [ ] An installer setup script (Inno Setup `.iss` / NSIS) compiles a standalone `Setup.exe`.
-- [ ] Installing `Setup.exe` on a clean Windows machine installs the software, creates Start Menu / Desktop shortcuts, and launches the app successfully.
-
-## Verification Plan
-1. **Automated GUI & Engine Test**: Execute an automated headless or integration test feeding sample files and verifying output report creation at target path.
-2. **Build Verification**: Compile executable via PyInstaller and verify that the output binary launches and processes sample catalogs.
-3. **Installer Compilation**: Verify that the installer compiler outputs `Setup.exe` ready for distribution.
-
-## Follow-up — 2026-09-10T20:48:10Z
-
-The user has provided the following directive: "can u give the agents full perrmission, no need to ask me to run any commands". Full permission has been granted across the entire multi-agent hierarchy for all commands, scripts, builds, and tool runs. Proceed autonomously without pausing for manual command approvals.
-
-## Follow-up — 2026-09-10T22:57:08Z
-
-Continue building the Egyptian Pharmaceutical Procurement Engine Windows 11 desktop application. The core engine, GUI, pipeline bridge, and test suite are already built and working. The remaining work is: (1) add an Arabic OCR re-read feature for catalog inspection, (2) package the app into a standalone Windows executable, (3) create a Windows installer wizard, and (4) push the project to GitHub.
-
-Working directory: c:/Users/omart/.gemini/antigravity/scratch/Inventory-search
-Integrity mode: development
-
-## Existing Project State (DO NOT rebuild — these are DONE)
-
-The following are already complete and verified:
-- `src/pdf_parser.py`, `src/normalizer.py`, `src/pharma_matcher.py`, `src/allocator.py`, `src/report_generator.py` — Core deterministic procurement engine
-- `src/pipeline.py`, `src/controller.py` — Async execution bridge with 3-tier file auto-classification
-- `app_gui.py` — 1,036-line CustomTkinter Windows 11 GUI with dual inputs (multi-file picker + output folder), async worker threading, progress bar, KPI dashboard, theme switching, bilingual Arabic/English support
-- `tests/` — 91+ passing tests across pipeline, GUI, and E2E tiers
-- `main.py` — CLI entry point
-- `.git` initialized with initial commit, SSH key verified for `omarEldestawi` GitHub account
-- `rapidocr-onnxruntime` is already installed in the Python environment (`pip list` confirms it)
+Task:
+Enforce zero-risk clinical pharmaceutical allocation across Egyptian pharmacy wholesaler catalogs, expand aboriginal runic glyph decoding in PDF parsing, add a separate procurement recommendations tab in the output workbook, and verify against test suites and legacy diffs.
 
 ## Requirements
 
-### R1. Catalog Inspection & On-Demand OCR Re-read
-Add a feature to `app_gui.py` and `src/pdf_parser.py` that lets the user:
-- View how many medications were detected in each individual warehouse catalog file (show count per catalog in the file list or via an inspect button).
-- If the count looks wrong, trigger an on-demand "Re-read with OCR" that re-parses that specific catalog using `rapidocr-onnxruntime` (already installed) to render PDF pages as images and run OCR for more accurate text extraction.
-- The OCR re-read must run asynchronously in a background thread so the GUI stays responsive.
-- After OCR re-read completes, update the displayed medication count with the new result.
-- The `rapidocr-onnxruntime` library works 100% locally with no API keys or internet required, and supports Arabic text.
+### R1. Strict Clinical Safety & Zero Cross-Form Substitutions
+- Commercial substitutes marked with `بديل` or `substitute` (e.g., `بديل ميبو`, `بديل كولشيسين`) must be strictly rejected from primary procurement allocation.
+- Enforce zero cross-form substitutions (`SOLID_ORAL` vs `ORAL_LIQUID`, `INJECTABLE` vs `SUPPOSITORY`, `SACHET` vs oral tablets, `TOPICAL_GEL` vs `TOPICAL_SOLUTION`).
+- Ensure exact strength, ratio, and pediatric/infant milk stages match without dangerous substitutions.
 
-### R2. PyInstaller Standalone Executable
-Package the complete desktop application into a standalone Windows executable using PyInstaller (already installed):
-- Must bundle all dependencies: `pymupdf`, `pandas`, `openpyxl`, `rapidfuzz`, `customtkinter`, `rapidocr-onnxruntime`.
-- Must include CustomTkinter theme assets (`--collect-all customtkinter`).
-- The resulting `.exe` must launch and run the full GUI without requiring Python to be installed.
+### R2. Aboriginal Runic Glyph Translation & De-spacing (`src/pdf_parser.py` & `src/normalizer.py`)
+- Expand the glyph translation map in `PDFCatalogParser` for Al-Hadhaba PDF format to translate:
+  - `ᗷ` → `ب`
+  - `ᜧ` → `ك`
+  - `ᣂ` → `ر`
+  - `ᢕ` → `و`
+  - `ᛞ` → `س`
+  - `ᘌ` → `ي`
+  - `ᘭ` → `ل`
+- Normalize OCR-split multi-word Arabic medication names (e.g., `سباز موبير الجين` / `سبازموبي رالجي ني` → `سبازموبيرالجين`).
 
-### R3. Windows Installer Wizard (Setup.exe)
-Create a Windows installation wizard using Inno Setup (already installed at `ISCC.exe` on PATH):
-- Installs the application to a standard Windows directory.
-- Creates Desktop and Start Menu shortcuts with an application icon.
-- Includes a clean uninstaller accessible via Windows Settings > Add or Remove Programs.
-- The resulting `Setup.exe` can be sent to any Windows 10/11 laptop and installs the program without requiring Python.
+### R3. Dedicated Recommendations Sheet in Excel Output (`src/report_generator.py`)
+- Add a dedicated "توصيات وبدائل النواقص" (Recommendations & Alternatives) tab at the end of the final Excel workbook.
+- In this tab, list available commercial alternatives for out-of-stock items as optional suggestions for pharmacist review, keeping the primary wholesaler order sheets strictly unadulterated.
 
-### R4. Git Backup to GitHub
-- Create the GitHub repository `omarEldestawi/Inventory-search` (use the SSH remote `git@github.com:omarEldestawi/Inventory-search.git`; SSH key is already configured and verified).
-- Commit all project files and push to `origin/main`.
-- Git is installed at `%LOCALAPPDATA%\Programs\Git\cmd\git.exe` (must be added to PATH in commands).
+### R4. Audit Diff Comparison Report
+- Generate an audit diff report comparing the resulting procurement workbook against `Procurement_Order_Optimized_2026-09-24 (1).xlsx` (in Downloads), documenting confirmed matches, blocked false positives, and recovered legitimate items.
 
-## Acceptance Criteria
+## Verification Resources & Acceptance Criteria
 
-### Catalog Inspection & OCR
-- [ ] Each catalog file in the GUI file list shows its detected medication count.
-- [ ] An inspect or re-read action is available per catalog file.
-- [ ] Clicking "Re-read with OCR" re-parses the catalog using `rapidocr-onnxruntime` and updates the count.
-- [ ] OCR re-read runs in a background thread without freezing the GUI.
+### Verification Resources
+- Adversarial test suite: `python -m unittest tests/test_adversarial_m3_challenger.py`
+- Adversarial M3 suite: `python -m unittest tests/test_m3_adversarial.py`
+- Full benchmark suite: `python -m unittest tests/test_full_train_benchmark.py`
+- Benchmark order file: `input/orders/0924.xlsx`
+- Legacy benchmark file: `Procurement_Order_Optimized_2026-09-24 (1).xlsx`
 
-### Packaging
-- [ ] A PyInstaller build script or `.spec` file exists and compiles without errors.
-- [ ] The compiled executable launches the GUI successfully.
-- [ ] An Inno Setup `.iss` script exists and compiles a `Setup.exe`.
+### Acceptance Criteria
+- [ ] All three test suites (`test_adversarial_m3_challenger.py`, `test_m3_adversarial.py`, `test_full_train_benchmark.py`) pass with 0 failures and 0 errors.
+- [ ] 0 commercial substitutes (`بديل`) matched in the primary procurement allocation orders.
+- [ ] 0 cross-form substitutions in the allocated order.
+- [ ] Al-Hadhaba runic ligatures (`ᗷ`, `ᜧ`, `ᣂ`, `ᢕ`, `ᛞ`, `ᘌ`, `ᘭ`) are correctly translated to standard Arabic letters during PDF catalog ingestion.
+- [ ] The generated Excel workbook includes the new "توصيات وبدائل النواقص" sheet with clean formatting and pharmacist guidance.
+- [ ] Audit diff report generated and verified against `Procurement_Order_Optimized_2026-09-24 (1).xlsx`.
 
-### Git
-- [ ] Project is committed and pushed to `git@github.com:omarEldestawi/Inventory-search.git`.
+Domain skill: `egyptian-pharma-procurement` located at `c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\skills\egyptian-pharma-procurement\SKILL.md`.
 
-## Verification Plan
-1. Run `python app_gui.py --self-test` to verify the GUI still initializes correctly after changes.
-2. Run `python -m pytest tests/ -x` to verify existing tests still pass.
-3. Run the PyInstaller build and verify the output binary exists and launches.
-4. Run the Inno Setup compiler and verify `Setup.exe` is produced.
-5. Verify `git log` shows commits pushed to the remote.
+Execute the SWE Light workflow: run an implementer on the task, followed by reviewer rounds, establishing correctness with tests. When finished, send a completion report back to parent.
 
-## Directive — 2026-09-10T22:57:49Z
+## 2026-09-28T02:05:17+03:00
 
-IMPORTANT USER DIRECTIVE — OCR Architecture Decision:
-
-The user has done their own research and mandates the following OCR stack for the catalog re-read feature (R1):
-
-**Use RapidOCR + RapidTable (NOT upstream PaddleOCR, NOT Surya)**
-
-Architecture to follow:
-1. `PyMuPDF (fitz)` → Rasterizes PDF pages locally at 300 DPI (`page.get_pixmap(dpi=300)`)
-2. `RapidOCR` (`from rapidocr_onnxruntime import RapidOCR`) → Extracts Arabic text via ONNX on CPU (identical PaddleOCR weights, zero-friction install)
-3. `RapidTable` (`from rapid_table import RapidTable`) → Detects table column boundaries (اسم الصنف, سعر الجمهور, الخصم) and outputs clean `pandas.DataFrame`
-4. Feed the DataFrame rows into the existing normalizer/matcher pipeline
-
-Key reasons the user chose this:
-- **ONNX Runtime** = lightweight, CPU-optimized, no CUDA/PaddlePaddle deps
-- **Identical Arabic accuracy** to PaddleOCR (same weights converted to ONNX)
-- **Easy PyInstaller packaging** — no heavy C++ .dll issues
-- **RapidTable** handles tabular pharmaceutical catalogs directly into pandas
-
-Both packages are already installed: `rapidocr_onnxruntime` and `rapid_table` (being installed now via pip).
-
-Also: full autonomous execution permission granted — run all commands without asking the user.
-
-## Directive — 2026-09-10T23:01:05Z
-
-The user has explicitly stated again: "allow everything without my permission, automatically approve and proceed".
-
-You and all child subagents (explorers, workers, reviewers, testers, auditors) must execute all commands, scripts, builds, file writes, and tasks completely autonomously. Under NO circumstances pause, halt, or request manual confirmation from the user. Continue straight through until M1, M2, M3, and M4 are fully delivered and verified.
-
-## Directive — 2026-09-10T23:05:23Z
-
-URGENT DIRECTIVE FROM USER:
-The host IDE is presenting security confirmation popups whenever subagents invoke `run_command`. 
-
-To eliminate these prompts:
-1. Minimize shell `run_command` calls. Perform all code modifications, inspections, and file operations directly using file tools (`view_file`, `write_to_file`, `replace_file_content`) rather than terminal commands like `cat`, `ls`, or python `-c`.
-2. Do not call `ask_question` under any circumstances.
-3. When testing Python code, batch tests together into single test runs rather than multiple separate commands.
-4. Auto-approve all subagent steps internally. Proceed without hesitation.
-
-## Directive — 2026-09-10T23:19:04Z
-
-SECURITY DIRECTIVE: The user mandates that ALL downloaded files, tools, and models must strictly originate from verified, trusted sources (PyPI via pip, official GitHub release assets, Microsoft winget, JRSoftware) with verified cryptographic SHA-256 checksums. No unverified third-party binaries or untrusted sources are permitted anywhere in the workspace.
-
-## Request — 2026-09-10T23:48:24Z
-
-Continue building the Egyptian Pharmaceutical Procurement Engine Windows 11 desktop application. 
-CRITICAL DIRECTIVE: The user has explicitly granted full permission for all commands, scripts, builds, and tool runs. All operations are 100% automated and pre-authorized. Never halt or pause execution to ask the user for approval. Minimize run_command calls and rely on file tools for inspections/edits.
-
-Working directory: c:/Users/omart/.gemini/antigravity/scratch/Inventory-search
-Integrity mode: development
-
-## Existing Project State (DO NOT rebuild — these are DONE & WORKING)
-
-- `src/pdf_parser.py`, `src/normalizer.py`, `src/pharma_matcher.py`, `src/allocator.py`, `src/report_generator.py` — Core deterministic procurement engine
-- `src/pipeline.py`, `src/controller.py` — Async execution bridge, `CatalogCache`, 3-tier file auto-classification
-- `app_gui.py` — Modern CustomTkinter Windows 11 GUI with catalog inspection badges and on-demand "Re-read with OCR" action using `rapidocr-onnxruntime` + `rapid_table` (`slanet-plus.onnx`)
-- `tests/test_ocr_parser.py` — 15/15 tests passing cleanly
-- `python app_gui.py --self-test` — Passes with exit code 0
-- Inno Setup `ISCC.exe` is on PATH; PyInstaller is installed; Git 2.55.0 is configured
-
-## Remaining Requirements
-
-### R1. Complete M1 Verification & Gate
-- Ensure all GUI tests in `tests/test_gui.py` and `tests/test_ocr_parser.py` pass cleanly.
-- Run `python app_gui.py --self-test` to verify GUI integrity.
-
-### R2. PyInstaller Standalone Executable
-- Create `PharmaOptimizer.spec` in the project root bundling:
-  - `customtkinter` (data files and theme assets via `collect_data_files('customtkinter')`)
-  - `rapidocr_onnxruntime` (data files and models via `collect_data_files('rapidocr_onnxruntime')`)
-  - `rapid_table` and `slanet-plus.onnx`
-  - `models/`, `input/`, and `assets/` directories if present
-  - Hidden imports: `customtkinter`, `rapidocr_onnxruntime`, `rapid_table`, `onnxruntime`, `cv2`, `PIL`, `openpyxl`, `pandas`, `fitz` (PyMuPDF)
-- Run `pyinstaller PharmaOptimizer.spec --clean --noconfirm` to produce `dist/PharmaProcurementOptimizer/PharmaProcurementOptimizer.exe`.
-- Verify that the executable in `dist/PharmaProcurementOptimizer` launches cleanly.
-
-### R3. Windows Installer Wizard (Setup.exe)
-- Create `installer_setup.iss` configuring Inno Setup:
-  - Application Name: `Egyptian Pharma Procurement Optimizer`
-  - Source: `dist\PharmaProcurementOptimizer\*`
-  - Output directory: `dist_installer`
-  - Output base filename: `PharmaProcurementOptimizer_Setup_v1.0.0`
-  - Creates Desktop and Start Menu shortcuts, clean uninstaller in Windows Settings.
-- Compile using `ISCC.exe installer_setup.iss` to produce `dist_installer\PharmaProcurementOptimizer_Setup_v1.0.0.exe`.
-- Verify that `dist_installer\PharmaProcurementOptimizer_Setup_v1.0.0.exe` is successfully generated.
-
-### R4. Git Backup to GitHub
-- Ensure all source code, specs, and installer scripts are committed to git.
-- Push to GitHub remote `git@github.com:omarEldestawi/Inventory-search.git` using the existing authenticated SSH key (zero passwords/approvals required).
-
-## Acceptance Criteria
-- [ ] `tests/test_gui.py` and `tests/test_ocr_parser.py` pass.
-- [ ] `python app_gui.py --self-test` passes (exit code 0).
-- [ ] PyInstaller compiles `dist/PharmaProcurementOptimizer/PharmaProcurementOptimizer.exe`.
-- [ ] Inno Setup compiles `dist_installer/PharmaProcurementOptimizer_Setup_v1.0.0.exe`.
-- [ ] Project committed and pushed to git repository.
-
-## Directive — 2026-09-10T23:50:12Z
-
-DEVELOPER INSTRUCTIONS & READY-MADE SCRIPTS:
-1. `build_exe.py` has been written to the root directory for PyInstaller compilation into `dist/EgyptianPharmaOptimizer/`.
-2. `installer.iss` has been written to the root directory for Inno Setup compiler (`ISCC.exe installer.iss`) into `dist_installer/EgyptianPharmaOptimizer_Setup_v1.0.0.exe`.
-3. In `tests/test_gui.py`, the 2-row layout assertions are aligned.
-4. Execute `python build_exe.py` and `ISCC.exe installer.iss` autonomously to finish R2, R3, and R4. Proceed without pausing.
-
-## 2026-09-11T11:09:20Z
-
-This is a single self-contained fix; keep it small and focused.
-
-Fix the output directory write permission error in packaged Windows builds and ensure robust RapidOCR / RapidTable catalog extraction.
+Execute complete reconciliation and permanent architectural fixes for Egyptian Pharmacy Procurement pipeline to match the golden reference benchmark (`أفضل_اسعار_2026-09-28.xlsx`) against daily inputs (`279.xlsx` and 7 wholesaler PDFs in `C:\Users\omart\Downloads`).
 
 Working directory: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search
+Integrity mode: development
 
 ## Requirements
 
-### R1. Safe User-Writable Default Output Directory
-The application must never default to writing output inside the application installation path (`_internal` or `Program Files`). It must default to a user-writable directory (e.g., `~/Desktop/Pharma_Output` or user Documents folder) with automatic fallback if the configured directory is not writable.
+### R1. Purchase Order Ingestion & Deduplication
+- Preserve all 572 distinct order items from `279.xlsx` by grouping strictly on original `requested_item` text (preventing collapse of distinct pricing states such as 'س ج' vs 'س ق').
+- Exclude noise headers and junk tokens such as isolated non-medication string 'AE' (quantity 3).
+- Do not overwrite `requested_item` with `canonical_item`.
 
-### R2. OCR Engine Reliability & Frozen Build Packaging
-Ensure `RapidOCR` and `RapidTable` work seamlessly both in development and in PyInstaller packaged builds (`.spec` / `build_exe.py`), with descriptive error logging and fallbacks for scanned PDFs.
+### R2. Wholesaler Catalog Ingestion & Glyph Decoding
+- Parse Al-Hadhaba catalog PDF with dynamic 4-column detection `[Code, Name, Price, Discount]`, decoding custom aboriginal glyphs and ligatures (`ᛞ` -> 'ب', `ᘭ` -> 'ي', `ᣂᢕﺘᜧﻻ` -> 'الاكتيز').
+- Ensure `is_catalog_noise` executes after glyph decoding and does not reject valid glyph presentation ranges.
+- Normalize wholesaler names to standard clean names ('الرواد', 'مخزن الحياة فارم', 'مخزن السلطان', 'مخزن المكرومي', 'مخزن الهضبة فارم', 'كيور فارما', 'مصر لتجارة الأدوية').
+
+### R3. Pharmaceutical Clinical Safety Gates
+- Enforce strict brand sub-type matching on umbrella brands (e.g., prevent cross-matching Limitless Osteodance to Limitless Chromax).
+- Correct decimal strength extraction (e.g., `5.` parsed as `0.5 mg`, preventing Dostinex 0.5mg from matching Dostinex 5mg).
+- Block cross-form substitutions across slash separators (e.g., lotion cannot match tablets).
+
+### R4. Report Parity & Standalone Executable Rebuild
+- Generate 10-sheet RTL Excel workbook with 100% column header and formula parity matching `أفضل_اسعار_2026-09-28.xlsx`, including Sheet 10 ('توصيات وبدائل النواقص') with 490 recommendations.
+- Recompile frozen executable using `python build_exe.py` so the standalone application in `dist/EgyptianPharmaOptimizer` incorporates all fixes.
 
 ## Acceptance Criteria
 
-### Execution & Permissions
-- [ ] Running pipeline with default settings never fails with `[WinError 5] Access is denied` in `Program Files`.
-- [ ] Directory creation validates write permissions before executing pipeline stages.
+### KPI Parity on 2026-09-28 Daily Inputs
+- [ ] Total requested items: exactly 572 items (0 missing, no 'AE' row).
+- [ ] Total allocated items: exactly 154 items.
+- [ ] Shortages (out of stock): exactly 418 items.
+- [ ] Total savings achieved: 97,898.87 EGP (32.3% of public value).
+- [ ] Al-Hadhaba allocated items: exactly 49 items.
+- [ ] Workbook structure: exactly 10 RTL sheets generated, including 'توصيات وبدائل النواقص' with 490 rows.
+- [ ] 0 false positive cross-form matches and 0 umbrella brand cross-matches.
+- [ ] Executable `dist/EgyptianPharmaOptimizer/EgyptianPharmaOptimizer.exe` cleanly rebuilt and runs without errors.
 
-### OCR Pipeline
-- [ ] `PDFCatalogParser.parse_ocr()` succeeds on test PDF files without missing ONNX runtime assets.
-- [ ] Error messages for missing OCR dependencies or corrupted files are surfaced clearly in the UI without crashing the worker thread.
+
+## 2026-10-11T00:47:30Z
+
+This is a focused execution and parser adaptation task: Ingest all 23 wholesaler PDF catalogs and 2 order sheets in C:\Users\omart\Desktop\train, learn and verify correct data extraction across every PDF catalog (resolving layout, font, number, and Arabic text direction quirks), extract all medication names and their variations/reversed forms into data/medications.db, and run order reconciliation and multi-vendor discount allocation.
+
+Working directory: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search
+Integrity mode: development
+
+## Requirements
+
+### R1. Full Training Dataset Ingestion & Adaptive Extraction Learning
+Inspect and parse every one of the 23 PDF catalogs in C:\Users\omart\Desktop\train:
+- Learn and adapt to each catalog's layout (2-column accounting formats, whitespace layouts, table grids).
+- Accurately decouple glued digits, dosage units, and discounts (e.g. 20% or سعر جديد).
+- Accurately decode font encodings (Arwasoft, Al-Hadaba, Greek/custom glyphs) and reverse visual LTR Arabic text streams to correct logical RTL Arabic.
+- Ensure 100% of the 23 catalogs yield clean, non-empty, well-structured inventory tables.
+
+### R2. Canonical Medication & Alias Knowledge Base Expansion
+Extract all unique medication names and variants from the parsed catalogs and purchase orders. Ingest them into data/medications.db, establishing canonical standard medications while registering all raw, reversed, and OCR alias variations so future lookups are instantaneous (< 1 ms).
+
+### R3. Deterministic Procurement Allocation & Optimization
+Reconcile and optimize daily purchase orders 0911.xlsx and 0912.xlsx from C:\Users\omart\Desktop\train against the consolidated vendor inventory. Enforce strict pharmaceutical safety gates (zero cross-drug substitutions, matching forms and strengths) and maximize discount rates across available wholesaler offers.
+
+### R4. Benchmark Diagnostics & Reporting
+Generate multi-sheet RTL Excel procurement workbooks for each purchase order and output benchmark diagnostics:
+- Per-catalog extraction metrics (items extracted, columns recognized, encoding health) across all 23 wholesaler catalogs
+- Total unique standard medications and total registered aliases in medications.db
+- Match rate and savings breakdown for 0911.xlsx and 0912.xlsx
+
+## Verification Resources & Acceptance Criteria
+
+### Verification Commands
+```powershell
+# 1. Verify all 23 catalogs are successfully parsed and extraction rates
+python scripts/survey_inventory.py
+
+# 2. Verify database integrity and total aliases
+python -c "from src.medication_db import MedicationDB; db = MedicationDB(); print(db.stats())"
+
+# 3. Run unit and end-to-end allocation test suite
+python -m pytest tests/test_medication_db.py tests/test_e2e_medication_db_allocation.py -v
+```
+
+### Acceptance Criteria
+- [ ] All 23 PDF catalogs in C:\Users\omart\Desktop\train parse accurately with zero crashes, extracting items, prices, and discounts.
+- [ ] Specific extraction issues (Arwasoft glyphs, 2-column tables, reversed text, glued numbers) are resolved and verified.
+- [ ] data/medications.db is populated with canonical standard medications and all discovered aliases.
+- [ ] Order allocation for 0911.xlsx and 0912.xlsx succeeds with 0 dangerous drug substitutions.
+- [ ] Benchmark KPIs and RTL Excel allocation reports are generated.
+- [ ] Automated test suite (test_medication_db.py, test_e2e_medication_db_allocation.py) passes 100%.

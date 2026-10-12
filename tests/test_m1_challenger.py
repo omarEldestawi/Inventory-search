@@ -431,6 +431,7 @@ class TestM1ChallengerBoundaryAndStress(unittest.TestCase):
             )
         self.assertIn("already running", str(ctx.exception).lower())
 
+        bridge.cancel()
         bridge.join(timeout=30.0)
         self.assertFalse(bridge.is_running)
 

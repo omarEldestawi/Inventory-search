@@ -1,0 +1,5930 @@
+{
+  "catalog_metrics": {
+    "ادم جمله.pdf": {
+      "warehouse": "مخزن ادم جملة",
+      "items": 277,
+      "arabic_items": 277,
+      "english_items": 0
+    },
+    "الاحد_انفنتي_نقدي.pdf": {
+      "warehouse": "مخزن انفينتي",
+      "items": 424,
+      "arabic_items": 424,
+      "english_items": 0
+    },
+    "الاحدنظام معلومات شركة نيو كيان المنصورة لتجارة وتوزيع الادوية.pdf": {
+      "warehouse": "نيو كيان المنصورة",
+      "items": 313,
+      "arabic_items": 313,
+      "english_items": 0
+    },
+    "الدولية دمنهور 1 (1).pdf": {
+      "warehouse": "الدولية فارما",
+      "items": 354,
+      "arabic_items": 354,
+      "english_items": 0
+    },
+    "السلام شبين نقدي.pdf": {
+      "warehouse": "مخزن السلام فارم",
+      "items": 191,
+      "arabic_items": 191,
+      "english_items": 0
+    },
+    "الفرسان اسكندريه (1).pdf": {
+      "warehouse": "الفرسان اسكندرية",
+      "items": 295,
+      "arabic_items": 295,
+      "english_items": 0
+    },
+    "الفرسان بنها نقدى.pdf": {
+      "warehouse": "الفرسان بنها",
+      "items": 1586,
+      "arabic_items": 1586,
+      "english_items": 0
+    },
+    "القمة شبين (2).pdf": {
+      "warehouse": "مخزن القمة",
+      "items": 416,
+      "arabic_items": 416,
+      "english_items": 0
+    },
+    "الهضبه الخميس نفدى.pdf": {
+      "warehouse": "مخزن الهضبة فارم",
+      "items": 1007,
+      "arabic_items": 1007,
+      "english_items": 0
+    },
+    "بيرفكت فارم المنوفيه نقدي خاص 12-9.pdf": {
+      "warehouse": "بيرفكت فارم المنوفية",
+      "items": 575,
+      "arabic_items": 575,
+      "english_items": 0
+    },
+    "جمله محجوب السنبلاوين.pdf": {
+      "warehouse": "مخزن محجوب السنبلاوين",
+      "items": 121,
+      "arabic_items": 121,
+      "english_items": 0
+    },
+    "دار الفؤاد السبت33.pdf": {
+      "warehouse": "دار الفؤاد",
+      "items": 364,
+      "arabic_items": 364,
+      "english_items": 0
+    },
+    "رافال نقدى.pdf": {
+      "warehouse": "مخزن رافال فارم",
+      "items": 434,
+      "arabic_items": 433,
+      "english_items": 1
+    },
+    "رواد الدوااا نقدى سياره.pdf": {
+      "warehouse": "شركة رواد الدواء",
+      "items": 459,
+      "arabic_items": 459,
+      "english_items": 0
+    },
+    "سينا.pdf": {
+      "warehouse": "سينا تريد",
+      "items": 705,
+      "arabic_items": 705,
+      "english_items": 0
+    },
+    "شركة ستروكا الجيزة.pdf": {
+      "warehouse": "شركة ستروكا الجيزة",
+      "items": 1132,
+      "arabic_items": 1132,
+      "english_items": 0
+    },
+    "لايف كير (تروفى).pdf": {
+      "warehouse": "لايف كير تروفي",
+      "items": 299,
+      "arabic_items": 299,
+      "english_items": 0
+    },
+    "مخزن العربيه للصيادله الزقازيق ج ج 12-9-2026.pdf": {
+      "warehouse": "الشركة العربية للصيادلة",
+      "items": 928,
+      "arabic_items": 928,
+      "english_items": 0
+    },
+    "مخزن د احمد عبد الله المنصورة1.pdf": {
+      "warehouse": "مخزن د أحمد عبد الله",
+      "items": 192,
+      "arabic_items": 192,
+      "english_items": 0
+    },
+    "مميز زيدان شبين الكوم-4.pdf": {
+      "warehouse": "مميز زيدان",
+      "items": 254,
+      "arabic_items": 254,
+      "english_items": 0
+    },
+    "نقدى صيادلة المستقبل شبين الكوم السبت9.pdf": {
+      "warehouse": "صيادلة المستقبل",
+      "items": 176,
+      "arabic_items": 176,
+      "english_items": 0
+    },
+    "نيو فارم شبين الكوم.pdf": {
+      "warehouse": "نيو فارم شبين الكوم",
+      "items": 182,
+      "arabic_items": 182,
+      "english_items": 0
+    },
+    "وائل سميربنها نقدى.pdf": {
+      "warehouse": "مخزن وائل سمير",
+      "items": 372,
+      "arabic_items": 372,
+      "english_items": 0
+    }
+  },
+  "total_catalog_items": 11056,
+  "unique_catalog_items": 10823,
+  "po_results": {
+    "0911.xlsx": {
+      "kpis": {
+        "total_items": 202,
+        "matched_items": 75,
+        "deterministic_matches": 75,
+        "ai_assisted_matches": 0,
+        "out_of_stock": 127,
+        "avg_discount": 32.5,
+        "total_quantity": 2342,
+        "total_public_value": 255390.0,
+        "total_purchase_cost": 175068.42,
+        "total_savings": 80321.58,
+        "savings_pct": 31.5,
+        "num_warehouses": 17,
+        "allocation_counts": {
+          "الدولية فارما": 7,
+          "الشركة العربية للصيادلة": 7,
+          "الفرسان اسكندرية": 2,
+          "الفرسان بنها": 19,
+          "دار الفؤاد": 3,
+          "سينا تريد": 3,
+          "شركة ستروكا الجيزة": 7,
+          "لايف كير تروفي": 1,
+          "مخزن ادم جملة": 1,
+          "مخزن السلام فارم": 3,
+          "مخزن القمة": 6,
+          "مخزن الهضبة فارم": 5,
+          "مخزن انفينتي": 2,
+          "مخزن د أحمد عبد الله": 6,
+          "مخزن وائل سمير": 1,
+          "مميز زيدان": 1,
+          "نيو كيان المنصورة": 1
+        },
+        "allocation_values": {
+          "الدولية فارما": 15556.06,
+          "الشركة العربية للصيادلة": 44295.12,
+          "الفرسان اسكندرية": 2853.62,
+          "الفرسان بنها": 29897.96,
+          "دار الفؤاد": 7898.5,
+          "سينا تريد": 7980.68,
+          "شركة ستروكا الجيزة": 20572.89,
+          "لايف كير تروفي": 177.12,
+          "مخزن ادم جملة": 1694.0,
+          "مخزن السلام فارم": 1749.7,
+          "مخزن القمة": 4524.58,
+          "مخزن الهضبة فارم": 10629.2,
+          "مخزن انفينتي": 7919.26,
+          "مخزن د أحمد عبد الله": 17626.43,
+          "مخزن وائل سمير": 1429.34,
+          "مميز زيدان": 42.56,
+          "نيو كيان المنصورة": 221.4
+        }
+      },
+      "match_rate": 37.1,
+      "unmatched_items": [
+        {
+          "requested": "اربيجي كبسول",
+          "lang": "AR",
+          "canonical_brand": "rbg",
+          "brand_root": "اربيجي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اريثركس200مجم2شريط",
+          "lang": "AR",
+          "canonical_brand": "erythrex",
+          "brand_root": "اريثركس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اسبرين بروتكت 100مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "aspirin protect",
+          "brand_root": "اسبرين بروتكت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اسيتايل سستايين 600مجم اكياس",
+          "lang": "AR",
+          "canonical_brand": "acetylcysteine",
+          "brand_root": "اسيتايل سستايين",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افالوكس400مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "avelox",
+          "brand_root": "افالوكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افروزوليد 60 مل شراب",
+          "lang": "AR",
+          "canonical_brand": "averozolid",
+          "brand_root": "افروزوليد",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افيروثيازيد20/12.5/5مجم 30قرص",
+          "lang": "AR",
+          "canonical_brand": "averothiazide",
+          "brand_root": "افيروثيازيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الفاثرومب5مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "alphathromb",
+          "brand_root": "الفاثرومب",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اليرزون كريم",
+          "lang": "AR",
+          "canonical_brand": "allerzone",
+          "brand_root": "اليرزون",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انافرانيل 25مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "anafranil",
+          "brand_root": "انافرانيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انتي كوكس 6امبول",
+          "lang": "AR",
+          "canonical_brand": "anticox",
+          "brand_root": "انتي كوكس",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انتي كوكس لبوس",
+          "lang": "AR",
+          "canonical_brand": "anticox",
+          "brand_root": "انتي كوكس",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اندرال10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "inderal",
+          "brand_root": "اندرال",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوتريفين بخاخ",
+          "lang": "AR",
+          "canonical_brand": "otrivin",
+          "brand_root": "اوتريفين",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوجرام457مجم بودره60مل",
+          "lang": "AR",
+          "canonical_brand": "augram",
+          "brand_root": "اوجرام بودره",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اولفن100مجم اس ار10كبسول",
+          "lang": "AR",
+          "canonical_brand": "olfen",
+          "brand_root": "اولفن اس ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايجيكوستات بلس /مينالاكس",
+          "lang": "AR",
+          "canonical_brand": "egycostat",
+          "brand_root": "ايجيكوستات بلس مينالاكس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايفاليكس شراب",
+          "lang": "AR",
+          "canonical_brand": "efalex",
+          "brand_root": "ايفاليكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايموكسكلاف 625 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "emoxclav",
+          "brand_root": "ايموكسكلاف",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "باور بي كومبليكس6 امبول",
+          "lang": "AR",
+          "canonical_brand": "power b",
+          "brand_root": "باور بي كومبليكس",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "باوركابس 20كبسولة",
+          "lang": "AR",
+          "canonical_brand": "powercaps",
+          "brand_root": "باوركابس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بروكير مالتي فايتمينز شراب",
+          "lang": "AR",
+          "canonical_brand": "procair",
+          "brand_root": "بروكير مالتي فايتمينز",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "برونكوبرو نقط",
+          "lang": "AR",
+          "canonical_brand": "bronchopro",
+          "brand_root": "برونكوبرو",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بريستافلام 20 قرص",
+          "lang": "AR",
+          "canonical_brand": "bristaflam",
+          "brand_root": "بريستافلام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بنتافليكس كريم مساج50جم",
+          "lang": "AR",
+          "canonical_brand": "pentaflex",
+          "brand_root": "بنتافليكس مساج",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بوباي صن بلوك جل",
+          "lang": "AR",
+          "canonical_brand": "bobai",
+          "brand_root": "بوباي صن بلوك",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بوسبار 10مجم20 قراص",
+          "lang": "AR",
+          "canonical_brand": "buspar",
+          "brand_root": "بوسبار قراص",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيدرامين50مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "pedramine",
+          "brand_root": "بيدرامين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيسلفون 20قرص",
+          "lang": "AR",
+          "canonical_brand": "bisolvon",
+          "brand_root": "بيسلفون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تادانيرفي5مجم30فيلم",
+          "lang": "AR",
+          "canonical_brand": "tadanerfi",
+          "brand_root": "تادانيرفي فيلم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تاريفيد 200مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "tarivid",
+          "brand_root": "تاريفيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترانسو كسير فوم150مل بينك",
+          "lang": "AR",
+          "canonical_brand": "transocuir",
+          "brand_root": "ترانسو كسير فوم بينك",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تراي بيتابرونات كريم",
+          "lang": "AR",
+          "canonical_brand": "tri-betapronate",
+          "brand_root": "تراي بيتابرونات",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترايمدفلو 20قرص",
+          "lang": "AR",
+          "canonical_brand": "trimedflu",
+          "brand_root": "ترايمدفلو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريفستال ريتارد30قرص",
+          "lang": "AR",
+          "canonical_brand": "trivastal",
+          "brand_root": "تريفستال ريتارد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "توب فلام كريم",
+          "lang": "AR",
+          "canonical_brand": "topflam",
+          "brand_root": "توب فلام",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جابتن 300مجم 30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "gaptin",
+          "brand_root": "جابتن كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جاستروبيوتك 550 مج 20 قرص",
+          "lang": "AR",
+          "canonical_brand": "gastrobiotic",
+          "brand_root": "جاستروبيوتك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جانوفيا 100مجم 28قرص",
+          "lang": "AR",
+          "canonical_brand": "januvia",
+          "brand_root": "جانوفيا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جانيوميت1000/50مجم 56قرص",
+          "lang": "AR",
+          "canonical_brand": "janumet",
+          "brand_root": "جانيوميت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جراليبنتين300مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "gralipentin",
+          "brand_root": "جراليبنتين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جليبوفين500/5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "glybophen",
+          "brand_root": "جليبوفين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جليكودال30قرص",
+          "lang": "AR",
+          "canonical_brand": "glycodal",
+          "brand_root": "جليكودال",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جواياديسكا شراب",
+          "lang": "AR",
+          "canonical_brand": "guayadisca",
+          "brand_root": "جواياديسكا",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جيوبوتا ك600اس ار30قرص",
+          "lang": "AR",
+          "canonical_brand": "geopota k",
+          "brand_root": "جيوبوتا اس ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جيوكاند بلس21قرص",
+          "lang": "AR",
+          "canonical_brand": "geocand",
+          "brand_root": "جيوكاند بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دلزوسين 600مجم6قرص",
+          "lang": "AR",
+          "canonical_brand": "delzocine",
+          "brand_root": "دلزوسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دورفين 30كبسولة",
+          "lang": "AR",
+          "canonical_brand": "dorfen",
+          "brand_root": "دورفين كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دولسيل ام اقراص2/500",
+          "lang": "AR",
+          "canonical_brand": "dulcil",
+          "brand_root": "دولسيل ام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديبافالي بلاس50\\1000مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "depavali",
+          "brand_root": "ديبافالي بلاس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديرموفيت  مرهم",
+          "lang": "AR",
+          "canonical_brand": "dermovate",
+          "brand_root": "ديرموفيت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديسبرودرم لوشن",
+          "lang": "AR",
+          "canonical_brand": "disproderm",
+          "brand_root": "ديسبرودرم",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "راميكسول25مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "ramixol",
+          "brand_root": "راميكسول",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "روزوكوليست 20 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "rosucolist",
+          "brand_root": "روزوكوليست",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريسبردال نقط شرب",
+          "lang": "AR",
+          "canonical_brand": "risperdal",
+          "brand_root": "ريسبردال",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريستيبرو نقط",
+          "lang": "AR",
+          "canonical_brand": "restipro",
+          "brand_root": "ريستيبرو",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سانسو بي تريو14قرص",
+          "lang": "AR",
+          "canonical_brand": "sanso b",
+          "brand_root": "سانسو بي تريو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سانوبلكس 24قرص",
+          "lang": "AR",
+          "canonical_brand": "sanoplex",
+          "brand_root": "سانوبلكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سترونج فيل كريم رجالي",
+          "lang": "AR",
+          "canonical_brand": "strongville",
+          "brand_root": "سترونج فيل رجالي",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستيمولان شراب",
+          "lang": "AR",
+          "canonical_brand": "stimulan",
+          "brand_root": "ستيمولان",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سكاي كيور جل",
+          "lang": "AR",
+          "canonical_brand": "sky cure",
+          "brand_root": "سكاي كيور",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سوبرانيل 25مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "supranil",
+          "brand_root": "سوبرانيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سي اتش الفا بلس",
+          "lang": "AR",
+          "canonical_brand": "ch-alpha",
+          "brand_root": "سي اتش الفا بلس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيبازول فورت 2قرص",
+          "lang": "AR",
+          "canonical_brand": "septazole",
+          "brand_root": "سيبازول فورت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيبروسين500مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "ciprocin",
+          "brand_root": "سيبروسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيتابرونكس10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "ronex",
+          "brand_root": "سيتابرونكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيداميكس 250مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "cidamex",
+          "brand_root": "سيداميكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيرازيت اقراص",
+          "lang": "AR",
+          "canonical_brand": "cerazette",
+          "brand_root": "سيرازيت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيستابرونت شراب",
+          "lang": "AR",
+          "canonical_brand": "sedapront",
+          "brand_root": "سيستابرونت",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفترياكسون 1جم عضل ساندوز فيال",
+          "lang": "AR",
+          "canonical_brand": "ceftriaxone",
+          "brand_root": "سيفترياكسون عضل ساندوز",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفيبم 1جم  فيال عضل فاركو",
+          "lang": "AR",
+          "canonical_brand": "cefepime",
+          "brand_root": "سيفيبم عضل",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيلفر بيرن كريم",
+          "lang": "AR",
+          "canonical_brand": "silver burn",
+          "brand_root": "سيلفر بيرن",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيمباتكس20مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "symbatex",
+          "brand_root": "سيمباتكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاركوفيت  ب12  كبسول",
+          "lang": "AR",
+          "canonical_brand": "farcovit",
+          "brand_root": "فاركوفيت ب",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاكتو مرهم",
+          "lang": "AR",
+          "canonical_brand": "faktu",
+          "brand_root": "فاكتو",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلازاكور 6مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "flazacor",
+          "brand_root": "فلازاكور",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فليكسوتيد 50مجم ايفوهيلير",
+          "lang": "AR",
+          "canonical_brand": "flixotide",
+          "brand_root": "فليكسوتيد ايفوهيلير",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فوراديل كبسول 6شرايط بخاخ",
+          "lang": "AR",
+          "canonical_brand": "foradil",
+          "brand_root": "فوراديل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فورتير اقراص",
+          "lang": "AR",
+          "canonical_brand": "fortair",
+          "brand_root": "فورتير",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيروترون 30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "ferrotron",
+          "brand_root": "فيروترون كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيمابينت2.5مجم14قرص",
+          "lang": "AR",
+          "canonical_brand": "femapent",
+          "brand_root": "فيمابينت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "قرفة بالجنزبيل ايزيس",
+          "lang": "AR",
+          "canonical_brand": "cinnamon ginger",
+          "brand_root": "قرفه بالجنزبيل ايزيس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كارمينكس شراب",
+          "lang": "AR",
+          "canonical_brand": "carminex",
+          "brand_root": "كارمينكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كالمينال شراب",
+          "lang": "AR",
+          "canonical_brand": "calminal",
+          "brand_root": "كالمينال",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كانديكيور لبوس مهبلي",
+          "lang": "AR",
+          "canonical_brand": "candicure",
+          "brand_root": "كانديكيور مهبلي",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كتافلام  50مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "cataflam",
+          "brand_root": "كتافلام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كركدية ايزيس",
+          "lang": "AR",
+          "canonical_brand": "hibiscus",
+          "brand_root": "كركديه ايزيس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كورتكس شامبو للقشره",
+          "lang": "AR",
+          "canonical_brand": "cortex",
+          "brand_root": "كورتكس للقشره",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوفرسيل2.5/10 بلس اقراص",
+          "lang": "AR",
+          "canonical_brand": "coversyl",
+          "brand_root": "كوفرسيل بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوللوماك محلول",
+          "lang": "AR",
+          "canonical_brand": "collomak",
+          "brand_root": "كوللوماك محلول",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كويتابكس 300مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "quitapex",
+          "brand_root": "كويتابكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كويتابين 25مجم 30قرص",
+          "lang": "AR",
+          "canonical_brand": "quetiapine",
+          "brand_root": "كويتابين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتاديل200مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "ketadyl",
+          "brand_root": "كيتاديل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتوبريك 75مجم 20كبسولة",
+          "lang": "AR",
+          "canonical_brand": "ketoprek",
+          "brand_root": "كيتوبريك كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتولاك 5 امبوله",
+          "lang": "AR",
+          "canonical_brand": "ketolac",
+          "brand_root": "كيتولاك امبوله",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لاكتيول فورت اكياس",
+          "lang": "AR",
+          "canonical_brand": "lacteol",
+          "brand_root": "لاكتيول فورت",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لوبيكونت8مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "lubeconte",
+          "brand_root": "لوبيكونت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لورنوكسيكام امبول",
+          "lang": "AR",
+          "canonical_brand": "lornoxicam",
+          "brand_root": "لورنوكسيكام",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لورين30قرص",
+          "lang": "AR",
+          "canonical_brand": "lorine",
+          "brand_root": "لورين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبانتيل 300مجم 3شريط",
+          "lang": "AR",
+          "canonical_brand": "lipanthyl",
+          "brand_root": "ليبانتيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبراكس اقراص",
+          "lang": "AR",
+          "canonical_brand": "librax",
+          "brand_root": "ليبراكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفانيك500مجم 7قرص",
+          "lang": "AR",
+          "canonical_brand": "levanic",
+          "brand_root": "ليفانيك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ماربالين كريم",
+          "lang": "AR",
+          "canonical_brand": "marpalene",
+          "brand_root": "ماربالين",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مارفيل كريم",
+          "lang": "AR",
+          "canonical_brand": "marvel",
+          "brand_root": "مارفيل",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مكسيدرم30جم كريم كبير",
+          "lang": "AR",
+          "canonical_brand": "mixderm",
+          "brand_root": "مكسيدرم",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موتيل فاست فوار25كيس",
+          "lang": "AR",
+          "canonical_brand": "motil fast",
+          "brand_root": "موتيل فاست",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موفيكول20كيس",
+          "lang": "AR",
+          "canonical_brand": "movicol",
+          "brand_root": "موفيكول",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مونتيلوراما 10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "montelorama",
+          "brand_root": "مونتيلوراما",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميراج 1مجم فيال",
+          "lang": "AR",
+          "canonical_brand": "merag",
+          "brand_root": "ميراج",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميميكسا نقط",
+          "lang": "AR",
+          "canonical_brand": "memixa",
+          "brand_root": "ميميكسا",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مينوكسيديل فورت /.5 جيل",
+          "lang": "AR",
+          "canonical_brand": "minoxidil",
+          "brand_root": "مينوكسيديل فورت",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميوكوتك300مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "mucotec",
+          "brand_root": "ميوكوتك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نازوستوب نقط اطفال",
+          "lang": "AR",
+          "canonical_brand": "nasostop",
+          "brand_root": "نازوستوب اطفال",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نورجيستادول21قرص",
+          "lang": "AR",
+          "canonical_brand": "norgestadol",
+          "brand_root": "نورجيستادول",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نورجيسك اقراص",
+          "lang": "AR",
+          "canonical_brand": "norgesic",
+          "brand_root": "نورجيسك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نوريجنسين امبول/ميزوسيبت",
+          "lang": "AR",
+          "canonical_brand": "norigynon",
+          "brand_root": "نوريجنسين ميزوسيبت",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيبليت 5مجم 14قرص",
+          "lang": "AR",
+          "canonical_brand": "nebilet",
+          "brand_root": "نيبليت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيوتري ترو اف اي 14كبسوله",
+          "lang": "AR",
+          "canonical_brand": "nutritro",
+          "brand_root": "نيوتري ترو اف اي كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيورونتين 300 مجم 20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "neurontin",
+          "brand_root": "نيورونتين كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيوكاربون30قرص",
+          "lang": "AR",
+          "canonical_brand": "eucarbon",
+          "brand_root": "نيوكاربون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هالوبريدول ريتارد 50مجم امبول",
+          "lang": "AR",
+          "canonical_brand": "haloperidol",
+          "brand_root": "هالوبريدول ريتارد",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هاي كول كريم مساج",
+          "lang": "AR",
+          "canonical_brand": "high cool",
+          "brand_root": "هاي كول مساج",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيرباك 5% لوسيون اخضر",
+          "lang": "AR",
+          "canonical_brand": "hairback",
+          "brand_root": "هيرباك اخضر",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيموكلار كريم",
+          "lang": "AR",
+          "canonical_brand": "hemoclar",
+          "brand_root": "هيموكلار",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ويلوفنج 2%كريم للفطريات",
+          "lang": "AR",
+          "canonical_brand": "welofung",
+          "brand_root": "ويلوفنج للفطريات",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "وينديبن 5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "windipine",
+          "brand_root": "وينديبن",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "يونيلوكسام500مجم2شريط",
+          "lang": "AR",
+          "canonical_brand": "uniloxam",
+          "brand_root": "يونيلوكسام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        }
+      ]
+    },
+    "0912.xlsx": {
+      "kpis": {
+        "total_items": 743,
+        "matched_items": 241,
+        "deterministic_matches": 241,
+        "ai_assisted_matches": 0,
+        "out_of_stock": 502,
+        "avg_discount": 33.3,
+        "total_quantity": 10356,
+        "total_public_value": 1252296.25,
+        "total_purchase_cost": 884697.67,
+        "total_savings": 367598.58,
+        "savings_pct": 29.4,
+        "num_warehouses": 21,
+        "allocation_counts": {
+          "الدولية فارما": 13,
+          "الشركة العربية للصيادلة": 42,
+          "الفرسان اسكندرية": 4,
+          "الفرسان بنها": 51,
+          "بيرفكت فارم المنوفية": 4,
+          "دار الفؤاد": 10,
+          "سينا تريد": 9,
+          "شركة رواد الدواء": 2,
+          "شركة ستروكا الجيزة": 30,
+          "صيادلة المستقبل": 3,
+          "لايف كير تروفي": 4,
+          "مخزن ادم جملة": 1,
+          "مخزن السلام فارم": 12,
+          "مخزن القمة": 10,
+          "مخزن الهضبة فارم": 18,
+          "مخزن انفينتي": 8,
+          "مخزن د أحمد عبد الله": 9,
+          "مخزن وائل سمير": 2,
+          "مميز زيدان": 5,
+          "نيو فارم شبين الكوم": 1,
+          "نيو كيان المنصورة": 3
+        },
+        "allocation_values": {
+          "الدولية فارما": 49710.53,
+          "الشركة العربية للصيادلة": 89583.09,
+          "الفرسان اسكندرية": 5275.7,
+          "الفرسان بنها": 174540.25,
+          "بيرفكت فارم المنوفية": 3434.73,
+          "دار الفؤاد": 11285.34,
+          "سينا تريد": 19689.48,
+          "شركة رواد الدواء": 521.24,
+          "شركة ستروكا الجيزة": 55124.51,
+          "صيادلة المستقبل": 7512.04,
+          "لايف كير تروفي": 2921.44,
+          "مخزن ادم جملة": 1963.5,
+          "مخزن السلام فارم": 8533.94,
+          "مخزن القمة": 15027.92,
+          "مخزن الهضبة فارم": 310490.93,
+          "مخزن انفينتي": 15877.0,
+          "مخزن د أحمد عبد الله": 22652.28,
+          "مخزن وائل سمير": 6919.83,
+          "مميز زيدان": 79663.86,
+          "نيو فارم شبين الكوم": 56.98,
+          "نيو كيان المنصورة": 3913.08
+        }
+      },
+      "match_rate": 32.4,
+      "unmatched_items": [
+        {
+          "requested": "ابيدرا خرطوشه",
+          "lang": "AR",
+          "canonical_brand": "apidra",
+          "brand_root": "ابيدرا خرطوشه",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ابيدروكسيل 250مجم شراب",
+          "lang": "AR",
+          "canonical_brand": "ibidroxil",
+          "brand_root": "ابيدروكسيل",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ابيزيثرو شراب30ملل",
+          "lang": "AR",
+          "canonical_brand": "epizithro",
+          "brand_root": "ابيزيثرو",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ابيكوتيل  5لبوسة ث",
+          "lang": "AR",
+          "canonical_brand": "epicutil",
+          "brand_root": "ابيكوتيل لبوسه",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ابيمول اكسترا20قرص",
+          "lang": "AR",
+          "canonical_brand": "abimol",
+          "brand_root": "ابيمول اكسترا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ابينيفرين ادرينالين 25امبول",
+          "lang": "AR",
+          "canonical_brand": "epinephrine",
+          "brand_root": "ابينيفرين ادرينالين",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اتلا دي كي نقط",
+          "lang": "AR",
+          "canonical_brand": "atla dk",
+          "brand_root": "اتلا دي كي",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اتموسالازين 500 كبسول/بنتازا",
+          "lang": "AR",
+          "canonical_brand": "atmosalazine",
+          "brand_root": "اتموسالازين بنتازا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اتوموريلاكس شراب",
+          "lang": "AR",
+          "canonical_brand": "atomorelax",
+          "brand_root": "اتوموريلاكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ادابالين جيل",
+          "lang": "AR",
+          "canonical_brand": "adapalene",
+          "brand_root": "ادابالين",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ادويفلام50مجم جل",
+          "lang": "AR",
+          "canonical_brand": "adwiflam",
+          "brand_root": "ادويفلام",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اربيجي كبسول",
+          "lang": "AR",
+          "canonical_brand": "rbg",
+          "brand_root": "اربيجي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ارموداكيور150مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "armodacure",
+          "brand_root": "ارموداكيور",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اريثركس200مجم2شريط",
+          "lang": "AR",
+          "canonical_brand": "erythrex",
+          "brand_root": "اريثركس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ازارجا قطره",
+          "lang": "AR",
+          "canonical_brand": "azarga",
+          "brand_root": "ازارجا",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ازانيا 10كيس",
+          "lang": "AR",
+          "canonical_brand": "azania",
+          "brand_root": "ازانيا",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ازيلاست بلس بخاخ",
+          "lang": "AR",
+          "canonical_brand": "azelast",
+          "brand_root": "ازيلاست بلس",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اسبرين بروتكت 100مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "aspirin protect",
+          "brand_root": "اسبرين بروتكت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "استربسلز  عسل وليمون",
+          "lang": "AR",
+          "canonical_brand": "strepsils",
+          "brand_root": "استربسلز",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اسيتابرام20مجم 20قراص",
+          "lang": "AR",
+          "canonical_brand": "ecitalopram",
+          "brand_root": "اسيتابرام قراص",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اسيتايل سستايين 600مجم اكياس",
+          "lang": "AR",
+          "canonical_brand": "acetylcysteine",
+          "brand_root": "اسيتايل سستايين",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افالوكس400مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "avelox",
+          "brand_root": "افالوكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افروزوليد 60 مل شراب",
+          "lang": "AR",
+          "canonical_brand": "averozolid",
+          "brand_root": "افروزوليد",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افروزوليد150 مل شراب",
+          "lang": "AR",
+          "canonical_brand": "averozolid",
+          "brand_root": "افروزوليد",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افروزوليد600مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "averozolid",
+          "brand_root": "افروزوليد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "افيروثيازيد20/12.5/5مجم 30قرص",
+          "lang": "AR",
+          "canonical_brand": "averothiazide",
+          "brand_root": "افيروثيازيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اكسبتو برو كريم",
+          "lang": "AR",
+          "canonical_brand": "excepto pro",
+          "brand_root": "اكسبتو برو",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اكستروما دي ان ايه كريم",
+          "lang": "AR",
+          "canonical_brand": "extroma",
+          "brand_root": "اكستروما دي ان ايه",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اكستريم شيكولاته 20قطعة",
+          "lang": "AR",
+          "canonical_brand": "extreme",
+          "brand_root": "اكستريم شيكولاته قطعه",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اكسفورج 10مجم اتش سي تي",
+          "lang": "AR",
+          "canonical_brand": "exforge",
+          "brand_root": "اكسفورج اتش سي تي",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اكسيبشن 20قرص",
+          "lang": "AR",
+          "canonical_brand": "exception",
+          "brand_root": "اكسيبشن",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اكني اكت كريم",
+          "lang": "AR",
+          "canonical_brand": "acne act",
+          "brand_root": "اكني اكت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "البيوستكس دي12.5/16مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "albiostix",
+          "brand_root": "البيوستكس دي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الجيزال كريم",
+          "lang": "AR",
+          "canonical_brand": "algisal",
+          "brand_root": "الجيزال",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الزيبيزل 10مجم14قرص",
+          "lang": "AR",
+          "canonical_brand": "alzepizil",
+          "brand_root": "الزيبيزل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الفا اميلاز اقراص",
+          "lang": "AR",
+          "canonical_brand": "alpha amylase",
+          "brand_root": "الفا اميلاز",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الفابونيد نقط كالسيوم ث",
+          "lang": "AR",
+          "canonical_brand": "alphabonid",
+          "brand_root": "الفابونيد كالسيوم",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الفاثرومب5مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "alphathromb",
+          "brand_root": "الفاثرومب",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الكابرس10مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "alcapress",
+          "brand_root": "الكابرس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الكابرس160/5 بلاس",
+          "lang": "AR",
+          "canonical_brand": "alcapress",
+          "brand_root": "الكابرس بلاس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "الليرجيل شراب",
+          "lang": "AR",
+          "canonical_brand": "allergyl",
+          "brand_root": "الليرجيل",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اليجون هير لوشن 150ملل",
+          "lang": "AR",
+          "canonical_brand": "alijon",
+          "brand_root": "اليجون هير",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اليرجوليبر شراب",
+          "lang": "AR",
+          "canonical_brand": "allergoliber",
+          "brand_root": "اليرجوليبر",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اليرزون كريم",
+          "lang": "AR",
+          "canonical_brand": "allerzone",
+          "brand_root": "اليرزون",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اليكاام كريم كبير",
+          "lang": "AR",
+          "canonical_brand": "elica m",
+          "brand_root": "اليكاام",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "امبوفير 5امبول",
+          "lang": "AR",
+          "canonical_brand": "ampover",
+          "brand_root": "امبوفير",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اموكومب كريم",
+          "lang": "AR",
+          "canonical_brand": "amocomb",
+          "brand_root": "اموكومب",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اميبريد50مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "amipride",
+          "brand_root": "اميبريد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اميوتريكسات10مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "ameotrexate",
+          "brand_root": "اميوتريكسات",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اميوتريكسات2.5جم10قرص",
+          "lang": "AR",
+          "canonical_brand": "ameotrexate",
+          "brand_root": "اميوتريكسات",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اميونو فار20 بلس قرص",
+          "lang": "AR",
+          "canonical_brand": "immuno pharm",
+          "brand_root": "اميونو فار بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انافرانيل 25مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "anafranil",
+          "brand_root": "انافرانيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انترستو50مجم28قرص",
+          "lang": "AR",
+          "canonical_brand": "entresto",
+          "brand_root": "انترستو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انتي فلو 20كبسولة",
+          "lang": "AR",
+          "canonical_brand": "anti-flu",
+          "brand_root": "انتي فلو كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انتي كوكس 6امبول",
+          "lang": "AR",
+          "canonical_brand": "anticox",
+          "brand_root": "انتي كوكس",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انتي كوكس لبوس",
+          "lang": "AR",
+          "canonical_brand": "anticox",
+          "brand_root": "انتي كوكس",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اندرال10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "inderal",
+          "brand_root": "اندرال",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اندوبنتين300مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "endopentin",
+          "brand_root": "اندوبنتين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اندوسيد اقماع",
+          "lang": "AR",
+          "canonical_brand": "indocid",
+          "brand_root": "اندوسيد",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اندوفيت نيورو 20 قرص",
+          "lang": "AR",
+          "canonical_brand": "endovit",
+          "brand_root": "اندوفيت نيورو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انسولين اكترابد100وحده ث",
+          "lang": "AR",
+          "canonical_brand": "actrapid",
+          "brand_root": "انسولين اكترابد وحده",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انسولين ايجيبت70/30 10 ملل",
+          "lang": "AR",
+          "canonical_brand": "insulin egypt",
+          "brand_root": "انسولين ايجيبت",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انسولين لانتوس سولوستار 1قلم",
+          "lang": "AR",
+          "canonical_brand": "lantus",
+          "brand_root": "انسولين لانتوس سولوستار قلم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انسيلاكوكس 90 مجم 30 قرص",
+          "lang": "AR",
+          "canonical_brand": "ancilacox",
+          "brand_root": "انسيلاكوكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "انكان دي 10000ادفانس 30قراص",
+          "lang": "AR",
+          "canonical_brand": "incan d",
+          "brand_root": "انكان دي ادفانس قراص",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوبتك سالين قطرة",
+          "lang": "AR",
+          "canonical_brand": "optic saline",
+          "brand_root": "اوبتك سالين",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوبتي فري اكسبرس 120ملل",
+          "lang": "AR",
+          "canonical_brand": "opti-free",
+          "brand_root": "اوبتي فري اكسبرس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوتريفين بخاخ",
+          "lang": "AR",
+          "canonical_brand": "otrivin",
+          "brand_root": "اوتريفين",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوتيكس نقط اذن 15مل",
+          "lang": "AR",
+          "canonical_brand": "otex",
+          "brand_root": "اوتيكس اذن",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوجرام457مجم بودره60مل",
+          "lang": "AR",
+          "canonical_brand": "augram",
+          "brand_root": "اوجرام بودره",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوجمنتين  457 شراب",
+          "lang": "AR",
+          "canonical_brand": "augmentin",
+          "brand_root": "اوجمنتين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوجمنتين  625مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "augmentin",
+          "brand_root": "اوجمنتين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوفيوتروز2.5مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "oviotroz",
+          "brand_root": "اوفيوتروز",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوفيونهيبيتا28قرص",
+          "lang": "AR",
+          "canonical_brand": "ovionhibita",
+          "brand_root": "اوفيونهيبيتا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوكيوسيليرج فورت قطره",
+          "lang": "AR",
+          "canonical_brand": "ocucellerg",
+          "brand_root": "اوكيوسيليرج فورت",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوكيوفنيكول قطرة",
+          "lang": "AR",
+          "canonical_brand": "ocufenicol",
+          "brand_root": "اوكيوفنيكول",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اولفن 25مجم 30قرص",
+          "lang": "AR",
+          "canonical_brand": "olfen",
+          "brand_root": "اولفن",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اولفن100مجم اس ار10كبسول",
+          "lang": "AR",
+          "canonical_brand": "olfen",
+          "brand_root": "اولفن اس ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اولوهيستين فورت محلول عين",
+          "lang": "AR",
+          "canonical_brand": "olohistin",
+          "brand_root": "اولوهيستين فورت محلول عين",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوميجا في بلس شراب",
+          "lang": "AR",
+          "canonical_brand": "omega v",
+          "brand_root": "اوميجا في بلس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اوميكاربيكس20مجم",
+          "lang": "AR",
+          "canonical_brand": "omecarpix",
+          "brand_root": "اوميكاربيكس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اونسيد10مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "onsid",
+          "brand_root": "اونسيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اي يست كبسول",
+          "lang": "AR",
+          "canonical_brand": "e yeast",
+          "brand_root": "اي يست",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايبياكتو كريم",
+          "lang": "AR",
+          "canonical_brand": "epiacto",
+          "brand_root": "ايبياكتو",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايجيكوستات بلس /مينالاكس",
+          "lang": "AR",
+          "canonical_brand": "egycostat",
+          "brand_root": "ايجيكوستات بلس مينالاكس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايرون ليبوزومال شراب",
+          "lang": "AR",
+          "canonical_brand": "liposomal iron",
+          "brand_root": "ايرون ليبوزومال",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايفاليكس شراب",
+          "lang": "AR",
+          "canonical_brand": "efalex",
+          "brand_root": "ايفاليكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايفي هيرب شراب",
+          "lang": "AR",
+          "canonical_brand": "ivy herb",
+          "brand_root": "ايفي هيرب",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايكاندرا بلس اقراص",
+          "lang": "AR",
+          "canonical_brand": "icandra",
+          "brand_root": "ايكاندرا بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايمباكوزا تريو 10/5/1000 مجم",
+          "lang": "AR",
+          "canonical_brand": "empacoza",
+          "brand_root": "ايمباكوزا تريو",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ايموكسكلاف 625 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "emoxclav",
+          "brand_root": "ايموكسكلاف",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اينوفاجار نقط",
+          "lang": "AR",
+          "canonical_brand": "enovagar",
+          "brand_root": "اينوفاجار",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "اينوكال اكياس",
+          "lang": "AR",
+          "canonical_brand": "enocal",
+          "brand_root": "اينوكال",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بارازوكسانيد500مجم 3شريط",
+          "lang": "AR",
+          "canonical_brand": "parazoxanide",
+          "brand_root": "بارازوكسانيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بالموكورت  25. مجم امبول",
+          "lang": "AR",
+          "canonical_brand": "pulmicort",
+          "brand_root": "بالموكورت",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بامبيديل شراب",
+          "lang": "AR",
+          "canonical_brand": "bambedil",
+          "brand_root": "بامبيديل",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بانتروجلوب40مجم فيال",
+          "lang": "AR",
+          "canonical_brand": "pantroglobe",
+          "brand_root": "بانتروجلوب",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "باور بي كومبليكس6 امبول",
+          "lang": "AR",
+          "canonical_brand": "power b",
+          "brand_root": "باور بي كومبليكس",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "باوركابس 20كبسولة",
+          "lang": "AR",
+          "canonical_brand": "powercaps",
+          "brand_root": "باوركابس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "باولوكير نقط س ج/بيكولاكس",
+          "lang": "AR",
+          "canonical_brand": "paulocare",
+          "brand_root": "باولوكير بيكولاكس",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بايولجام60/100 8قرص",
+          "lang": "AR",
+          "canonical_brand": "biolgam",
+          "brand_root": "بايولجام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "براديبيكت 5 مجم 28 قرص",
+          "lang": "AR",
+          "canonical_brand": "bradipect",
+          "brand_root": "براديبيكت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بروستاكيور20 كبسول",
+          "lang": "AR",
+          "canonical_brand": "prostacure",
+          "brand_root": "بروستاكيور",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بروستانورم كبسول",
+          "lang": "AR",
+          "canonical_brand": "prostanorm",
+          "brand_root": "بروستانورم",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بروفيت شراب اطفال",
+          "lang": "AR",
+          "canonical_brand": "provit",
+          "brand_root": "بروفيت اطفال",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بروكير مالتي فايتمينز شراب",
+          "lang": "AR",
+          "canonical_brand": "procair",
+          "brand_root": "بروكير مالتي فايتمينز",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "برونكوبرو نقط",
+          "lang": "AR",
+          "canonical_brand": "bronchopro",
+          "brand_root": "برونكوبرو",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بريجناكير 30 قرص",
+          "lang": "AR",
+          "canonical_brand": "pregnacare",
+          "brand_root": "بريجناكير",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بريدسول فورت شراب",
+          "lang": "AR",
+          "canonical_brand": "predsol",
+          "brand_root": "بريدسول فورت",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بريستافلام 20 قرص",
+          "lang": "AR",
+          "canonical_brand": "bristaflam",
+          "brand_root": "بريستافلام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بريفاجليب5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "brivaglipt",
+          "brand_root": "بريفاجليب",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بريموندين قطرة",
+          "lang": "AR",
+          "canonical_brand": "brimonidine",
+          "brand_root": "بريموندين",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "برينو ريلاكس 15مجم30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "preno relax",
+          "brand_root": "برينو ريلاكس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بكتيكلور 250 مجم شراب",
+          "lang": "AR",
+          "canonical_brand": "bactichlor",
+          "brand_root": "بكتيكلور",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بلاكونيل 60قرص",
+          "lang": "AR",
+          "canonical_brand": "plaquenil",
+          "brand_root": "بلاكونيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بلانكا كريم 5 جرام",
+          "lang": "AR",
+          "canonical_brand": "blanca",
+          "brand_root": "بلانكا جرام",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بلوكاديبين20مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "blocadipine",
+          "brand_root": "بلوكاديبين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بلينديل10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "plendil",
+          "brand_root": "بلينديل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بنتافليكس كريم مساج50جم",
+          "lang": "AR",
+          "canonical_brand": "pentaflex",
+          "brand_root": "بنتافليكس مساج",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بنتاكولد120مل شراب",
+          "lang": "AR",
+          "canonical_brand": "pentacold",
+          "brand_root": "بنتاكولد",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بنداكس  شرب",
+          "lang": "AR",
+          "canonical_brand": "bendax",
+          "brand_root": "بنداكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بوباي صن بلوك جل",
+          "lang": "AR",
+          "canonical_brand": "bobai",
+          "brand_root": "بوباي صن بلوك",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بوسبار 10مجم20 قراص",
+          "lang": "AR",
+          "canonical_brand": "buspar",
+          "brand_root": "بوسبار قراص",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بونوفورت اقراص",
+          "lang": "AR",
+          "canonical_brand": "bonoforte",
+          "brand_root": "بونوفورت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بي بي سي سبراي",
+          "lang": "AR",
+          "canonical_brand": "bbc",
+          "brand_root": "بي بي سي",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بي كوم 6 امبولات",
+          "lang": "AR",
+          "canonical_brand": "b com",
+          "brand_root": "بي كوم",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيتابرونيت بلس كريم",
+          "lang": "AR",
+          "canonical_brand": "betapronate",
+          "brand_root": "بيتابرونيت بلس",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيدالكين بودره",
+          "lang": "AR",
+          "canonical_brand": "pedalkine",
+          "brand_root": "بيدالكين بودره",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيدرامين50مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "pedramine",
+          "brand_root": "بيدرامين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيسلفون 20قرص",
+          "lang": "AR",
+          "canonical_brand": "bisolvon",
+          "brand_root": "بيسلفون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بيسلفون120مل شراب",
+          "lang": "AR",
+          "canonical_brand": "bisolvon",
+          "brand_root": "بيسلفون",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بينجرايد5مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "pingride",
+          "brand_root": "بينجرايد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "بينوكس قطره",
+          "lang": "AR",
+          "canonical_brand": "benox",
+          "brand_root": "بينوكس",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تادانيرفي5مجم30فيلم",
+          "lang": "AR",
+          "canonical_brand": "tadanerfi",
+          "brand_root": "تادانيرفي فيلم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تاريفان اقراص",
+          "lang": "AR",
+          "canonical_brand": "tarifun",
+          "brand_root": "تاريفان",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تاريفيد 200مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "tarivid",
+          "brand_root": "تاريفيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تجريتول400 سي ار 20قرص",
+          "lang": "AR",
+          "canonical_brand": "tegretol",
+          "brand_root": "تجريتول سي ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترافوديرمال كريم15جم",
+          "lang": "AR",
+          "canonical_brand": "travodermal",
+          "brand_root": "ترافوديرمال",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترانسو كسير فوم150مل بينك",
+          "lang": "AR",
+          "canonical_brand": "transocuir",
+          "brand_root": "ترانسو كسير فوم بينك",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترانسيديا200مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "transidia",
+          "brand_root": "ترانسيديا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تراي بيتابرونات كريم",
+          "lang": "AR",
+          "canonical_brand": "tri-betapronate",
+          "brand_root": "تراي بيتابرونات",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترايتون شراب",
+          "lang": "AR",
+          "canonical_brand": "tritone",
+          "brand_root": "ترايتون",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترايمدفلو 20قرص",
+          "lang": "AR",
+          "canonical_brand": "trimedflu",
+          "brand_root": "ترايمدفلو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ترايملازما كريم",
+          "lang": "AR",
+          "canonical_brand": "trimelasma",
+          "brand_root": "ترايملازما",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تروزاكروم3امبول3ملل",
+          "lang": "AR",
+          "canonical_brand": "trozacrom",
+          "brand_root": "تروزاكروم",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريامريكان1جم فيال",
+          "lang": "AR",
+          "canonical_brand": "triamecan",
+          "brand_root": "تريامريكان",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريبليكسام10/2.5/10مجم15قرص",
+          "lang": "AR",
+          "canonical_brand": "triplixam",
+          "brand_root": "تريبليكسام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريتاس بروتكت 10مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "tritace",
+          "brand_root": "تريتاس بروتكت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريتوالس40مجم14كبسوله",
+          "lang": "AR",
+          "canonical_brand": "tritouls",
+          "brand_root": "تريتوالس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريسبا فليكس قلم انسولين اطفال",
+          "lang": "AR",
+          "canonical_brand": "tresiba",
+          "brand_root": "تريسبا فليكس قلم انسولين اطفال",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريفستال ريتارد30قرص",
+          "lang": "AR",
+          "canonical_brand": "trivastal",
+          "brand_root": "تريفستال ريتارد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تريكسوتاز1500مجم فيال",
+          "lang": "AR",
+          "canonical_brand": "trixotaz",
+          "brand_root": "تريكسوتاز",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تمبرا شراب",
+          "lang": "AR",
+          "canonical_brand": "tempra",
+          "brand_root": "تمبرا",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "توب جنج ادفانس30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "top ging",
+          "brand_root": "توب جنج ادفانس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "توب فلام كريم",
+          "lang": "AR",
+          "canonical_brand": "topflam",
+          "brand_root": "توب فلام",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "توبيسونايد كريم",
+          "lang": "AR",
+          "canonical_brand": "tobisonide",
+          "brand_root": "توبيسونايد",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "توليفلي غسول",
+          "lang": "AR",
+          "canonical_brand": "tolifly",
+          "brand_root": "توليفلي",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تيبوفورتين ماكس20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "tebofortin",
+          "brand_root": "تيبوفورتين ماكس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تيبوفورتين40مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "tebofortin",
+          "brand_root": "تيبوفورتين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "تيبوفورتين80مجم فورت اقراص",
+          "lang": "AR",
+          "canonical_brand": "tebofortin",
+          "brand_root": "تيبوفورتين فورت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جابتن 300مجم 30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "gaptin",
+          "brand_root": "جابتن كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جاستروبيوتك 550 مج 20 قرص",
+          "lang": "AR",
+          "canonical_brand": "gastrobiotic",
+          "brand_root": "جاستروبيوتك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جاستروليف50مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "gastroliv",
+          "brand_root": "جاستروليف",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جانوجوينت30قرص",
+          "lang": "AR",
+          "canonical_brand": "ganojoint",
+          "brand_root": "جانوجوينت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جانوفيا 100مجم 28قرص",
+          "lang": "AR",
+          "canonical_brand": "januvia",
+          "brand_root": "جانوفيا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جانيوميت1000/50مجم 56قرص",
+          "lang": "AR",
+          "canonical_brand": "janumet",
+          "brand_root": "جانيوميت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جاوتيفيد80مجم  3 شريط",
+          "lang": "AR",
+          "canonical_brand": "goutifid",
+          "brand_root": "جاوتيفيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جراليبنتين300مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "gralipentin",
+          "brand_root": "جراليبنتين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جلوكان 500/5 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "glucan",
+          "brand_root": "جلوكان",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جلوكوليبتين5مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "glucoliptin",
+          "brand_root": "جلوكوليبتين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جليبوفين500/5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "glybophen",
+          "brand_root": "جليبوفين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جليكودال30قرص",
+          "lang": "AR",
+          "canonical_brand": "glycodal",
+          "brand_root": "جليكودال",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جليماكس4مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "glimax",
+          "brand_root": "جليماكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جليمباكير10/5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "glimpacare",
+          "brand_root": "جليمباكير",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جلينوساليك مرهم",
+          "lang": "AR",
+          "canonical_brand": "glynosalic",
+          "brand_root": "جلينوساليك",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جواياديسكا شراب",
+          "lang": "AR",
+          "canonical_brand": "guayadisca",
+          "brand_root": "جواياديسكا",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جولدن فير 30قرص",
+          "lang": "AR",
+          "canonical_brand": "golden fer",
+          "brand_root": "جولدن فير",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جيرما نقط 30ملل",
+          "lang": "AR",
+          "canonical_brand": "germa",
+          "brand_root": "جيرما",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جيوبوتا ك600اس ار30قرص",
+          "lang": "AR",
+          "canonical_brand": "geopota k",
+          "brand_root": "جيوبوتا اس ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "جيوكاند بلس21قرص",
+          "lang": "AR",
+          "canonical_brand": "geocand",
+          "brand_root": "جيوكاند بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "خميره اونست",
+          "lang": "AR",
+          "canonical_brand": "honest yeast",
+          "brand_root": "خميره اونست",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دافاليندي1امبول",
+          "lang": "AR",
+          "canonical_brand": "davalindi",
+          "brand_root": "دافاليندي",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دافاليندي200000وحده 2امبول",
+          "lang": "AR",
+          "canonical_brand": "davalindi",
+          "brand_root": "دافاليندي وحده",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دافاليندي5000جم اقراص",
+          "lang": "AR",
+          "canonical_brand": "davalindi",
+          "brand_root": "دافاليندي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دال دروب نقط",
+          "lang": "AR",
+          "canonical_brand": "dal drop",
+          "brand_root": "دال دروب",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دايسارتان160مجم 14قرص",
+          "lang": "AR",
+          "canonical_brand": "diysartan",
+          "brand_root": "دايسارتان",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دايسينون 500مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "dicynone",
+          "brand_root": "دايسينون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دكتارين كريم",
+          "lang": "AR",
+          "canonical_brand": "daktarin",
+          "brand_root": "دكتارين",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دلزوسين 600مجم6قرص",
+          "lang": "AR",
+          "canonical_brand": "delzocine",
+          "brand_root": "دلزوسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دورفين 30كبسولة",
+          "lang": "AR",
+          "canonical_brand": "dorfen",
+          "brand_root": "دورفين كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دوزين2مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "dozin",
+          "brand_root": "دوزين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دوكسي بروكت بلس مرهم",
+          "lang": "AR",
+          "canonical_brand": "doxyproct",
+          "brand_root": "دوكسي بروكت بلس",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دولسيل ام اقراص2/500",
+          "lang": "AR",
+          "canonical_brand": "dulcil",
+          "brand_root": "دولسيل ام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "دونازيل اقراص",
+          "lang": "AR",
+          "canonical_brand": "donazil",
+          "brand_root": "دونازيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديافانس 5مجم 30قرص",
+          "lang": "AR",
+          "canonical_brand": "diavance",
+          "brand_root": "ديافانس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديبافالي بلاس50\\1000مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "depavali",
+          "brand_root": "ديبافالي بلاس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديباكين شراب",
+          "lang": "AR",
+          "canonical_brand": "depakine",
+          "brand_root": "ديباكين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديباكين كرونو500مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "depakine",
+          "brand_root": "ديباكين كرونو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديرموفيت  كريم",
+          "lang": "AR",
+          "canonical_brand": "dermovate",
+          "brand_root": "ديرموفيت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديرموفيت  مرهم",
+          "lang": "AR",
+          "canonical_brand": "dermovate",
+          "brand_root": "ديرموفيت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديسباتيجرا استحلاب/باوركتا",
+          "lang": "AR",
+          "canonical_brand": "dispatigra",
+          "brand_root": "ديسباتيجرا استحلاب باوركتا",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديسبركام 6 امبول",
+          "lang": "AR",
+          "canonical_brand": "dispercam",
+          "brand_root": "ديسبركام",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديسبرودرم لوشن",
+          "lang": "AR",
+          "canonical_brand": "disproderm",
+          "brand_root": "ديسبرودرم",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديكابرينو200مجم2امبول",
+          "lang": "AR",
+          "canonical_brand": "decapreno",
+          "brand_root": "ديكابرينو",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديكساجلوب 1 امبول",
+          "lang": "AR",
+          "canonical_brand": "dexaglobe",
+          "brand_root": "ديكساجلوب",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديكسافين شراب",
+          "lang": "AR",
+          "canonical_brand": "dexaphen",
+          "brand_root": "ديكسافين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديكلوفين 100مجم5لبوسة كبار ث",
+          "lang": "AR",
+          "canonical_brand": "diclofen",
+          "brand_root": "ديكلوفين لبوسه كبار",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ديودارت 30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "duodart",
+          "brand_root": "ديودارت كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "راديساج كريم",
+          "lang": "AR",
+          "canonical_brand": "radisage",
+          "brand_root": "راديساج",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "راميسفتراكس 1جم وريد فيال",
+          "lang": "AR",
+          "canonical_brand": "ramiceftrax",
+          "brand_root": "راميسفتراكس وريد",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "راميكسول25مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "ramixol",
+          "brand_root": "راميكسول",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "راميلاكت30قرص",
+          "lang": "AR",
+          "canonical_brand": "ramilact",
+          "brand_root": "راميلاكت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "روزوكوليست 20 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "rosucolist",
+          "brand_root": "روزوكوليست",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "روكسيكام 8مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "roxicam",
+          "brand_root": "روكسيكام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "رومانتيجرا 20مجم 8قرص",
+          "lang": "AR",
+          "canonical_brand": "romantigra",
+          "brand_root": "رومانتيجرا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريبايون اسبراي",
+          "lang": "AR",
+          "canonical_brand": "rebaion",
+          "brand_root": "ريبايون",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريسبردال نقط شرب",
+          "lang": "AR",
+          "canonical_brand": "risperdal",
+          "brand_root": "ريسبردال",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريسبي ديب300مجم 10كيس",
+          "lang": "AR",
+          "canonical_brand": "respidip",
+          "brand_root": "ريسبي ديب",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريستيبرو نقط",
+          "lang": "AR",
+          "canonical_brand": "restipro",
+          "brand_root": "ريستيبرو",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريفافلوفا20مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "rivaflova",
+          "brand_root": "ريفافلوفا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريلاترولين25مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "relatrolin",
+          "brand_root": "ريلاترولين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريلاكس مساج جيل50جم",
+          "lang": "AR",
+          "canonical_brand": "relax",
+          "brand_root": "ريلاكس مساج",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريلاكومب جيل مساج100جم",
+          "lang": "AR",
+          "canonical_brand": "relacomb",
+          "brand_root": "ريلاكومب مساج",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ريلاكومب جيل مساج50جم",
+          "lang": "AR",
+          "canonical_brand": "relacomb",
+          "brand_root": "ريلاكومب مساج",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "رينوتوس شراب",
+          "lang": "AR",
+          "canonical_brand": "rhinotuss",
+          "brand_root": "رينوتوس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زادو جوينت اقراص",
+          "lang": "AR",
+          "canonical_brand": "zado joint",
+          "brand_root": "زادو جوينت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زاكاجلون امبول",
+          "lang": "AR",
+          "canonical_brand": "zacaglon",
+          "brand_root": "زاكاجلون",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زالتيك اقراص",
+          "lang": "AR",
+          "canonical_brand": "zaltec",
+          "brand_root": "زالتيك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زنك اوريجين شراب",
+          "lang": "AR",
+          "canonical_brand": "zinc origin",
+          "brand_root": "زنك اوريجين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زوراكسون 1جم عضل فيال",
+          "lang": "AR",
+          "canonical_brand": "zoraxon",
+          "brand_root": "زوراكسون عضل",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زوفيراكس10 مجم كريم جلد",
+          "lang": "AR",
+          "canonical_brand": "zovirax",
+          "brand_root": "زوفيراكس جلد",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زوكوزيت 20/10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "zocozet",
+          "brand_root": "زوكوزيت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زولامول قطرة",
+          "lang": "AR",
+          "canonical_brand": "zolamol",
+          "brand_root": "زولامول",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زولمسولان5مجم6فيلم",
+          "lang": "AR",
+          "canonical_brand": "zolmesolan",
+          "brand_root": "زولمسولان فيلم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زوندكس اسبراي",
+          "lang": "AR",
+          "canonical_brand": "zondex",
+          "brand_root": "زوندكس",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زيثروماكس 900 شراب",
+          "lang": "AR",
+          "canonical_brand": "zithromax",
+          "brand_root": "زيثروماكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زيستريل10مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "zestril",
+          "brand_root": "زيستريل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "زيموريند 20 قرص",
+          "lang": "AR",
+          "canonical_brand": "zimorind",
+          "brand_root": "زيموريند",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سافيبليد 5امبوله",
+          "lang": "AR",
+          "canonical_brand": "safibleed",
+          "brand_root": "سافيبليد امبوله",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سالبين  1500 مجم فيال",
+          "lang": "AR",
+          "canonical_brand": "sulbin",
+          "brand_root": "سالبين",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سانسو بي تريو14قرص",
+          "lang": "AR",
+          "canonical_brand": "sanso b",
+          "brand_root": "سانسو بي تريو",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سانسو سي بلس 14كبسول",
+          "lang": "AR",
+          "canonical_brand": "sanso c",
+          "brand_root": "سانسو سي بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سانسوفيت بلس160مجم شراب",
+          "lang": "AR",
+          "canonical_brand": "sansovit",
+          "brand_root": "سانسوفيت بلس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سانوبلكس 24قرص",
+          "lang": "AR",
+          "canonical_brand": "sanoplex",
+          "brand_root": "سانوبلكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سايبريك مساج اسبراي100مل",
+          "lang": "AR",
+          "canonical_brand": "cybrex",
+          "brand_root": "سايبريك مساج",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سبازموفين امبول",
+          "lang": "AR",
+          "canonical_brand": "spasmofen",
+          "brand_root": "سبازموفين",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سباسكولون 100مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "spascolon",
+          "brand_root": "سباسكولون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سبلفكت 30كبسولة",
+          "lang": "AR",
+          "canonical_brand": "splefect",
+          "brand_root": "سبلفكت كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستاركوبينا2.5مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "startcopina",
+          "brand_root": "ستاركوبينا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستاركوبينا5مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "startcopina",
+          "brand_root": "ستاركوبينا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سترونج فيل كريم",
+          "lang": "AR",
+          "canonical_brand": "strongville",
+          "brand_root": "سترونج فيل",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سترونج فيل كريم رجالي",
+          "lang": "AR",
+          "canonical_brand": "strongville",
+          "brand_root": "سترونج فيل رجالي",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستلاسيل 5 جم اقراص",
+          "lang": "AR",
+          "canonical_brand": "stelacil",
+          "brand_root": "ستلاسيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستوبلي غسول وجه",
+          "lang": "AR",
+          "canonical_brand": "stopli",
+          "brand_root": "ستوبلي وجه",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستيرالاين ايمولينت كريم 200 مل",
+          "lang": "AR",
+          "canonical_brand": "steraline",
+          "brand_root": "ستيرالاين ايمولينت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ستيمولان شراب",
+          "lang": "AR",
+          "canonical_brand": "stimulan",
+          "brand_root": "ستيمولان",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سكاي كيور جل",
+          "lang": "AR",
+          "canonical_brand": "sky cure",
+          "brand_root": "سكاي كيور",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سكروفير امبول",
+          "lang": "AR",
+          "canonical_brand": "sacrofer",
+          "brand_root": "سكروفير",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سكينورين كريم",
+          "lang": "AR",
+          "canonical_brand": "skinoren",
+          "brand_root": "سكينورين",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سلازوبيرين سلف اقراص",
+          "lang": "AR",
+          "canonical_brand": "salazopyrin",
+          "brand_root": "سلازوبيرين سلف",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سوبرانيل 25مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "supranil",
+          "brand_root": "سوبرانيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سوليوبريد20مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "solupred",
+          "brand_root": "سوليوبريد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سي اتش الفا بلس",
+          "lang": "AR",
+          "canonical_brand": "ch-alpha",
+          "brand_root": "سي اتش الفا بلس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سي لايت ليب بالم",
+          "lang": "AR",
+          "canonical_brand": "c-light",
+          "brand_root": "سي لايت ليب بالم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيالونج10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "tadalong",
+          "brand_root": "سيالونج",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيانارو بلس قطره",
+          "lang": "AR",
+          "canonical_brand": "cyanaro",
+          "brand_root": "سيانارو بلس",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيبازول فورت 2قرص",
+          "lang": "AR",
+          "canonical_brand": "septazole",
+          "brand_root": "سيبازول فورت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيبانوين جيل",
+          "lang": "AR",
+          "canonical_brand": "sebanoin",
+          "brand_root": "سيبانوين",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيبروسين500مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "ciprocin",
+          "brand_root": "سيبروسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيتابرونكس10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "ronex",
+          "brand_root": "سيتابرونكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيتافين  اقراص 3شريط",
+          "lang": "AR",
+          "canonical_brand": "cetafen",
+          "brand_root": "سيتافين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيترونوميت 4 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "citronomit",
+          "brand_root": "سيترونوميت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيداميكس 250مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "cidamex",
+          "brand_root": "سيداميكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيديرال بمبي10كيس",
+          "lang": "AR",
+          "canonical_brand": "sideral",
+          "brand_root": "سيديرال بمبي",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيرازيت اقراص",
+          "lang": "AR",
+          "canonical_brand": "cerazette",
+          "brand_root": "سيرازيت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيردالود 4 مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "sirdalud",
+          "brand_root": "سيردالود",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيرفيتولكا20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "cervitolca",
+          "brand_root": "سيرفيتولكا كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيرليفت100مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "serlift",
+          "brand_root": "سيرليفت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيروبيب كونديشنر",
+          "lang": "AR",
+          "canonical_brand": "seropep",
+          "brand_root": "سيروبيب كونديشنر",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيريبروليسن5مجم 5امبول ث",
+          "lang": "AR",
+          "canonical_brand": "cerebrolysin",
+          "brand_root": "سيريبروليسن",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيريلاك 125جم تمر وقمح",
+          "lang": "AR",
+          "canonical_brand": "cerelac",
+          "brand_root": "سيريلاك تمر وقمح",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيريلاك تمر وقمح بالبن500جم",
+          "lang": "AR",
+          "canonical_brand": "cerelac",
+          "brand_root": "سيريلاك تمر وقمح بالبن",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيستابرونت شراب",
+          "lang": "AR",
+          "canonical_brand": "sedapront",
+          "brand_root": "سيستابرونت",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفازون 1جم فيال",
+          "lang": "AR",
+          "canonical_brand": "cefazone",
+          "brand_root": "سيفازون",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفاكسون  1جم عضل فيال",
+          "lang": "AR",
+          "canonical_brand": "cefaxone",
+          "brand_root": "سيفاكسون عضل",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفترياكسون 1جم عضل ساندوز فيال",
+          "lang": "AR",
+          "canonical_brand": "ceftriaxone",
+          "brand_root": "سيفترياكسون عضل ساندوز",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفيبم 1جم  فيال عضل فاركو",
+          "lang": "AR",
+          "canonical_brand": "cefepime",
+          "brand_root": "سيفيبم عضل",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيفيكسيم 100مجم 30مل شرب",
+          "lang": "AR",
+          "canonical_brand": "cefixime",
+          "brand_root": "سيفيكسيم",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيكلوبروجينوفا اقراص",
+          "lang": "AR",
+          "canonical_brand": "cycloprogynova",
+          "brand_root": "سيكلوبروجينوفا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيكلور 250مل شراب",
+          "lang": "AR",
+          "canonical_brand": "ceclor",
+          "brand_root": "سيكلور",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيكوسيتام 500مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "secocetam",
+          "brand_root": "سيكوسيتام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيكيندازول 500 مجم 4قرص",
+          "lang": "AR",
+          "canonical_brand": "secnidazole",
+          "brand_root": "سيكيندازول",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيلدافا  3شريط",
+          "lang": "AR",
+          "canonical_brand": "sildava",
+          "brand_root": "سيلدافا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيلفر بيرن كريم",
+          "lang": "AR",
+          "canonical_brand": "silver burn",
+          "brand_root": "سيلفر بيرن",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سيمباتكس20مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "symbatex",
+          "brand_root": "سيمباتكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سينتروباكس ادفانس اقراص",
+          "lang": "AR",
+          "canonical_brand": "centropax",
+          "brand_root": "سينتروباكس ادفانس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "سينمت  250/25مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "sinemet",
+          "brand_root": "سينمت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "شارتوريج بلس80/12.5مجم28قرص",
+          "lang": "AR",
+          "canonical_brand": "chartoreg",
+          "brand_root": "شارتوريج بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "صابون مون فيس",
+          "lang": "AR",
+          "canonical_brand": "moon face",
+          "brand_root": "مون فيس",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "صن توب كريم50مجم",
+          "lang": "AR",
+          "canonical_brand": "suntop",
+          "brand_root": "صن توب",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "صن توب لوشن50مل",
+          "lang": "AR",
+          "canonical_brand": "suntop",
+          "brand_root": "صن توب",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاتروكسيم200مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "vatroxim",
+          "brand_root": "فاتروكسيم",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاركوتيليام شراب",
+          "lang": "AR",
+          "canonical_brand": "farcotilium",
+          "brand_root": "فاركوتيليام",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاركوفيت  ب12  كبسول",
+          "lang": "AR",
+          "canonical_brand": "farcovit",
+          "brand_root": "فاركوفيت ب",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاركولين شراب",
+          "lang": "AR",
+          "canonical_brand": "farcolin",
+          "brand_root": "فاركولين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاستر جيل",
+          "lang": "AR",
+          "canonical_brand": "faster",
+          "brand_root": "فاستر",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فاكتو مرهم",
+          "lang": "AR",
+          "canonical_brand": "faktu",
+          "brand_root": "فاكتو",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فالساتينس بلس160/12.5 اقراص",
+          "lang": "AR",
+          "canonical_brand": "valsatens",
+          "brand_root": "فالساتينس بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فانج رير جل شاور",
+          "lang": "AR",
+          "canonical_brand": "fung rare",
+          "brand_root": "فانج رير شاور",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فايركتا بلاس 4قرص",
+          "lang": "AR",
+          "canonical_brand": "virecta",
+          "brand_root": "فايركتا بلاس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فرافيرو 27برطمان 20 كبسوله",
+          "lang": "AR",
+          "canonical_brand": "phrafero",
+          "brand_root": "فرافيرو برطمان كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلازاكور 6مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "flazacor",
+          "brand_root": "فلازاكور",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلافيسيف شراب60مل",
+          "lang": "AR",
+          "canonical_brand": "flavicef",
+          "brand_root": "فلافيسيف",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلاموكونسلت90مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "flamoconsult",
+          "brand_root": "فلاموكونسلت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلوادجست25مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "fluadjust",
+          "brand_root": "فلوادجست",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلوب شراب",
+          "lang": "AR",
+          "canonical_brand": "flop",
+          "brand_root": "فلوب",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلوتاك 75مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "flotac",
+          "brand_root": "فلوتاك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلوتن 14 كبسول",
+          "lang": "AR",
+          "canonical_brand": "flutin",
+          "brand_root": "فلوتن",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فلوكسيبسي400مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "floxepci",
+          "brand_root": "فلوكسيبسي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فليبوتون حقن 3امبولات",
+          "lang": "AR",
+          "canonical_brand": "phlebotone",
+          "brand_root": "فليبوتون",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فليكسال مساج جل60جرام",
+          "lang": "AR",
+          "canonical_brand": "flexal",
+          "brand_root": "فليكسال مساج جرام",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فليكسوتيد 50مجم ايفوهيلير",
+          "lang": "AR",
+          "canonical_brand": "flixotide",
+          "brand_root": "فليكسوتيد ايفوهيلير",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فوراديل كبسول 3شرايط بخاخ",
+          "lang": "AR",
+          "canonical_brand": "foradil",
+          "brand_root": "فوراديل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فوراديل كبسول 6شرايط بخاخ",
+          "lang": "AR",
+          "canonical_brand": "foradil",
+          "brand_root": "فوراديل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فورتامايند 500مجم 5 امبول",
+          "lang": "AR",
+          "canonical_brand": "fortamind",
+          "brand_root": "فورتامايند",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فورتير اقراص",
+          "lang": "AR",
+          "canonical_brand": "fortair",
+          "brand_root": "فورتير",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فورتيفيروم14كيس",
+          "lang": "AR",
+          "canonical_brand": "fortiferrum",
+          "brand_root": "فورتيفيروم",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فورجيناب5/160/12.5 مجم",
+          "lang": "AR",
+          "canonical_brand": "forgenab",
+          "brand_root": "فورجيناب",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فوكسازوليدين600مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "foxazolidine",
+          "brand_root": "فوكسازوليدين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "في اند كريم",
+          "lang": "AR",
+          "canonical_brand": "v and",
+          "brand_root": "في اند",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فياسالمول بلس بخاخ",
+          "lang": "AR",
+          "canonical_brand": "viasalmol",
+          "brand_root": "فياسالمول بلس",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيتا بوينت شامبو للقشره250ملل",
+          "lang": "AR",
+          "canonical_brand": "vitapoint",
+          "brand_root": "فيتا بوينت للقشره",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيتارون 120ملل شراب",
+          "lang": "AR",
+          "canonical_brand": "vitaron",
+          "brand_root": "فيتارون",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيتاسترس  اقراص",
+          "lang": "AR",
+          "canonical_brand": "vitastress",
+          "brand_root": "فيتاسترس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيتونكس شراب",
+          "lang": "AR",
+          "canonical_brand": "vitonex",
+          "brand_root": "فيتونكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيرنيلار اقراص",
+          "lang": "AR",
+          "canonical_brand": "vernelar",
+          "brand_root": "فيرنيلار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيروترون 30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "ferrotron",
+          "brand_root": "فيروترون كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيلكسوفان كبسول",
+          "lang": "AR",
+          "canonical_brand": "flexovan",
+          "brand_root": "فيلكسوفان",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيمابينت2.5مجم14قرص",
+          "lang": "AR",
+          "canonical_brand": "femapent",
+          "brand_root": "فيمابينت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيوتك نقط",
+          "lang": "AR",
+          "canonical_brand": "viotic",
+          "brand_root": "فيوتك",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيورازول   شرب",
+          "lang": "AR",
+          "canonical_brand": "furazole",
+          "brand_root": "فيورازول",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "فيوسيدل كريم",
+          "lang": "AR",
+          "canonical_brand": "fucidel",
+          "brand_root": "فيوسيدل",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "قرفة بالجنزبيل ايزيس",
+          "lang": "AR",
+          "canonical_brand": "cinnamon ginger",
+          "brand_root": "قرفه بالجنزبيل ايزيس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كابرون  6 امبوله",
+          "lang": "AR",
+          "canonical_brand": "capron",
+          "brand_root": "كابرون امبوله",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كابوتريل25مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "capotril",
+          "brand_root": "كابوتريل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كابوتن 50مجم 10قرص",
+          "lang": "AR",
+          "canonical_brand": "capoten",
+          "brand_root": "كابوتن",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كابيلو شامبو",
+          "lang": "AR",
+          "canonical_brand": "capello",
+          "brand_root": "كابيلو",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كارتي تون 30قرص",
+          "lang": "AR",
+          "canonical_brand": "cartitone",
+          "brand_root": "كارتي تون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كارمينكس شراب",
+          "lang": "AR",
+          "canonical_brand": "carminex",
+          "brand_root": "كارمينكس",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كارنيتول بلس برطمان",
+          "lang": "AR",
+          "canonical_brand": "carnitol",
+          "brand_root": "كارنيتول بلس برطمان",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كافينتول شراب",
+          "lang": "AR",
+          "canonical_brand": "caffentol",
+          "brand_root": "كافينتول",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كالمابيبي شراب",
+          "lang": "AR",
+          "canonical_brand": "calmababy",
+          "brand_root": "كالمابيبي",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كالمينال شراب",
+          "lang": "AR",
+          "canonical_brand": "calminal",
+          "brand_root": "كالمينال",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كالوبين  نقط",
+          "lang": "AR",
+          "canonical_brand": "kalobin",
+          "brand_root": "كالوبين",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كانديكيور لبوس مهبلي",
+          "lang": "AR",
+          "canonical_brand": "candicure",
+          "brand_root": "كانديكيور مهبلي",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كتافلام  50مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "cataflam",
+          "brand_root": "كتافلام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كتافلام 3  امبول",
+          "lang": "AR",
+          "canonical_brand": "cataflam",
+          "brand_root": "كتافلام",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كحول120مل كيور ميديكال",
+          "lang": "AR",
+          "canonical_brand": "alcohol",
+          "brand_root": "كحول كيور ميديكال",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كركدية ايزيس",
+          "lang": "AR",
+          "canonical_brand": "hibiscus",
+          "brand_root": "كركديه ايزيس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كريستور 10 مجم 28قرص",
+          "lang": "AR",
+          "canonical_brand": "crestor",
+          "brand_root": "كريستور",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كلاريتين شراب",
+          "lang": "AR",
+          "canonical_brand": "claritine",
+          "brand_root": "كلاريتين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كلوزابكس 25 مجم",
+          "lang": "AR",
+          "canonical_brand": "clozapex",
+          "brand_root": "كلوزابكس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كلوزابين100 اقراص",
+          "lang": "AR",
+          "canonical_brand": "clozapine",
+          "brand_root": "كلوزابين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كليندا -فيرت كريم 20مل",
+          "lang": "AR",
+          "canonical_brand": "كليندافيرت",
+          "brand_root": "كليندا فيرت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": false
+        },
+        {
+          "requested": "كوافازير مرهم",
+          "lang": "AR",
+          "canonical_brand": "coavazir",
+          "brand_root": "كوافازير",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوتراي ميكسازول اقراص",
+          "lang": "AR",
+          "canonical_brand": "cotrimoxazole",
+          "brand_root": "كوتراي ميكسازول",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوراسور20مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "corasore",
+          "brand_root": "كوراسور",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كورتكس شامبو للقشره",
+          "lang": "AR",
+          "canonical_brand": "cortex",
+          "brand_root": "كورتكس للقشره",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كورفيبيك20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "corvepique",
+          "brand_root": "كورفيبيك كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كورفيزيم 20 كبسوله",
+          "lang": "AR",
+          "canonical_brand": "corvizem",
+          "brand_root": "كورفيزيم كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوفرسيل2.5/10 بلس اقراص",
+          "lang": "AR",
+          "canonical_brand": "coversyl",
+          "brand_root": "كوفرسيل بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوكسينورين90مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "coxinurin",
+          "brand_root": "كوكسينورين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوللوماك محلول",
+          "lang": "AR",
+          "canonical_brand": "collomak",
+          "brand_root": "كوللوماك محلول",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كولوسبازمين فورت اقراص",
+          "lang": "AR",
+          "canonical_brand": "colospasmin",
+          "brand_root": "كولوسبازمين فورت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كولوسلازين500 مجم20 قرص",
+          "lang": "AR",
+          "canonical_brand": "colosalazine",
+          "brand_root": "كولوسلازين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوليك اوف شراب",
+          "lang": "AR",
+          "canonical_brand": "colic off",
+          "brand_root": "كوليك اوف",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كوليكالسيتال50000وحده12قرص",
+          "lang": "AR",
+          "canonical_brand": "cholecalciferol",
+          "brand_root": "كوليكالسيتال وحده",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كونترولوك امبول",
+          "lang": "AR",
+          "canonical_brand": "controloc",
+          "brand_root": "كونترولوك",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كونجي كلير فورت قطرة",
+          "lang": "AR",
+          "canonical_brand": "congi-clear",
+          "brand_root": "كونجي كلير فورت",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كونفاجران50مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "confagran",
+          "brand_root": "كونفاجران",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كويتابكس 300مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "quitapex",
+          "brand_root": "كويتابكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كويتابين 25مجم 30قرص",
+          "lang": "AR",
+          "canonical_brand": "quetiapine",
+          "brand_root": "كويتابين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتاديل200مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "ketadyl",
+          "brand_root": "كيتاديل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتوبريك 75مجم 20كبسولة",
+          "lang": "AR",
+          "canonical_brand": "ketoprek",
+          "brand_root": "كيتوبريك كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتوريلين امبول/ كيتولاك",
+          "lang": "AR",
+          "canonical_brand": "ketorilin",
+          "brand_root": "كيتوريلين كيتولاك",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيتولاك 5 امبوله",
+          "lang": "AR",
+          "canonical_brand": "ketolac",
+          "brand_root": "كيتولاك امبوله",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيه ال واي جل 42 جم",
+          "lang": "AR",
+          "canonical_brand": "kly",
+          "brand_root": "كيه ال واي",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيوتيفيت كريم",
+          "lang": "AR",
+          "canonical_brand": "cutivate",
+          "brand_root": "كيوتيفيت",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "كيورام 228.5 شراب",
+          "lang": "AR",
+          "canonical_brand": "curam",
+          "brand_root": "كيورام",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لاكتوماكس اكياس",
+          "lang": "AR",
+          "canonical_brand": "lactomax",
+          "brand_root": "لاكتوماكس",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لاكتيول فورت اكياس",
+          "lang": "AR",
+          "canonical_brand": "lacteol",
+          "brand_root": "لاكتيول فورت",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لاكسيول بي ملين اقراص",
+          "lang": "AR",
+          "canonical_brand": "laxiol",
+          "brand_root": "لاكسيول بي ملين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لاموترين50مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "lamotrene",
+          "brand_root": "لاموترين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لاميفين250مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "lamifen",
+          "brand_root": "لاميفين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لانتانون30مجم 10كبسوله",
+          "lang": "AR",
+          "canonical_brand": "lantanon",
+          "brand_root": "لانتانون كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن ابتاميل 1 ادفانس",
+          "lang": "AR",
+          "canonical_brand": "aptamil",
+          "brand_root": "ابتاميل ادفانس",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن ابتاميل 2 ادفانس",
+          "lang": "AR",
+          "canonical_brand": "aptamil",
+          "brand_root": "ابتاميل ادفانس",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن اس 26 ايه ار جولد",
+          "lang": "AR",
+          "canonical_brand": "s-26",
+          "brand_root": "اس ايه ار جولد",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن بيبيلاك 3 بيبي جونيور",
+          "lang": "AR",
+          "canonical_brand": "bebelac",
+          "brand_root": "بيبيلاك بيبي جونيور",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن بيبيلاك بريماتيور",
+          "lang": "AR",
+          "canonical_brand": "bebelac",
+          "brand_root": "بيبيلاك بريماتيور",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن بيدياميل ال اف",
+          "lang": "AR",
+          "canonical_brand": "pediamil",
+          "brand_root": "بيدياميل ال اف",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن نيدو 1بلس 576جرام",
+          "lang": "AR",
+          "canonical_brand": "nido",
+          "brand_root": "نيدو بلس جرام",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن هيرو بيبي 2",
+          "lang": "AR",
+          "canonical_brand": "hero baby",
+          "brand_root": "هيرو بيبي",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لبن هيرو بيبي ال اف",
+          "lang": "AR",
+          "canonical_brand": "hero baby",
+          "brand_root": "هيرو بيبي ال اف",
+          "form": "INFANT_MILK",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لجنوكايين 15 سبراي",
+          "lang": "AR",
+          "canonical_brand": "lignocaine",
+          "brand_root": "لجنوكايين",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لوبيكونت8مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "lubeconte",
+          "brand_root": "لوبيكونت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لوتيرانول قطره1%",
+          "lang": "AR",
+          "canonical_brand": "lotiranol",
+          "brand_root": "لوتيرانول",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لوراز اقراص",
+          "lang": "AR",
+          "canonical_brand": "loraz",
+          "brand_root": "لوراز",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لورنوكسيكام 8 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "lornoxicam",
+          "brand_root": "لورنوكسيكام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لورنوكسيكام امبول",
+          "lang": "AR",
+          "canonical_brand": "lornoxicam",
+          "brand_root": "لورنوكسيكام",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لورين30قرص",
+          "lang": "AR",
+          "canonical_brand": "lorine",
+          "brand_root": "لورين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لوزازيد 12.5/50 مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "losazide",
+          "brand_root": "لوزازيد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لوفازا برطمان 30قطعه",
+          "lang": "AR",
+          "canonical_brand": "lovaza",
+          "brand_root": "لوفازا برطمان قطعه",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لولا ويست اكياس",
+          "lang": "AR",
+          "canonical_brand": "lola west",
+          "brand_root": "لولا ويست",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبانتيل 300مجم 3شريط",
+          "lang": "AR",
+          "canonical_brand": "lipanthyl",
+          "brand_root": "ليبانتيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبانتيل145اقراص",
+          "lang": "AR",
+          "canonical_brand": "lipanthyl",
+          "brand_root": "ليبانتيل",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبتروجين 200 مجم 30 قرص",
+          "lang": "AR",
+          "canonical_brand": "liptrogen",
+          "brand_root": "ليبتروجين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبراكس اقراص",
+          "lang": "AR",
+          "canonical_brand": "librax",
+          "brand_root": "ليبراكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبوزوم دي3 اقراص",
+          "lang": "AR",
+          "canonical_brand": "liposomal d",
+          "brand_root": "ليبوزوم دي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبوكومب10/20مجم30كبسوله",
+          "lang": "AR",
+          "canonical_brand": "lipocomb",
+          "brand_root": "ليبوكومب كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليبونا40مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "lipona",
+          "brand_root": "ليبونا",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفاجول 20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "livagol",
+          "brand_root": "ليفاجول كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفانوكس2شريط",
+          "lang": "AR",
+          "canonical_brand": "levanox",
+          "brand_root": "ليفانوكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفانيك500مجم 7قرص",
+          "lang": "AR",
+          "canonical_brand": "levanic",
+          "brand_root": "ليفانيك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفوتافين500مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "levotavin",
+          "brand_root": "ليفوتافين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفوتافين750مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "levotavin",
+          "brand_root": "ليفوتافين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفوفلوكساسين750مجم 5قرص",
+          "lang": "AR",
+          "canonical_brand": "levofloxacin",
+          "brand_root": "ليفوفلوكساسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليفوفيروز750مجم7قرص",
+          "lang": "AR",
+          "canonical_brand": "levoferoz",
+          "brand_root": "ليفوفيروز",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ليناجينتا بلس10/5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "linagenta",
+          "brand_root": "ليناجينتا بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لينتوجيستون250مجم1امبول",
+          "lang": "AR",
+          "canonical_brand": "lentogest",
+          "brand_root": "لينتوجيستون",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "لينزوليد 600مجم 14 قرص",
+          "lang": "AR",
+          "canonical_brand": "linezolid",
+          "brand_root": "لينزوليد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ماربالين كريم",
+          "lang": "AR",
+          "canonical_brand": "marpalene",
+          "brand_root": "ماربالين",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مارفيل كريم",
+          "lang": "AR",
+          "canonical_brand": "marvel",
+          "brand_root": "مارفيل",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ماريفان3مجم3شريط",
+          "lang": "AR",
+          "canonical_brand": "marevan",
+          "brand_root": "ماريفان",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مافو100مجم100مل شراب",
+          "lang": "AR",
+          "canonical_brand": "mavo",
+          "brand_root": "مافو",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ماكسيبيم1جم فيال",
+          "lang": "AR",
+          "canonical_brand": "maxipime",
+          "brand_root": "ماكسيبيم",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مانوفيبركين بلس اسبراي",
+          "lang": "AR",
+          "canonical_brand": "manoviprcaine",
+          "brand_root": "مانوفيبركين بلس",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "متروهيلر30كبسولة+بخه",
+          "lang": "AR",
+          "canonical_brand": "metrohaler",
+          "brand_root": "متروهيلر كبسوله بخه",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مكسيدرم30جم كريم كبير",
+          "lang": "AR",
+          "canonical_brand": "mixderm",
+          "brand_root": "مكسيدرم",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "منتوبلكس 20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "mentoplex",
+          "brand_root": "منتوبلكس كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موبينورم كريم120جم",
+          "lang": "AR",
+          "canonical_brand": "mobinorm",
+          "brand_root": "موبينورم",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موتيل فاست فوار25كيس",
+          "lang": "AR",
+          "canonical_brand": "motil fast",
+          "brand_root": "موتيل فاست",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موفيكول20كيس",
+          "lang": "AR",
+          "canonical_brand": "movicol",
+          "brand_root": "موفيكول",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موكساسين 400 مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "moxacin",
+          "brand_root": "موكساسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "موكسين15مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "moxine",
+          "brand_root": "موكسين",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مونتيلوراما 10مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "montelorama",
+          "brand_root": "مونتيلوراما",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مونودكسين 1% قطرة عين",
+          "lang": "AR",
+          "canonical_brand": "monodoxin",
+          "brand_root": "مونودكسين عين",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميباكوجرين تي 20قرص",
+          "lang": "AR",
+          "canonical_brand": "mepacogreen tea",
+          "brand_root": "ميباكوجرين تي",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميتفورمين1000مجم اكس ار اقراص",
+          "lang": "AR",
+          "canonical_brand": "metformin",
+          "brand_root": "ميتفورمين اكس ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميثوريلاكس 30 قرص",
+          "lang": "AR",
+          "canonical_brand": "methorelax",
+          "brand_root": "ميثوريلاكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميديكسافلام لبوس",
+          "lang": "AR",
+          "canonical_brand": "medixaflam",
+          "brand_root": "ميديكسافلام",
+          "form": "SUPPOSITORY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميراج 1مجم فيال",
+          "lang": "AR",
+          "canonical_brand": "merag",
+          "brand_root": "ميراج",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميكوجيل 180مل شراب",
+          "lang": "AR",
+          "canonical_brand": "mucogel",
+          "brand_root": "ميكوجيل",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميكوسولفان شراب",
+          "lang": "AR",
+          "canonical_brand": "mucosolvan",
+          "brand_root": "ميكوسولفان",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميلجا ماكس30قرص",
+          "lang": "AR",
+          "canonical_brand": "milga max",
+          "brand_root": "ميلجا ماكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميميكسا نقط",
+          "lang": "AR",
+          "canonical_brand": "memixa",
+          "brand_root": "ميميكسا",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "مينوكسيديل فورت /.5 جيل",
+          "lang": "AR",
+          "canonical_brand": "minoxidil",
+          "brand_root": "مينوكسيديل فورت",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميوكتا بلس برطمان",
+          "lang": "AR",
+          "canonical_brand": "mucta",
+          "brand_root": "ميوكتا بلس برطمان",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ميوكوتك300مجم كبسول",
+          "lang": "AR",
+          "canonical_brand": "mucotec",
+          "brand_root": "ميوكوتك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ناتريلكس اس ار 30قرص",
+          "lang": "AR",
+          "canonical_brand": "natrilix",
+          "brand_root": "ناتريلكس اس ار",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نازوستوب نقط اطفال",
+          "lang": "AR",
+          "canonical_brand": "nasostop",
+          "brand_root": "نازوستوب اطفال",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نازوكورت بخاخ",
+          "lang": "AR",
+          "canonical_brand": "nasacort",
+          "brand_root": "نازوكورت",
+          "form": "SPRAY",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نت كلين شراب",
+          "lang": "AR",
+          "canonical_brand": "net clean",
+          "brand_root": "نت كلين",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نت لوك 10مجم 20قرص",
+          "lang": "AR",
+          "canonical_brand": "netlook",
+          "brand_root": "نت لوك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نت لوك 20مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "netlook",
+          "brand_root": "نت لوك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نت لوك40مجم20قرص",
+          "lang": "AR",
+          "canonical_brand": "netlook",
+          "brand_root": "نت لوك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نورجيستادول21قرص",
+          "lang": "AR",
+          "canonical_brand": "norgestadol",
+          "brand_root": "نورجيستادول",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نورجيسك اقراص",
+          "lang": "AR",
+          "canonical_brand": "norgesic",
+          "brand_root": "نورجيسك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نوريجنسين امبول/ميزوسيبت",
+          "lang": "AR",
+          "canonical_brand": "norigynon",
+          "brand_root": "نوريجنسين ميزوسيبت",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نوفيستوريك بلس10/10 اقراص",
+          "lang": "AR",
+          "canonical_brand": "novestoric",
+          "brand_root": "نوفيستوريك بلس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نويوريك300مجم اقراص",
+          "lang": "AR",
+          "canonical_brand": "no-uric",
+          "brand_root": "نويوريك",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيبليت 5مجم 14قرص",
+          "lang": "AR",
+          "canonical_brand": "nebilet",
+          "brand_root": "نيبليت",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيتازود اقراص",
+          "lang": "AR",
+          "canonical_brand": "nitazode",
+          "brand_root": "نيتازود",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيرهافلكس40مجم20فيلم",
+          "lang": "AR",
+          "canonical_brand": "nerhaflex",
+          "brand_root": "نيرهافلكس فيلم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيكسكيور10مجم14كيس",
+          "lang": "AR",
+          "canonical_brand": "nexicure",
+          "brand_root": "نيكسكيور",
+          "form": "SACHET",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيليكس اخضر 50الف4قرص",
+          "lang": "AR",
+          "canonical_brand": "nilex",
+          "brand_root": "نيليكس اخضر الف",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيوبول قطرة",
+          "lang": "AR",
+          "canonical_brand": "neopol",
+          "brand_root": "نيوبول",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيوتري ترو اف اي 14كبسوله",
+          "lang": "AR",
+          "canonical_brand": "nutritro",
+          "brand_root": "نيوتري ترو اف اي كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيورونتين 300 مجم 20كبسوله",
+          "lang": "AR",
+          "canonical_brand": "neurontin",
+          "brand_root": "نيورونتين كبسوله",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيوزوليد 600 مجم3قرص",
+          "lang": "AR",
+          "canonical_brand": "newzolid",
+          "brand_root": "نيوزوليد",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "نيوكاربون30قرص",
+          "lang": "AR",
+          "canonical_brand": "eucarbon",
+          "brand_root": "نيوكاربون",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هالوبريدول ريتارد 50مجم امبول",
+          "lang": "AR",
+          "canonical_brand": "haloperidol",
+          "brand_root": "هالوبريدول ريتارد",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هالونيز 5مجم10قرص",
+          "lang": "AR",
+          "canonical_brand": "halonez",
+          "brand_root": "هالونيز",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هانزو 10اكيس",
+          "lang": "AR",
+          "canonical_brand": "hanzo",
+          "brand_root": "هانزو اكيس",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هاي بيوتك312مجم  شراب",
+          "lang": "AR",
+          "canonical_brand": "hibiotic",
+          "brand_root": "هاي بيوتك",
+          "form": "ORAL_LIQUID",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هاي كول كريم مساج",
+          "lang": "AR",
+          "canonical_brand": "high cool",
+          "brand_root": "هاي كول مساج",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيالو فور سكين جيل",
+          "lang": "AR",
+          "canonical_brand": "hyalo 4 skin",
+          "brand_root": "هيالو فور سكين",
+          "form": "TOPICAL_GEL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيالو فور كونترول25مجم كريم",
+          "lang": "AR",
+          "canonical_brand": "hyalo 4 control",
+          "brand_root": "هيالو فور كونترول",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيدرو لوسيون 100ملل",
+          "lang": "AR",
+          "canonical_brand": "hydro lotion",
+          "brand_root": "هيدرو",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيرباك 2%  لوسيون احمر",
+          "lang": "AR",
+          "canonical_brand": "hairback",
+          "brand_root": "هيرباك احمر",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيرباك 5% لوسيون اخضر",
+          "lang": "AR",
+          "canonical_brand": "hairback",
+          "brand_root": "هيرباك اخضر",
+          "form": "COSMETIC",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيرباك بلس فوم",
+          "lang": "AR",
+          "canonical_brand": "hairback",
+          "brand_root": "هيرباك بلس فوم",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيستازين نقط  للفم",
+          "lang": "AR",
+          "canonical_brand": "histazine",
+          "brand_root": "هيستازين للفم",
+          "form": "DROPS",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيلاريوم 15جم كريم",
+          "lang": "AR",
+          "canonical_brand": "hilarium",
+          "brand_root": "هيلاريوم",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيموجيت 6  امبول",
+          "lang": "AR",
+          "canonical_brand": "haemojet",
+          "brand_root": "هيموجيت",
+          "form": "INJECTABLE",
+          "has_exact_brand_in_catalog": true,
+          "in_dictionary": true
+        },
+        {
+          "requested": "هيموكلار كريم",
+          "lang": "AR",
+          "canonical_brand": "hemoclar",
+          "brand_root": "هيموكلار",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "وايت شادو40جم كريم",
+          "lang": "AR",
+          "canonical_brand": "white shadow",
+          "brand_root": "وايت شادو",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "ويلوفنج 2%كريم للفطريات",
+          "lang": "AR",
+          "canonical_brand": "welofung",
+          "brand_root": "ويلوفنج للفطريات",
+          "form": "TOPICAL_CREAM_OINT",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "وينديبن 5مجم30قرص",
+          "lang": "AR",
+          "canonical_brand": "windipine",
+          "brand_root": "وينديبن",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "يوروكنترول2مجم10قراص",
+          "lang": "AR",
+          "canonical_brand": "eurocontrol",
+          "brand_root": "يوروكنترول قراص",
+          "form": "UNKNOWN",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "يورينكس كبسول",
+          "lang": "AR",
+          "canonical_brand": "urinex",
+          "brand_root": "يورينكس",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        },
+        {
+          "requested": "يونيلوكسام500مجم2شريط",
+          "lang": "AR",
+          "canonical_brand": "uniloxam",
+          "brand_root": "يونيلوكسام",
+          "form": "SOLID_ORAL",
+          "has_exact_brand_in_catalog": false,
+          "in_dictionary": true
+        }
+      ]
+    }
+  },
+  "current_dict_size": 959
+}

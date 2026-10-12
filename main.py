@@ -50,8 +50,8 @@ def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
 
     clean_df = pd.DataFrame()
     clean_df['warehouse_name'] = [warehouse_name] * len(raw_df)
-    clean_df['item_name'] = raw_df[item_col].astype(str).str.strip()
-    clean_df['normalized_name'] = clean_df['item_name'].apply(lambda x: x.strip().lower())
+    clean_df['item_name'] = raw_df[item_col].fillna('').astype(str).str.strip()
+    clean_df['normalized_name'] = clean_df['item_name'].astype(str).str.strip().str.lower()
     clean_df['dosage'] = ''
     clean_df['unit_size'] = ''
     clean_df['base_price'] = pd.to_numeric(raw_df[price_col], errors='coerce').fillna(0.0) if price_col else 0.0

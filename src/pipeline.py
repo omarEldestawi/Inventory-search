@@ -348,8 +348,9 @@ def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
         disc_col = raw_df.columns[1]
 
     clean_df = pd.DataFrame()
-    clean_df['warehouse_name'] = [warehouse_name] * len(raw_df)
-    clean_df['item_name'] = raw_df[item_col].astype(str).str.strip()
+    clean_warehouse = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', str(warehouse_name))
+    clean_df['warehouse_name'] = [clean_warehouse] * len(raw_df)
+    clean_df['item_name'] = raw_df[item_col].astype(str).str.replace(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', regex=True).str.strip()
     clean_df['normalized_name'] = clean_df['item_name'].apply(lambda x: str(x).strip().lower())
     
     # Extract dosage and unit size if available

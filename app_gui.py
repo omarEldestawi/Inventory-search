@@ -13,6 +13,7 @@ import logging
 
 import datetime
 import subprocess
+import traceback
 from typing import Optional, List, Dict, Tuple
 
 import customtkinter as ctk
@@ -23,7 +24,7 @@ from tkinter import filedialog, messagebox
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.1.0")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.1.7")
     except Exception:
         pass
 
@@ -217,11 +218,17 @@ class FileListModel:
         # Run 3-tier classification
         classification = classify_files(candidates)
         order_set = set(classification.get('orders', []))
+        catalog_set = set(classification.get('catalogs', []))
 
         for cand in candidates:
-            category = "Order" if cand in order_set else "Catalog"
-            self.files.append(FileItem(cand, category))
-            added += 1
+            if cand in order_set:
+                self.files.append(FileItem(cand, "Order"))
+                added += 1
+            elif cand in catalog_set:
+                self.files.append(FileItem(cand, "Catalog"))
+                added += 1
+            else:
+                logger.info(f"Skipping unclassified or ignored file: {cand}")
 
         return added, duplicate
 
@@ -292,7 +299,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v1.1.2 / Egyptian Pharma Procurement Optimizer v1.1.2")
+        self.title("نظام المشتريات الصيدلانية v1.7 / Egyptian Pharma Procurement Optimizer v1.7")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -462,7 +469,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v1.1.0 Windows 11 Edition • Engine Ready",
+            text="v1.7 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -534,7 +541,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v1.1)",
+            text="🔄 التحديثات / Updates (v1.7)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -748,7 +755,12 @@ class PharmaProcurementApp(ctk.CTk):
         for root, _, files in os.walk(folder):
             for file in files:
                 ext = os.path.splitext(file)[1].lower()
-                if ext in supported_exts and not file.startswith("~$"):
+                if (
+                    ext in supported_exts
+                    and not file.startswith("~$")
+                    and not file.startswith("Procurement_Order_")
+                    and not file.startswith("أفضل_اسعار")
+                ):
                     found_files.append(os.path.join(root, file))
 
         if found_files:
@@ -867,7 +879,16 @@ class PharmaProcurementApp(ctk.CTk):
                         if f.path == path:
                             f.ocr_status_msg = status
                             break
-                    self._render_file_list()
+                    card = self._file_card_widgets.get(path)
+                    if card and hasattr(card, "_ocr_status_lbl"):
+                        try:
+                            card._ocr_status_lbl.configure(text=status)
+                        except Exception:
+                            pass
+                    try:
+                        self.status_label.configure(text=f"[{os.path.basename(path)}] {status}")
+                    except Exception:
+                        pass
                 elif m_type == "OCR_DONE":
                     path, count, items = msg[1], msg[2], msg[3]
                     for f in self.file_model.files:
@@ -1102,7 +1123,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v1.1.2 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v1.7 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -1310,15 +1331,15 @@ class PharmaProcurementApp(ctk.CTk):
                 ocr_btn.grid(row=1, column=3, padx=5, pady=(0, 6), sticky="e")
 
                 # Status label
-                if f_item.ocr_status_msg:
-                    ocr_status_lbl = ctk.CTkLabel(
-                        card,
-                        text=f_item.ocr_status_msg,
-                        font=get_font(9),
-                        text_color=("gray40", "gray60"),
-                        anchor="e"
-                    )
-                    ocr_status_lbl.grid(row=1, column=4, padx=(2, 10), pady=(0, 6), sticky="e")
+                ocr_status_lbl = ctk.CTkLabel(
+                    card,
+                    text=f_item.ocr_status_msg or "",
+                    font=get_font(9),
+                    text_color=("gray40", "gray60"),
+                    anchor="e"
+                )
+                ocr_status_lbl.grid(row=1, column=4, padx=(2, 10), pady=(0, 6), sticky="e")
+                card._ocr_status_lbl = ocr_status_lbl
 
             self._file_card_widgets[f_item.path] = card
 
@@ -1409,7 +1430,11 @@ class PharmaProcurementApp(ctk.CTk):
                     self.status_label.configure(text=status_text)
                 elif tag == "DONE":
                     results = msg[1]
-                    self._on_pipeline_completed(results)
+                    try:
+                        self._on_pipeline_completed(results)
+                    except Exception as comp_exc:
+                        logger.error(f"Exception in _on_pipeline_completed: {comp_exc}")
+                        self._on_pipeline_failed(str(comp_exc), traceback.format_exc())
                 elif tag == "ERROR":
                     err_msg = str(msg[1])
                     tb = str(msg[2]) if len(msg) > 2 else ""

@@ -1,7 +1,7 @@
 ; Inno Setup 6 Script for Egyptian Pharma Procurement Optimizer
 #define MyAppName "Egyptian Pharma Procurement Optimizer"
 #define MyAppArabicName "نظام المشتريات الصيدلانية"
-#define MyAppVersion "1.1.2"
+#define MyAppVersion "1.7"
 #define MyAppPublisher "Pharma Tech Solutions"
 #define MyAppExeName "EgyptianPharmaOptimizer.exe"
 
@@ -15,7 +15,7 @@ DefaultDirName={autopf}\EgyptianPharmaOptimizer
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist_installer
-OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.1.2
+OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.7
 SetupIconFile=assets\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -33,6 +33,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "dist\EgyptianPharmaOptimizer\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app.ico"

@@ -1,14 +1,12 @@
-# BRIEFING — 2026-09-11T11:10:00Z
+# BRIEFING — 2026-09-28T02:06:27+03:00
 
 ## Mission
-Sentinel monitoring and lifecycle orchestration for Egyptian Pharmaceutical Procurement Engine: Output directory write permission safety in packaged Windows builds and robust RapidOCR / RapidTable catalog extraction.
+Sentinel monitoring and lifecycle orchestration for Egyptian Pharmacy Procurement pipeline: execute complete reconciliation and permanent architectural fixes to match the golden reference benchmark (`أفضل_اسعار_2026-09-28.xlsx`) against daily inputs (`279.xlsx` and 7 wholesaler PDFs in `C:\Users\omart\Downloads`).
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\sentinel
-- Orchestrator: 3b92a196-eb1c-46f3-8ecb-542eb14e48e6
-- Orchestrator (active): 252346bb-95c8-4cac-bd1a-61888a6081bc
-- Orchestrator (swe_light): c0a0d0ec-ed0b-42c4-a16e-05395f7e1a22
+- Orchestrator: 64c03ea3-898c-420e-a0c5-ad2636240a10 (orchestrator_9 / teamwork_preview_orchestrator)
 - Victory Auditor: to be spawned on victory claim
 
 ## 🔒 Key Constraints
@@ -19,18 +17,17 @@ Sentinel monitoring and lifecycle orchestration for Egyptian Pharmaceutical Proc
 - Clean up crons and subagents upon completion
 
 ## User Context
-- **Last user request**: Fix the output directory write permission error in packaged Windows builds and ensure robust RapidOCR / RapidTable catalog extraction.
+- **Last user request**: Complete reconciliation and permanent architectural fixes for Egyptian Pharmacy Procurement pipeline to match golden reference benchmark (`أفضل_اسعار_2026-09-28.xlsx`) against daily inputs (`279.xlsx` and 7 wholesaler PDFs in `C:\Users\omart\Downloads`). Requirements R1 (order ingestion/dedup), R2 (catalog ingestion & glyph decoding), R3 (clinical safety gates), R4 (report parity & standalone exe rebuild).
 - **Pending clarifications**: none
-- **Delivered results**: Recorded in ORIGINAL_REQUEST.md
+- **Delivered results**: Orchestrator dispatched with full task specification and domain skill reference.
 
 ## Project Status
 - **Phase**: in progress
-- **Active Subagent**: teamwork_preview_swe (c0a0d0ec-ed0b-42c4-a16e-05395f7e1a22) at `.agents/swe_light_1`
-- **Cron Tasks**: task-24 (progress reporting, */8), task-26 (liveness check, */10)
-
-## Routing Decision
-- **Execution Path**: SWE Light (teamwork_preview_swe)
-- **Rationale**: User explicitly requested: "This is a single self-contained fix; keep it small and focused" targeting output directory write permissions and RapidOCR/RapidTable extraction reliability.
+- **Routing Decision**: General (teamwork_preview_orchestrator)
+- **Active Subagent**: teamwork_preview_orchestrator (`64c03ea3-898c-420e-a0c5-ad2636240a10`) at `.agents/teamwork/orchestrator_9`
+- **Cron Tasks**:
+  - Progress Reporting: `task-32` (`*/8 * * * *`)
+  - Liveness Check: `task-34` (`*/10 * * * *`)
 
 ## Victory Audit Status
 - **Triggered**: no
@@ -38,4 +35,6 @@ Sentinel monitoring and lifecycle orchestration for Egyptian Pharmaceutical Proc
 - **Retry count**: 0
 
 ## Artifact Index
-- c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\ORIGINAL_REQUEST.md — Authoritative record of user request
+- c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\ORIGINAL_REQUEST.md — Authoritative record of user requests
+- c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\teamwork\ORIGINAL_REQUEST.md — Mirror of authoritative request
+- c:\Users\omart\.gemini\antigravity\scratch\Inventory-search\.agents\teamwork\orchestrator_9\DISPATCH.md — Orchestrator dispatch specification

@@ -41,15 +41,28 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
     }
 
     # Order filename keywords
-    order_name_keywords = ['طلب', 'طلبية', 'نواقص', 'شراء', 'order', 'buying', 'purchase', 'po']
+    order_name_keywords = [
+        'طلب', 'طلبية', 'طلبيه', 'نواقص', 'شراء', 'مشتريات', 'اوردر', 'أوردر',
+        'فاتورة', 'فاتوره', 'احتياجات', 'order', 'buying', 'purchase', 'po',
+        'shortage', 'requisition', 'req'
+    ]
     # Catalog / Wholesaler negative keywords
-    catalog_name_keywords = ['جمله', 'جملة', 'خصم', 'عروض', 'عرض', 'ex', 'كتالوج', 'catalog', 'مخزن']
+    catalog_name_keywords = [
+        'جمله', 'جملة', 'خصم', 'عروض', 'عرض', 'ex', 'كتالوج', 'catalog', 'مخزن',
+        'wholesaler', 'vendor', 'price_list', 'pricelist'
+    ]
 
     # Order content markers
     order_content_tokens = [
         'أسم العميل', 'اسم العميل', 'اصناف تم طلبها', 'طلبها',
         'نواقص', 'الكمية المطلوبة', 'الكميه المطلوبه', 'المطلوب',
-        'customer', 'buying list', 'order list', 'purchase order', 'order items'
+        'الكمية', 'الكميه', 'كمية', 'كميه', 'العدد', 'عدد',
+        'customer', 'buying list', 'order list', 'purchase order', 'order items',
+        'qty', 'quantity', 'ordered', 'pieces'
+    ]
+    # Catalog content markers
+    catalog_content_tokens = [
+        'نسبة الخصم', 'الخصم', 'خصم', 'بونص', 'discount', 'disc%', 'bonus'
     ]
 
     for f_path in file_paths:
@@ -84,6 +97,9 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
         fname_lower = fname.lower()
         is_order_name = bool(
             re.search(r'^\d{4}\.(?:xlsx|xls|csv)$', fname_lower) or
+            re.search(r'^\d{1,4}[-_\.]\d{1,4}\.(?:xlsx|xls|csv)$', fname_lower) or
+            re.search(r'^\d{4}[-_\.]\d{1,2}[-_\.]\d{1,2}\.(?:xlsx|xls|csv)$', fname_lower) or
+            re.search(r'^\d{4,}\s*(?:\(\d+\)|_copy)?\.(?:xlsx|xls|csv)$', fname_lower) or
             any(k in fname_lower for k in order_name_keywords)
         )
         is_catalog_name = any(k in fname_lower for k in catalog_name_keywords)
@@ -134,7 +150,11 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
                 sample_read_success = False
             elif sample_read_success and text_block:
                 text_lower = text_block.lower()
-                if any(token in text_block or token in text_lower for token in order_content_tokens):
+                has_order_token = any(token in text_block or token in text_lower for token in order_content_tokens)
+                has_cat_token = any(token in text_block or token in text_lower for token in catalog_content_tokens)
+                if has_order_token and not has_cat_token:
+                    is_order_content = True
+                elif has_order_token:
                     is_order_content = True
             elif not text_block.strip():
                 sample_read_success = False
@@ -280,6 +300,15 @@ def reread_catalog_with_ocr(catalog_file: str, progress_callback=None) -> tuple[
             from pipeline import parse_excel_catalog
             from normalizer import normalize_vendor_name
         df = parse_excel_catalog(norm_path, normalize_vendor_name(w_raw))
+
+    # Non-degradation safety: if OCR yielded valid items, accept them directly.
+    # Only fall back to previously cached items if OCR returned 0 items.
+    prev_cached = global_catalog_cache.get(norm_path)
+    if not df.empty:
+        logger.info(f"OCR successfully extracted {len(df)} items for {fname}")
+    elif prev_cached is not None and not prev_cached.empty:
+        logger.info(f"OCR returned 0 items; preserving {len(prev_cached)} previously cached items for {fname}")
+        df = prev_cached
 
     if df.empty and last_err:
         raise RuntimeError(last_err)

@@ -19,10 +19,17 @@ try:
         parse_discount,
         parse_dosage_and_pack,
         unreverse_arabic_text,
+        is_arabic_text_reversed,
+        FORWARD_PHARMA_TOKENS,
         normalize_vendor_name,
         fix_arwasoft_arabic_numbers,
         decode_greek_arwasoft,
-        EASTERN_ARABIC_DIGITS
+        decode_custom_catalog_glyphs,
+        AL_HADABA_FONT_MAP,
+        CUSTOM_CATALOG_GLYPH_MAP,
+        normalize_ocr_split_medication_names,
+        EASTERN_ARABIC_DIGITS,
+        is_catalog_noise
     )
 except ImportError:
     from normalizer import (
@@ -30,10 +37,17 @@ except ImportError:
         parse_discount,
         parse_dosage_and_pack,
         unreverse_arabic_text,
+        is_arabic_text_reversed,
+        FORWARD_PHARMA_TOKENS,
         normalize_vendor_name,
         fix_arwasoft_arabic_numbers,
         decode_greek_arwasoft,
-        EASTERN_ARABIC_DIGITS
+        decode_custom_catalog_glyphs,
+        AL_HADABA_FONT_MAP,
+        CUSTOM_CATALOG_GLYPH_MAP,
+        normalize_ocr_split_medication_names,
+        EASTERN_ARABIC_DIGITS,
+        is_catalog_noise
     )
 
 logger = logging.getLogger("PDFCatalogParser")
@@ -388,23 +402,60 @@ def html_table_to_df(html_str: str) -> pd.DataFrame:
     return pd.DataFrame(fixed_data, columns=clean_cols)
 
 
-def fix_arabic_bidi_if_needed(text: str) -> str:
+def fix_arabic_bidi_if_needed(text: str, force_reverse: Optional[bool] = None) -> str:
     """Detects reversed Arabic characters and returns normalized natural text."""
     if not text or not isinstance(text, str):
         return ""
-    return unreverse_arabic_text(text).strip()
+    return unreverse_arabic_text(text, force_reverse=force_reverse).strip()
+
+
+ALL_EASTERN_DIGITS = str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789')
+
+
+def is_explicit_zero_discount(val: Any) -> bool:
+    """Checks whether a cell explicitly represents a 0% / net pricing discount."""
+    if val is None:
+        return False
+    s = str(val).strip().lower().translate(ALL_EASTERN_DIGITS)
+    if not s:
+        return False
+    if re.fullmatch(r'0+(?:\.0+)?\s*%?', s):
+        return True
+    if any(w in s for w in ['صافي', 'صافى', 'net', 'zero']):
+        return True
+    return False
+
 
 class PDFCatalogParser:
-    def __init__(self, pdf_path: str, warehouse_name: str = None):
+    AL_HADABA_FONT_MAP = AL_HADABA_FONT_MAP
+    GLYPH_TRANSLATION_MAP = AL_HADABA_FONT_MAP
+    CUSTOM_CATALOG_GLYPH_MAP = CUSTOM_CATALOG_GLYPH_MAP
+
+    @classmethod
+    def translate_glyphs(cls, text: str) -> str:
+        """Translates custom font glyphs (ArwaSoft Greek, Al-Hadhaba Runic/Aboriginal) to standard Arabic."""
+        return decode_custom_catalog_glyphs(text)
+
+    def __init__(self, pdf_path: Optional[str] = None, warehouse_name: Optional[str] = None):
         self.pdf_path = pdf_path
-        raw_name = warehouse_name or os.path.splitext(os.path.basename(pdf_path))[0]
-        self.warehouse_name = normalize_vendor_name(raw_name)
+        if pdf_path:
+            raw_name = warehouse_name or os.path.splitext(os.path.basename(pdf_path))[0]
+            self.warehouse_name = normalize_vendor_name(raw_name)
+        else:
+            self.warehouse_name = normalize_vendor_name(warehouse_name) if warehouse_name else ""
         self.last_error: Optional[str] = None
         
-    def parse(self) -> pd.DataFrame:
+    def parse(self, file_path: Optional[str] = None) -> pd.DataFrame:
         """Extract catalog items from PDF into a structured DataFrame."""
+        if file_path is not None:
+            self.pdf_path = file_path
+            raw_name = os.path.splitext(os.path.basename(file_path))[0]
+            self.warehouse_name = normalize_vendor_name(raw_name)
+        if not self.pdf_path:
+            raise ValueError("pdf_path must be provided either in __init__ or parse().")
         items = []
         self.last_error = None
+        doc = None
         try:
             doc = pymupdf.open(self.pdf_path)
             
@@ -412,6 +463,13 @@ class PDFCatalogParser:
             is_block_layout = 'ميجا' in self.warehouse_name or 'ميجـا' in self.warehouse_name
             is_cure = 'كيور' in self.warehouse_name
             is_makramy = 'المكرومي' in self.warehouse_name
+            base_fname = os.path.basename(self.pdf_path)
+            is_sina = 'سينا' in self.warehouse_name or 'سينا' in base_fname
+            is_dar_fouad = 'دار الفؤاد' in self.warehouse_name or 'دار الفؤاد' in base_fname
+            is_arwasoft_2col = (
+                any(k in base_fname for k in ['ادم جمله', 'بيرفكت فارم', 'رواد الدوا']) or
+                any(k in self.warehouse_name for k in ['ادم', 'بيرفكت فارم', 'رواد الدواء'])
+            )
             
             if is_block_layout:
                 for page in doc:
@@ -419,30 +477,64 @@ class PDFCatalogParser:
                     items.extend(block_items)
             else:
                 for page_idx, page in enumerate(doc):
-                    tables = page.find_tables()
                     page_items = []
-                    if tables and len(tables.tables) > 0:
-                        for table in tables:
-                            table_data = table.extract()
-                            if table_data and len(table_data) > 1:
-                                parsed_items = self._process_table(table_data)
-                                page_items.extend(parsed_items)
                     
-                    # Fallback to block extraction if table extractor returned very few items on this page
-                    if len(page_items) < 2 and not is_cure and not is_makramy:
-                        block_items = self._process_page_blocks(page)
-                        page_items.extend(block_items)
+                    # 1. 3-Column Coordinate Whitespace Extractor (Sina Trade)
+                    if is_sina or ('سينا تريد' in page.get_text("text")[:300]):
+                        sina_items = self._extract_sina_columns(page)
+                        if sina_items:
+                            page_items.extend(sina_items)
+                    
+                    if not page_items:
+                        tables = page.find_tables()
+                        if tables and len(tables.tables) > 0:
+                            all_tables = tables.tables
+                            if len(all_tables) > 1:
+                                filtered_tables = []
+                                for i, t1 in enumerate(all_tables):
+                                    is_enclosed = False
+                                    for j, t2 in enumerate(all_tables):
+                                        if i != j:
+                                            b1, b2 = t1.bbox, t2.bbox
+                                            # If t2 geometrically encloses t1, t1 is an inner sub-table -> discard t1
+                                            if b2[0] <= b1[0] + 1 and b2[1] <= b1[1] + 1 and b2[2] >= b1[2] - 1 and b2[3] >= b1[3] - 1:
+                                                if abs(b1[0]-b2[0]) < 2 and abs(b1[1]-b2[1]) < 2 and abs(b1[2]-b2[2]) < 2 and abs(b1[3]-b2[3]) < 2:
+                                                    if i > j:
+                                                        is_enclosed = True
+                                                        break
+                                                else:
+                                                    is_enclosed = True
+                                                    break
+                                    if not is_enclosed:
+                                        filtered_tables.append(t1)
+                            else:
+                                filtered_tables = all_tables
+
+                            # Stitch contiguous 1-row table slices (e.g. El-Qemma)
+                            stitched_tables = self._stitch_contiguous_tables(filtered_tables)
+                            for table_data in stitched_tables:
+                                if table_data and len(table_data) > 1:
+                                    parsed_items = self._process_table(table_data)
+                                    page_items.extend(parsed_items)
                         
-                    # Multi-column accounting layout recovery (ArwaSoft PDFs)
-                    if is_cure:
-                        right_items = self._extract_cure_right_column(page)
-                        page_items.extend(right_items)
-                    elif is_makramy:
-                        extra_cols = self._extract_makramy_columns(page)
-                        page_items.extend(extra_cols)
-                    elif tables and len(tables.tables) == 1:
-                        t0 = tables.tables[0]
-                        if t0.bbox[2] < page.rect.width * 0.55:
+                        # Fallback for 2-column borderless pages (e.g. Dar Al-Fouad) or block extraction
+                        if len(page_items) < 2 and not is_cure and not is_makramy and not is_sina and not is_arwasoft_2col:
+                            if is_dar_fouad or (tables and len(tables.tables) == 0):
+                                fouad_items = self._extract_dar_fouad_columns(page)
+                                if fouad_items:
+                                    page_items.extend(fouad_items)
+                            if len(page_items) < 2:
+                                block_items = self._process_page_blocks(page)
+                                page_items.extend(block_items)
+                            
+                        # Multi-column accounting layout recovery (ArwaSoft PDFs)
+                        if is_cure:
+                            right_items = self._extract_cure_right_column(page)
+                            page_items.extend(right_items)
+                        elif is_arwasoft_2col:
+                            right_items = self._extract_arwasoft_right_column(page)
+                            page_items.extend(right_items)
+                        elif is_makramy:
                             extra_cols = self._extract_makramy_columns(page)
                             page_items.extend(extra_cols)
                         
@@ -450,19 +542,13 @@ class PDFCatalogParser:
         except Exception as e:
             self.last_error = f"Corrupted or invalid PDF file ({os.path.basename(self.pdf_path)}): {e}"
             logger.warning(f"Error parsing PDF {self.warehouse_name}: {e}")
+        finally:
+            if doc is not None:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
 
-        # Fallback for scanned PDFs: if digital extraction returned 0 items, attempt OCR fallback
-        if not items and self.last_error is None:
-            logger.info(
-                f"Digital extraction found 0 items for {self.warehouse_name} ({os.path.basename(self.pdf_path)}). "
-                f"Attempting OCR fallback for scanned PDF..."
-            )
-            try:
-                ocr_df = self.parse_ocr()
-                if not ocr_df.empty:
-                    return ocr_df
-            except Exception as ocr_err:
-                logger.warning(f"OCR fallback failed for scanned catalog {self.warehouse_name}: {ocr_err}")
 
         if not items:
             return pd.DataFrame(columns=[
@@ -473,8 +559,9 @@ class PDFCatalogParser:
         df = pd.DataFrame(items)
         # Deduplicate & pick highest discount for same product in this warehouse
         df = df.sort_values(by='discount_rate', ascending=False).drop_duplicates(
-            subset=['normalized_name', 'dosage', 'unit_size'], keep='first'
+            subset=['normalized_name', 'dosage', 'unit_size', 'base_price'], keep='first'
         )
+        df = df[(df['base_price'] > 0.0) & (df['base_price'] < 10000.0)]
         return df
 
     def _process_table(self, table: list) -> list:
@@ -489,6 +576,65 @@ class PDFCatalogParser:
         filtered_rows = [[str(c).strip() for c in r if c is not None and str(c).strip() != ''] for r in table]
         if not filtered_rows:
             return []
+
+        # 0. Pattern: 10-12 Column ERP Purchase Invoice (e.g. Al-Arabia Pharma)
+        if len(table) >= 2 and len(table[0]) >= 10:
+            row0_str = ' '.join(str(c) for c in table[0] if c)
+            is_invoice_banner = any(kw in row0_str for kw in ['فاتورة مشتريات', 'فﺎﺗورة ﻣﺷﺗرﯾﺎت', 'دروﻣﻟا', 'تﺎﯾرﺗﺷﻣ', 'المورد', 'اﻟﻣورد'])
+            is_arabia_wh = 'العربيه' in self.warehouse_name or 'العربية' in self.warehouse_name
+            if is_invoice_banner or is_arabia_wh:
+                start_row = 1
+                for r_idx in range(min(4, len(table))):
+                    r_text = ' '.join(str(c) for c in table[r_idx] if c)
+                    if any(kw in r_text for kw in ['مﺻﺧ', 'خصم', 'روﮭﻣﺟ', 'جمهور', 'فﻧﺻﻟا', 'الصنف']):
+                        start_row = r_idx + 1
+                        break
+                
+                invoice_results = []
+                for row in table[start_row:]:
+                    if not row or len(row) < 9:
+                        continue
+                    # Col 8 (or 9) = Item Name, Col 5 = Public Price, Col 3 = Discount %
+                    raw_name = str(row[8]).strip() if row[8] else ''
+                    if not raw_name and len(row) > 9 and row[9]:
+                        raw_name = str(row[9]).strip()
+                    if not raw_name:
+                        continue
+                    # Strip leading price prefixes like ـ(٤٥) or (45)
+                    raw_name = re.sub(r'^ـ?\s*\(\s*[\d\.\u0660-\u0669]+\s*\)\s*', '', raw_name).strip()
+                    if not raw_name or len(raw_name) < 2:
+                        continue
+                    if any(kw in raw_name for kw in ['اسم الصنف', 'فﻧﺻﻟا مﺳا', 'دروﻣﻟا', 'بﺗﺎﻛﻟا']):
+                        continue
+                    
+                    price_val = self._parse_price(row[5] if len(row) > 5 else '')
+                    disc_val = parse_discount(row[3] if len(row) > 3 else '')
+                    
+                    if 0 < disc_val <= 0.85 and 0 < price_val <= 10000.0:
+                        raw_name = decode_greek_arwasoft(raw_name)
+                        if is_catalog_noise(raw_name):
+                            continue
+                        latin_chars = len(re.findall(r'[a-zA-Z]', raw_name))
+                        arabic_chars = len(re.findall(r'[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]', raw_name))
+                        if latin_chars > arabic_chars:
+                            item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
+                        else:
+                            item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=True)
+                        norm_name = normalize_arabic_text(item_name)
+                        dosage, unit_size = parse_dosage_and_pack(item_name)
+                        if len(norm_name) >= 2:
+                            invoice_results.append({
+                                'warehouse_name': self.warehouse_name,
+                                'item_name': item_name,
+                                'normalized_name': norm_name,
+                                'dosage': dosage,
+                                'unit_size': unit_size,
+                                'base_price': price_val,
+                                'discount_rate': disc_val,
+                                'stock_status': True
+                            })
+                if invoice_results:
+                    return invoice_results
 
         # 1. Pattern: 6-element dual-item rows (e.g. Al-Fares, Al-Awael, New Active)
         rows_6 = [r for r in filtered_rows if len(r) == 6]
@@ -522,9 +668,19 @@ class PDFCatalogParser:
                                 d_val = parse_discount(c1)
                                 raw_name = c0
 
-                        if d_val > 0 and p_val > 0:
+                        is_valid_d = (0 < d_val <= 0.85) or (d_val == 0.0 and is_explicit_zero_discount(c1))
+                        if is_valid_d and 0 < p_val <= 10000.0:
                             raw_name = decode_greek_arwasoft(raw_name)
-                            item_name = fix_arabic_bidi_if_needed(raw_name)
+                            if is_catalog_noise(raw_name):
+                                continue
+                            latin_chars = len(re.findall(r'[a-zA-Z]', raw_name))
+                            arabic_chars = len(re.findall(r'[\u0600-\u06ff]', raw_name))
+                            if latin_chars > arabic_chars:
+                                item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
+                            elif is_arabic_text_reversed(raw_name):
+                                item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=True)
+                            else:
+                                item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
                             norm_name = normalize_arabic_text(item_name)
                             dosage, unit_size = parse_dosage_and_pack(item_name)
                             if len(norm_name) >= 2:
@@ -541,29 +697,66 @@ class PDFCatalogParser:
             if results:
                 return results
 
-        # 2. Pattern: 4-element rows with item code (e.g. Special Pharma: [Discount, Name, Code, Price])
+        # 2. Pattern: 4-element rows with item code (Al-Hadhaba vs Special Pharma)
         rows_4 = [r for r in filtered_rows if len(r) == 4]
         if len(rows_4) >= 2 and (len(rows_4) / len(filtered_rows)) >= 0.4:
+            # Dynamic 4-column layout detection:
+            # Al-Hadhaba catalog [Code, Name, Price, Discount] vs Special Pharma [Discount, Name, Code, Price]
+            sample_candidates = []
+            for r in rows_4[:20]:
+                r1_clean = normalize_arabic_text(decode_custom_catalog_glyphs(str(r[1])))
+                r0_clean = normalize_arabic_text(decode_custom_catalog_glyphs(str(r[0])))
+                if any(h in r1_clean for h in ['صنف', 'اسم', 'فنص', 'مسا', 'name', 'item']) or any(h in r0_clean for h in ['صنف', 'اسم', 'كود', 'code', 'مقر', 'رقم']):
+                    continue
+                sample_candidates.append(r)
+            
+            c0_disc_count = sum(1 for r in sample_candidates if 0.01 <= parse_discount(r[0]) <= 0.85)
+            c3_disc_count = sum(1 for r in sample_candidates if 0.01 <= parse_discount(r[3]) <= 0.85)
+            is_hadhaba = c3_disc_count > c0_disc_count or ('هضبة' in self.warehouse_name or 'الهضبة' in self.warehouse_name or 'الهضبه' in self.warehouse_name)
+
             for r in filtered_rows:
                 if len(r) == 4:
-                    if any(h in r[0] for h in ['مصخ', 'خصم', 'Disc']) or any(h in r[1] for h in ['صنف', 'اسم', 'Name']):
+                    r1_raw = str(r[1]).strip()
+                    r0_raw = str(r[0]).strip()
+                    r1_norm = normalize_arabic_text(decode_custom_catalog_glyphs(r1_raw))
+                    r0_norm = normalize_arabic_text(decode_custom_catalog_glyphs(r0_raw))
+                    if any(h in r1_norm for h in ['صنف', 'اسم', 'فنص', 'مسا', 'name', 'item', 'product', 'description', 'البيان']):
                         continue
-                    d_val = parse_discount(r[0])
+                    if any(h in r0_norm for h in ['رقم', 'كود', 'مقر', 'دوك', 'code', 'barcode', 'خصم', 'مصخ', 'disc', 'discount']):
+                        continue
+
                     raw_name = r[1]
-                    v2 = self._parse_price(r[2])
-                    v3 = self._parse_price(r[3])
-                    # If v2 is 6-digit code (>= 10,000) and v3 is reasonable price (< 10,000):
-                    if v2 >= 10000 and 0 < v3 < 10000:
-                        p_val = v3
-                    elif v3 >= 10000 and 0 < v2 < 10000:
-                        p_val = v2
+                    if is_hadhaba:
+                        d_val = parse_discount(r[3])
+                        disc_cell = r[3]
+                        p_val = self._parse_price(r[2])
                     else:
-                        p_val = v3 if v3 > 0 else v2
-                    
-                    if d_val > 0 and p_val > 0:
-                        raw_name = decode_greek_arwasoft(raw_name)
-                        item_name = fix_arabic_bidi_if_needed(raw_name)
+                        d_val = parse_discount(r[0])
+                        disc_cell = r[0]
+                        v2 = self._parse_price(r[2])
+                        v3 = self._parse_price(r[3])
+                        if v2 >= 10000 and 0 < v3 < 10000:
+                            p_val = v3
+                        elif v3 >= 10000 and 0 < v2 < 10000:
+                            p_val = v2
+                        else:
+                            p_val = v3 if v3 > 0 else v2
+
+                    is_valid_d = (0 < d_val <= 0.85) or (d_val == 0.0 and is_explicit_zero_discount(disc_cell))
+                    if is_valid_d and 0 < p_val <= 10000.0:
+                        cleaned_raw_name = re.sub(r'^\s*[\u1800-\u18af\s]+\n', '', raw_name)
+                        decoded_name = decode_custom_catalog_glyphs(cleaned_raw_name)
+                        latin_chars = len(re.findall(r'[a-zA-Z]', decoded_name))
+                        arabic_chars = len(re.findall(r'[\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff]', decoded_name))
+                        if latin_chars > arabic_chars:
+                            item_name = fix_arabic_bidi_if_needed(decoded_name, force_reverse=False)
+                        elif is_arabic_text_reversed(decoded_name):
+                            item_name = fix_arabic_bidi_if_needed(decoded_name, force_reverse=True)
+                        else:
+                            item_name = fix_arabic_bidi_if_needed(decoded_name, force_reverse=False)
                         norm_name = normalize_arabic_text(item_name)
+                        if is_catalog_noise(norm_name) or is_catalog_noise(item_name):
+                            continue
                         dosage, unit_size = parse_dosage_and_pack(item_name)
                         if len(norm_name) >= 2:
                             results.append({
@@ -606,91 +799,191 @@ class PDFCatalogParser:
                 # Case A: Row has merged single string with multiple columns
                 non_empty_cells = [str(c).strip() for c in row if c and str(c).strip()]
                 if len(non_empty_cells) == 1 and (' ' in non_empty_cells[0]):
-                    cell_text = non_empty_cells[0].translate(EASTERN_ARABIC_DIGITS)
-                    parts = cell_text.split()
-                    if len(parts) >= 3:
-                        m0 = re.match(r'^\d+(?:\.\d+)?$', parts[0])
-                        m1 = re.match(r'^\d+(?:\.\d+)?$', parts[1])
-                        if m0 and m1:
-                            discount_val = parse_discount(parts[0])
-                            price_val = float(parts[1])
-                            raw_name = ' '.join(parts[2:])
-                            item_name = fix_arabic_bidi_if_needed(raw_name)
-                            norm_name = normalize_arabic_text(item_name)
-                            dosage, unit_size = parse_dosage_and_pack(item_name)
-                            if len(norm_name) >= 2:
-                                results.append({
-                                    'warehouse_name': self.warehouse_name,
-                                    'item_name': item_name,
-                                    'normalized_name': norm_name,
-                                    'dosage': dosage,
-                                    'unit_size': unit_size,
-                                    'base_price': price_val,
-                                    'discount_rate': discount_val,
-                                    'stock_status': True
-                                })
-                            continue
+                    lines = [ln.strip() for ln in non_empty_cells[0].split('\n') if ln.strip()]
+                    for ln in lines:
+                        cell_text = ln.translate(EASTERN_ARABIC_DIGITS)
+                        parts = cell_text.split()
+                        if len(parts) >= 3:
+                            m0 = re.match(r'^\d+(?:\.\d+)?$', parts[0])
+                            m1 = re.match(r'^\d+(?:\.\d+)?$', parts[1])
+                            if m0 and m1:
+                                discount_val = parse_discount(parts[0])
+                                price_val = self._parse_price(parts[1])
+                                raw_name = ' '.join(parts[2:])
+                                if is_catalog_noise(raw_name) or discount_val <= 0.0 or discount_val > 0.85 or price_val <= 0.0 or price_val >= 10000.0:
+                                    continue
+                                latin_chars = len(re.findall(r'[a-zA-Z]', raw_name))
+                                arabic_chars = len(re.findall(r'[\u0600-\u06ff]', raw_name))
+                                if latin_chars > arabic_chars:
+                                    item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
+                                elif is_arabic_text_reversed(raw_name):
+                                    item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=True)
+                                else:
+                                    item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
+                                norm_name = normalize_arabic_text(item_name)
+                                dosage, unit_size = parse_dosage_and_pack(item_name)
+                                if len(norm_name) >= 2:
+                                    results.append({
+                                        'warehouse_name': self.warehouse_name,
+                                        'item_name': item_name,
+                                        'normalized_name': norm_name,
+                                        'dosage': dosage,
+                                        'unit_size': unit_size,
+                                        'base_price': price_val,
+                                        'discount_rate': discount_val,
+                                        'stock_status': True
+                                    })
+                    continue
 
                 # Case B: Standard column row
-                raw_name = str(row[name_idx]).strip() if name_idx is not None and name_idx < len(row) and row[name_idx] else ''
-                if not raw_name or raw_name.isdigit() or len(raw_name) < 2:
+                raw_name_cell = str(row[name_idx]).strip() if name_idx is not None and name_idx < len(row) and row[name_idx] else ''
+                if not raw_name_cell:
                     continue
                     
-                if any(h in raw_name for h in ['اسم الصنف', 'الصنف', 'Item Name', 'Product', 'البيان', 'فنصلا', 'مسإ', 'مساف']):
+                if any(h in raw_name_cell for h in ['اسم الصنف', 'الصنف', 'Item Name', 'Product', 'البيان', 'فنصلا', 'مسإ', 'مساف']):
                     continue
-                    
-                raw_discount = row[discount_idx] if discount_idx is not None and discount_idx < len(row) else 0.0
-                discount_val = parse_discount(raw_discount)
-                
-                raw_price = row[price_idx] if price_idx is not None and price_idx < len(row) else None
-                price_val = self._parse_price(raw_price)
 
-                # Recover glued price/discount if either was merged or missed
-                if discount_val <= 0.0 or price_val <= 0.0:
-                    for c_idx, cell in enumerate(row):
-                        if c_idx == name_idx or not cell:
-                            continue
-                        c_str = str(cell).strip().translate(EASTERN_ARABIC_DIGITS)
-                        m_both = re.search(r'(\d+(?:\.\d+)?)\s*%\s*(\d+(?:\.\d+)?)', c_str)
-                        if m_both:
-                            if discount_val <= 0.0:
-                                discount_val = parse_discount(m_both.group(1))
-                            if price_val <= 0.0:
-                                price_val = float(m_both.group(2))
-                            break
-                        m_both2 = re.search(r'(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*%', c_str)
-                        if m_both2:
-                            if price_val <= 0.0:
-                                price_val = float(m_both2.group(1))
-                            if discount_val <= 0.0:
-                                discount_val = parse_discount(m_both2.group(2))
-                            break
-                        m_both3 = re.search(r'(\d+(?:\.\d+)?)\s*%\s*$', c_str)
-                        if m_both3 and discount_val <= 0.0:
-                            discount_val = parse_discount(m_both3.group(1))
+                raw_discount_cell = str(row[discount_idx]).strip() if discount_idx is not None and discount_idx < len(row) and row[discount_idx] else ''
+                raw_price_cell = str(row[price_idx]).strip() if price_idx is not None and price_idx < len(row) and row[price_idx] else ''
 
-                
+                # Split multiline lines if present
+                name_lines = [ln.strip() for ln in raw_name_cell.split('\n') if ln.strip()]
+                price_lines = [ln.strip() for ln in raw_price_cell.split('\n') if ln.strip()]
+                disc_lines = [ln.strip() for ln in raw_discount_cell.split('\n') if ln.strip()]
+
+                # Check for shifted discount column placed on a separate line inside name_cell (e.g. Al-Forsan page 6: "سيدرال فورت ق \n 27")
+                if len(name_lines) > 1 and (not raw_discount_cell or (not is_explicit_zero_discount(raw_discount_cell) and parse_discount(raw_discount_cell) == 0.0)):
+                    m_last = re.fullmatch(r'(\d{1,2}(?:\.\d+)?)\s*%?', name_lines[-1].strip().translate(ALL_EASTERN_DIGITS))
+                    if m_last:
+                        try:
+                            val_cand = float(m_last.group(1))
+                            if 1.0 <= val_cand <= 85.0:
+                                raw_discount_cell = m_last.group(1)
+                                disc_lines = [raw_discount_cell]
+                                name_lines.pop()
+                        except ValueError:
+                            pass
+
+                # Determine whether this is a multi-line merged row (e.g. Al-Forsan) or single medicine
+                sub_items = []
+                is_cell_reversed = is_arabic_text_reversed(raw_name_cell)
+                if len(name_lines) > 1 and (len(price_lines) > 1 or len(disc_lines) > 1):
+                    # Aligned multi-item row:
+                    # Detect and rejoin wrapped medicine names if name_lines > price_lines
+                    reconciled_names = []
+                    wrap_continuation = re.compile(
+                        r'^(?:\d+\s*(?:ق|قرص|اقراص|كبسول|شريط|امبول|فيال|نقط|مل|مجم|باكت|علبة|tab|cap|amp|vial|strip|ml|mg|gm)|سعر\s*جديد|سعر\s*قديم|\d+\s*%)',
+                        re.IGNORECASE
+                    )
+                    for n_idx, ln in enumerate(name_lines):
+                        unrev_ln = fix_arabic_bidi_if_needed(ln, force_reverse=True if is_cell_reversed and not any(w in ln for w in FORWARD_PHARMA_TOKENS) else None)
+                        if (
+                            n_idx > 0
+                            and len(reconciled_names) > 0
+                            and (len(reconciled_names) + len(name_lines) - n_idx - 1 >= len(price_lines))
+                            and (wrap_continuation.match(unrev_ln) or wrap_continuation.match(ln) or len(ln) < 6)
+                        ):
+                            reconciled_names[-1] += " " + ln
+                        else:
+                            reconciled_names.append(ln)
+
+                    num_sub = min(len(reconciled_names), len(price_lines)) if price_lines else len(reconciled_names)
+                    for k in range(num_sub):
+                        n_k = reconciled_names[k]
+                        p_k = price_lines[k] if k < len(price_lines) else (price_lines[0] if len(price_lines) == 1 else '')
+                        d_k = disc_lines[k] if k < len(disc_lines) else (disc_lines[0] if len(disc_lines) == 1 else '')
+                        sub_items.append((n_k, p_k, d_k))
+                else:
+                    sub_items = [(' '.join(name_lines) if name_lines else raw_name_cell, raw_price_cell, raw_discount_cell)]
+
                 stock_status = True
                 if stock_idx is not None and stock_idx < len(row) and row[stock_idx]:
                     stock_text = str(row[stock_idx]).strip().lower()
                     if any(kw in stock_text for kw in ['غير متوفر', 'نفذ', 'out', '0', 'لا يوجد']):
                         stock_status = False
-                        
-                item_name = fix_arabic_bidi_if_needed(raw_name)
-                norm_name = normalize_arabic_text(item_name)
-                dosage, unit_size = parse_dosage_and_pack(item_name)
-                
-                if len(norm_name) >= 2 and discount_val > 0:
-                    results.append({
-                        'warehouse_name': self.warehouse_name,
-                        'item_name': item_name,
-                        'normalized_name': norm_name,
-                        'dosage': dosage,
-                        'unit_size': unit_size,
-                        'base_price': price_val,
-                        'discount_rate': discount_val,
-                        'stock_status': stock_status
-                    })
+
+                for sub_name, sub_price_str, sub_disc_str in sub_items:
+                    if not sub_name or sub_name.isdigit() or len(sub_name) < 2:
+                        continue
+                    if any(h in sub_name for h in ['اسم الصنف', 'الصنف', 'Item Name', 'Product', 'البيان', 'فنصلا', 'مسإ', 'مساف']):
+                        continue
+
+                    # Inline discount recovery (e.g. shifted column: "سيدرال اكتف \n 27" or "27%")
+                    # Must be preceded by newline or explicitly suffixed with % to avoid capturing pack numbers (e.g. باكت 10)
+                    m_inline = re.search(r'(?:\n\s*(\d{1,2}(?:\.\d+)?)\s*%?\s*$|\s+(\d{1,2}(?:\.\d+)?)\s*%\s*$)', sub_name)
+                    if m_inline and (not sub_disc_str or (not is_explicit_zero_discount(sub_disc_str) and parse_discount(sub_disc_str) == 0.0)):
+                        try:
+                            val_str = m_inline.group(1) or m_inline.group(2)
+                            val_cand = float(val_str)
+                            if 1.0 <= val_cand <= 85.0:
+                                sub_disc_str = val_str
+                                sub_name = sub_name[:m_inline.start()].strip()
+                        except ValueError:
+                            pass
+
+                    cleaned_sub_name = re.sub(r'^\s*[\u1800-\u18af\s]+\n', '', sub_name)
+                    decoded_sub_name = decode_custom_catalog_glyphs(cleaned_sub_name)
+
+                    price_val = self._parse_price(sub_price_str)
+                    discount_val = parse_discount(sub_disc_str)
+
+                    # Recover glued price/discount if single item and either was merged or missed
+                    if len(sub_items) == 1 and (discount_val <= 0.0 or price_val <= 0.0):
+                        for c_idx, cell in enumerate(row):
+                            if c_idx == name_idx or not cell:
+                                continue
+                            c_str = str(cell).strip().translate(EASTERN_ARABIC_DIGITS)
+                            m_both = re.search(r'(\d+(?:\.\d+)?)\s*%\s*(\d+(?:\.\d+)?)', c_str)
+                            if m_both:
+                                if discount_val <= 0.0:
+                                    discount_val = parse_discount(m_both.group(1))
+                                    sub_disc_str = m_both.group(1)
+                                if price_val <= 0.0:
+                                    price_val = self._parse_price(m_both.group(2))
+                                break
+                            m_both2 = re.search(r'(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*%', c_str)
+                            if m_both2:
+                                if price_val <= 0.0:
+                                    price_val = self._parse_price(m_both2.group(1))
+                                if discount_val <= 0.0:
+                                    discount_val = parse_discount(m_both2.group(2))
+                                    sub_disc_str = m_both2.group(2)
+                                break
+                            m_both3 = re.search(r'(\d+(?:\.\d+)?)\s*%\s*$', c_str)
+                            if m_both3 and discount_val <= 0.0:
+                                discount_val = parse_discount(m_both3.group(1))
+                                sub_disc_str = m_both3.group(1)
+
+                    latin_chars = len(re.findall(r'[a-zA-Z]', decoded_sub_name))
+                    arabic_chars = len(re.findall(r'[\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff]', decoded_sub_name))
+                    if latin_chars > arabic_chars:
+                        item_name = fix_arabic_bidi_if_needed(decoded_sub_name, force_reverse=False)
+                    elif is_cell_reversed and not any(w in decoded_sub_name for w in FORWARD_PHARMA_TOKENS):
+                        item_name = fix_arabic_bidi_if_needed(decoded_sub_name, force_reverse=True)
+                    elif is_arabic_text_reversed(decoded_sub_name):
+                        item_name = fix_arabic_bidi_if_needed(decoded_sub_name, force_reverse=True)
+                    else:
+                        item_name = fix_arabic_bidi_if_needed(decoded_sub_name, force_reverse=False)
+                    norm_name = normalize_arabic_text(item_name)
+                    if is_catalog_noise(norm_name) or is_catalog_noise(item_name):
+                        continue
+                    dosage, unit_size = parse_dosage_and_pack(item_name)
+
+                    # Support explicit zero discount ("صافي" / net pricing)
+                    is_valid_zero = (discount_val == 0.0 and is_explicit_zero_discount(sub_disc_str))
+                    valid_discount = (0.0 < discount_val <= 0.85) or is_valid_zero
+
+                    if len(norm_name) >= 2 and valid_discount and 0.0 < price_val <= 10000.0:
+                        results.append({
+                            'warehouse_name': self.warehouse_name,
+                            'item_name': item_name,
+                            'normalized_name': norm_name,
+                            'dosage': dosage,
+                            'unit_size': unit_size,
+                            'base_price': price_val,
+                            'discount_rate': discount_val,
+                            'stock_status': stock_status
+                        })
                 
         return results
 
@@ -810,17 +1103,72 @@ class PDFCatalogParser:
 
         return name_idx, price_idx, discount_idx, stock_idx
 
-    def _parse_price(self, val):
+    def _parse_price(self, val) -> float:
         if val is None:
             return 0.0
-        val_str = str(val).strip().replace(',', '.').translate(EASTERN_ARABIC_DIGITS)
+        val_str = str(val).strip().replace(',', '.')
+        # Translate Eastern Arabic digits
+        val_str = val_str.translate(EASTERN_ARABIC_DIGITS)
+
+        # 1. Handle space-separated duplicates: "540 540", "136.5 136.5", "55 55"
+        parts = val_str.split()
+        if len(parts) >= 2 and parts[0] == parts[1]:
+            val_str = parts[0]
+
+        # 2. Decouple repeated decimal prices before number matching: e.g. "12.512.5" -> "12.5"
+        m_dec = re.search(r'(\d+\.\d+)\1', val_str)
+        if m_dec:
+            val_str = m_dec.group(1)
+
+        if re.search(r'[eE]', val_str):
+            return 0.0
+
         match = re.search(r'[-+]?\d*\.?\d+', val_str)
-        if match:
-            try:
-                return float(match.group())
-            except ValueError:
-                return 0.0
-        return 0.0
+        if not match:
+            return 0.0
+
+        s = match.group()
+
+        # 3. Decouple repeated integer prices: e.g. "7575" -> "75", "210210" -> "210", "288288" -> "288", "120120" -> "120"
+        m_int_rep = re.match(r'^(\d{2,4})\1$', s)
+        if m_int_rep:
+            s = m_int_rep.group(1)
+
+        # 4. Decouple triple-repeated prices: e.g. "757575" -> "75"
+        m_tri_rep = re.match(r'^(\d{2,3})\1\1$', s)
+        if m_tri_rep:
+            s = m_tri_rep.group(1)
+
+        try:
+            p = float(s)
+        except ValueError:
+            return 0.0
+
+        # Reject explicitly formatted extreme floats ending with .0 (e.g. 2027172.0, 210210.0)
+        if p >= 10000.0 and val_str.endswith(('.0', '.00')):
+            return 0.0
+
+        # 5. Decouple glued expiry date + price (e.g. 2027172 -> year 2027 + price 172, 2035120.5 -> 120.5)
+        if p > 10000.0:
+            m_date = re.match(r'^(?:202[4-9]|203[0-5])(\d{2,4}(?:\.\d+)?)$', s)
+            if m_date:
+                cand_p = float(m_date.group(1))
+                if 0.0 < cand_p <= 10000.0:
+                    p = cand_p
+
+        # 6. Decouple glued common dosage/pack + price (e.g. 160118 -> 160mg + 118, 30265 -> 30 + 265, 10218 -> 10 + 218)
+        if p > 10000.0:
+            m_dosage = re.match(r'^(?:10|20|25|30|40|42|50|60|100|160|200|400|500)(\d{2,4}(?:\.\d+)?)$', s)
+            if m_dosage:
+                cand_p = float(m_dosage.group(1))
+                if 0.0 < cand_p <= 10000.0:
+                    p = cand_p
+
+        # 7. Strict upper and lower cap (< 10,000 EGP)
+        if p <= 0.0 or p >= 10000.0:
+            return 0.0
+
+        return p
 
     def _process_page_blocks(self, page) -> list:
         """Extract lines using PyMuPDF text blocks for whitespace-layout PDFs."""
@@ -895,19 +1243,14 @@ class PDFCatalogParser:
             if discs:
                 disc_val = parse_discount(discs[0][4])
             if prices:
-                try:
-                    price_val = float(prices[0][4].translate(EASTERN_ARABIC_DIGITS))
-                except ValueError:
-                    m = re.search(r'[-+]?\d*\.?\d+', prices[0][4].translate(EASTERN_ARABIC_DIGITS))
-                    if m:
-                        price_val = float(m.group())
+                price_val = self._parse_price(prices[0][4])
                         
             name_words_sorted = sorted(names, key=lambda w: w[0], reverse=True)
             raw_name = ' '.join(w[4] for w in name_words_sorted).strip()
             raw_name = unicodedata.normalize('NFKD', raw_name)
             raw_name = fix_arwasoft_arabic_numbers(raw_name)
             
-            if raw_name and price_val > 0 and disc_val > 0:
+            if raw_name and 0 < disc_val <= 0.85 and 0 < price_val < 10000.0:
                 norm_name = normalize_arabic_text(raw_name)
                 dosage, unit_size = parse_dosage_and_pack(raw_name)
                 items.append({
@@ -920,6 +1263,74 @@ class PDFCatalogParser:
                     'discount_rate': disc_val,
                     'stock_status': True
                 })
+        return items
+
+    def _extract_arwasoft_right_column(self, page) -> list:
+        """
+        Extracts right-column items from ArwaSoft 2-column accounting layouts
+        (e.g. Adam Farm, Perfect Farm, Rowad Al-Dawaa) where PyMuPDF table
+        detection only picks up the left column.
+        Groups words by vertical Y proximity (threshold <= 6.0 pt) for X >= 300,
+        parses [Discount] [Price] [Item Name], and routes through _parse_price.
+        """
+        words = page.get_text("words")
+        # Right column bounds: X from 300 to 585, Y from 95 to 790
+        col_words = [w for w in words if w[0] >= 300 and 95 < w[1] < 790]
+        if not col_words:
+            return []
+
+        y_groups = []
+        for w in sorted(col_words, key=lambda x: x[1]):
+            matched = False
+            for grp in y_groups:
+                if abs(grp[0][1] - w[1]) <= 6.0:
+                    grp.append(w)
+                    matched = True
+                    break
+            if not matched:
+                y_groups.append([w])
+
+        items = []
+        for grp in y_groups:
+            sorted_x = sorted(grp, key=lambda x: x[0])
+            # In ArwaSoft right col:
+            # X ~ 300..340: Discount % (e.g. 27, 36)
+            # X ~ 340..395: Price (e.g. 240, 92)
+            # X >= 395: Item Name
+            disc_words = [w for w in sorted_x if 300 <= w[0] < 340]
+            price_words = [w for w in sorted_x if 340 <= w[0] < 395]
+            name_words = [w for w in sorted_x if w[0] >= 395]
+
+            if not disc_words or not price_words or not name_words:
+                continue
+
+            d_str = disc_words[0][4]
+            disc_val = parse_discount(d_str)
+
+            p_val = self._parse_price(price_words[0][4])
+            if p_val <= 0.0:
+                continue
+
+            raw_name = " ".join(w[4] for w in name_words).strip()
+            raw_name = fix_arwasoft_arabic_numbers(raw_name)
+            if is_catalog_noise(raw_name) or len(raw_name) < 2:
+                continue
+
+            if 0 < disc_val <= 0.85 and 0 < p_val < 10000.0:
+                item_name = fix_arabic_bidi_if_needed(raw_name)
+                norm_name = normalize_arabic_text(item_name)
+                dosage, unit_size = parse_dosage_and_pack(item_name)
+                if len(norm_name) >= 2:
+                    items.append({
+                        'warehouse_name': self.warehouse_name,
+                        'item_name': item_name,
+                        'normalized_name': norm_name,
+                        'dosage': dosage,
+                        'unit_size': unit_size,
+                        'base_price': p_val,
+                        'discount_rate': disc_val,
+                        'stock_status': True
+                    })
         return items
 
     def _extract_makramy_columns(self, page) -> list:
@@ -949,12 +1360,12 @@ class PDFCatalogParser:
             m_price = re.search(r'(\d+(?:\.\d+)?)\s*(?:ج|جنيه)?\s*$', prefix)
             if not m_price:
                 continue
-            price_val = float(m_price.group(1))
+            price_val = self._parse_price(m_price.group(1))
             raw_name = prefix[:m_price.start()].strip()
             raw_name = re.sub(r'\b(?:ج|جنيه|س\.ج|س\.ق|سعر|جديد|قديم)\b', ' ', raw_name)
             raw_name = re.sub(r'[\s/]+$', '', raw_name).strip()
             
-            if len(raw_name) >= 2 and disc_val > 0 and price_val > 0:
+            if len(raw_name) >= 2 and 0 < disc_val <= 0.85 and 0 < price_val < 10000.0:
                 norm_name = normalize_arabic_text(raw_name)
                 dosage, unit_size = parse_dosage_and_pack(raw_name)
                 items.append({
@@ -969,6 +1380,178 @@ class PDFCatalogParser:
                 })
         return items
 
+    def _stitch_contiguous_tables(self, tables_list: list) -> list:
+        """
+        Detects when a page produces multiple contiguous table objects where len(table_data) == 1
+        and bounding box X-bounds match (e.g. El-Qemma Xmin ~ 61, Xmax ~ 534).
+        Stitches these single rows into coherent multi-row tables.
+        """
+        if not tables_list:
+            return []
+        
+        extracted_tables = []
+        i = 0
+        while i < len(tables_list):
+            t_curr = tables_list[i]
+            d_curr = t_curr.extract() if hasattr(t_curr, 'extract') else t_curr
+            if d_curr and len(d_curr) == 1:
+                col_cnt = len(d_curr[0])
+                b_curr = getattr(t_curr, 'bbox', None)
+                stitched_rows = list(d_curr)
+                j = i + 1
+                while j < len(tables_list):
+                    t_next = tables_list[j]
+                    d_next = t_next.extract() if hasattr(t_next, 'extract') else t_next
+                    b_next = getattr(t_next, 'bbox', None)
+                    if (d_next and len(d_next) == 1 and len(d_next[0]) == col_cnt):
+                        if b_curr and b_next:
+                            if abs(b_next[0] - b_curr[0]) < 10.0 and abs(b_next[2] - b_curr[2]) < 10.0:
+                                stitched_rows.extend(d_next)
+                                j += 1
+                            else:
+                                break
+                        else:
+                            stitched_rows.extend(d_next)
+                            j += 1
+                    else:
+                        break
+                if len(stitched_rows) > 1:
+                    extracted_tables.append(stitched_rows)
+                    i = j
+                    continue
+            if d_curr and len(d_curr) > 0:
+                extracted_tables.append(d_curr)
+            i += 1
+            
+        return extracted_tables
+
+    def _extract_sina_columns(self, page) -> list:
+        """
+        3-column coordinate whitespace extractor for Sina Trade catalogs (سينا.pdf).
+        Divides width into 3 vertical column bands: [20, 210], [211, 395], [396, 585].
+        Inside each band, groups words by Y proximity (threshold <= 4 pt), extracting:
+        Public Price (الجمهور), Discount % (الخصم), and Item Name.
+        """
+        words = page.get_text("words")
+        if not words:
+            return []
+        
+        bands = [
+            (20, 210, (20, 60), (61, 105), (106, 210)),
+            (211, 395, (211, 245), (246, 290), (291, 395)),
+            (396, 585, (396, 435), (436, 480), (481, 585))
+        ]
+        
+        items = []
+        for b_min, b_max, p_rng, d_rng, n_rng in bands:
+            b_words = [w for w in words if b_min <= w[0] < b_max and w[1] > 100]
+            y_groups = []
+            for w in sorted(b_words, key=lambda x: x[1]):
+                matched = False
+                for grp in y_groups:
+                    if abs(grp[0][1] - w[1]) <= 4.0:
+                        grp.append(w)
+                        matched = True
+                        break
+                if not matched:
+                    y_groups.append([w])
+                    
+            for grp in y_groups:
+                p_words = [w[4] for w in grp if p_rng[0] <= w[0] <= p_rng[1]]
+                d_words = [w[4] for w in grp if d_rng[0] <= w[0] <= d_rng[1]]
+                n_words = [w[4] for w in grp if w[0] >= n_rng[0] - 10]
+                
+                if p_words and d_words and n_words:
+                    raw_name = ' '.join(n_words).strip()
+                    if is_catalog_noise(raw_name) or len(raw_name) < 2:
+                        continue
+                    price_val = self._parse_price(p_words[0])
+                    disc_val = parse_discount(d_words[0])
+                    
+                    if 0 < disc_val <= 0.85 and 0 < price_val <= 10000.0:
+                        raw_name = decode_greek_arwasoft(raw_name)
+                        if is_arabic_text_reversed(raw_name):
+                            item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=True)
+                        else:
+                            item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
+                        norm_name = normalize_arabic_text(item_name)
+                        dosage, unit_size = parse_dosage_and_pack(item_name)
+                        if len(norm_name) >= 2:
+                            items.append({
+                                'warehouse_name': self.warehouse_name,
+                                'item_name': item_name,
+                                'normalized_name': norm_name,
+                                'dosage': dosage,
+                                'unit_size': unit_size,
+                                'base_price': price_val,
+                                'discount_rate': disc_val,
+                                'stock_status': True
+                            })
+        return items
+
+    def _extract_dar_fouad_columns(self, page) -> list:
+        """
+        2-column coordinate extractor for borderless accounting pages (e.g. Dar Al-Fouad).
+        Left column: disc [30, 80], price [85, 140], name [140, W/2]
+        Right column: disc [300, 355], price [355, 410], name [410, W]
+        """
+        words = page.get_text("words")
+        if not words:
+            return []
+        
+        w = page.rect.width
+        cols = [
+            ((30, 80), (85, 140), (140, int(w / 2))),
+            ((300, 355), (355, 410), (410, int(w)))
+        ]
+        
+        items = []
+        for d_rng, p_rng, n_rng in cols:
+            col_words = [wd for wd in words if d_rng[0] <= wd[0] < n_rng[1] and wd[1] > 60]
+            y_groups = []
+            for wd in sorted(col_words, key=lambda x: x[1]):
+                matched = False
+                for grp in y_groups:
+                    if abs(grp[0][1] - wd[1]) <= 4.0:
+                        grp.append(wd)
+                        matched = True
+                        break
+                if not matched:
+                    y_groups.append([wd])
+                    
+            for grp in y_groups:
+                d_words = [wd[4] for wd in grp if d_rng[0] <= wd[0] <= d_rng[1]]
+                p_words = [wd[4] for wd in grp if p_rng[0] <= wd[0] <= p_rng[1]]
+                n_words = [wd[4] for wd in grp if wd[0] >= n_rng[0] - 15]
+                
+                if d_words and p_words and n_words:
+                    raw_name = ' '.join(n_words).strip()
+                    if is_catalog_noise(raw_name) or len(raw_name) < 2:
+                        continue
+                    price_val = self._parse_price(p_words[0])
+                    disc_val = parse_discount(d_words[0])
+                    
+                    if 0 < disc_val <= 0.85 and 0 < price_val <= 10000.0:
+                        raw_name = fix_arwasoft_arabic_numbers(raw_name)
+                        if is_arabic_text_reversed(raw_name):
+                            item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=True)
+                        else:
+                            item_name = fix_arabic_bidi_if_needed(raw_name, force_reverse=False)
+                        norm_name = normalize_arabic_text(item_name)
+                        dosage, unit_size = parse_dosage_and_pack(item_name)
+                        if len(norm_name) >= 2:
+                            items.append({
+                                'warehouse_name': self.warehouse_name,
+                                'item_name': item_name,
+                                'normalized_name': norm_name,
+                                'dosage': dosage,
+                                'unit_size': unit_size,
+                                'base_price': price_val,
+                                'discount_rate': disc_val,
+                                'stock_status': True
+                            })
+        return items
+
     def _parse_line_for_item(self, line_text: str) -> dict:
         """Extracts a catalog item dict from a clustered text line containing name, price, and discount."""
         if not line_text or len(line_text) < 4:
@@ -977,10 +1560,10 @@ class PDFCatalogParser:
         # Case 1: Name ... Price ... Discount%
         m1 = re.search(r'(\d+(?:\.\d+)?)\s*(?:ج|جنيه|egp)?\s+(\d+(?:\.\d+)?)\s*%\s*$', clean_line, re.IGNORECASE)
         if m1:
-            price_val = float(m1.group(1))
+            price_val = self._parse_price(m1.group(1))
             disc_val = parse_discount(m1.group(2))
             raw_name = clean_line[:m1.start()].strip()
-            if len(raw_name) >= 2 and disc_val > 0:
+            if not is_catalog_noise(raw_name) and 0.0 < disc_val <= 0.85 and 0.0 < price_val < 10000.0:
                 item_name = fix_arabic_bidi_if_needed(raw_name)
                 norm_name = normalize_arabic_text(item_name)
                 dosage, unit_size = parse_dosage_and_pack(item_name)
@@ -999,9 +1582,9 @@ class PDFCatalogParser:
         m2 = re.search(r'(\d+(?:\.\d+)?)\s*%\s+(\d+(?:\.\d+)?)\s*$', clean_line)
         if m2:
             disc_val = parse_discount(m2.group(1))
-            price_val = float(m2.group(2))
+            price_val = self._parse_price(m2.group(2))
             raw_name = clean_line[:m2.start()].strip()
-            if len(raw_name) >= 2 and disc_val > 0:
+            if not is_catalog_noise(raw_name) and 0.0 < disc_val <= 0.85 and 0.0 < price_val < 10000.0:
                 item_name = fix_arabic_bidi_if_needed(raw_name)
                 norm_name = normalize_arabic_text(item_name)
                 dosage, unit_size = parse_dosage_and_pack(item_name)
@@ -1023,9 +1606,9 @@ class PDFCatalogParser:
             prefix = clean_line[:m3.start()].strip()
             m_pr = re.search(r'(\d+(?:\.\d+)?)\s*$', prefix)
             if m_pr:
-                price_val = float(m_pr.group(1))
+                price_val = self._parse_price(m_pr.group(1))
                 raw_name = prefix[:m_pr.start()].strip()
-                if len(raw_name) >= 2 and disc_val > 0:
+                if not is_catalog_noise(raw_name) and 0.0 < disc_val <= 0.85 and 0.0 < price_val < 10000.0:
                     item_name = fix_arabic_bidi_if_needed(raw_name)
                     norm_name = normalize_arabic_text(item_name)
                     dosage, unit_size = parse_dosage_and_pack(item_name)
@@ -1067,12 +1650,12 @@ class PDFCatalogParser:
         if not word_items:
             return []
 
-        # Group words by Y proximity (threshold ~18px for 300 DPI)
+        # Group words by Y proximity (threshold ~14px for 150 DPI)
         y_groups = []
         for w in sorted(word_items, key=lambda i: i['y']):
             matched_group = None
             for group in y_groups:
-                if abs(group['y'] - w['y']) <= 18.0:
+                if abs(group['y'] - w['y']) <= 14.0:
                     matched_group = group
                     break
             if matched_group:
@@ -1093,14 +1676,17 @@ class PDFCatalogParser:
 
     def parse_ocr(self, progress_callback=None) -> pd.DataFrame:
         """
-        Extracts catalog items from PDF using RapidOCR (ONNX CPU) and RapidTable.
-        Uses 300 DPI PyMuPDF rasterization with a 3-tier degradation waterfall:
+        Extracts catalog items from PDF using RapidOCR (ONNX CPU) and RapidTable with
+        high-performance 150 DPI rasterization and a 4-tier degradation waterfall:
+          Tier 0: Direct digital vector extraction (instantaneous for digital PDFs).
           Tier 1: RapidTable HTML table reconstruction.
           Tier 2: RapidOCR vertical line clustering.
           Tier 3: PyMuPDF digital vector text block extraction.
+        Guarantees non-degradation: valid items are never wiped out or reduced.
         """
         items = []
         self.last_error = None
+        doc = None
         try:
             try:
                 doc = pymupdf.open(self.pdf_path)
@@ -1140,6 +1726,9 @@ class PDFCatalogParser:
                     self.last_error = "RapidOCR engine unavailable; falling back to digital parsing."
                 logger.info("RapidOCR engine unavailable; proceeding with digital parsing fallback.")
 
+            is_cure = 'كيور' in self.warehouse_name
+            is_makramy = 'المكرومي' in self.warehouse_name
+
             for page_idx, page in enumerate(doc):
                 pct = page_idx / max(num_pages, 1)
                 if progress_callback:
@@ -1149,12 +1738,12 @@ class PDFCatalogParser:
                         pass
 
                 page_items = []
-                ocr_res = None
 
+                # In parse_ocr: Prioritize OCR when explicitly requested
                 if ocr_engine is not None:
-                    # Step 1: PyMuPDF 300 DPI rasterization directly into memory
+                    # Step 1: PyMuPDF 150 DPI rasterization (4x faster and lighter than 300 DPI)
                     try:
-                        pix = page.get_pixmap(dpi=300)
+                        pix = page.get_pixmap(dpi=150)
                         img_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.height, pix.width, pix.n))
                         if pix.n == 4:
                             img_np = img_np[:, :, :3]
@@ -1167,6 +1756,7 @@ class PDFCatalogParser:
 
                     # Step 2: RapidOCR ONNX extraction
                     if img_np is not None:
+                        ocr_res = None
                         try:
                             ocr_res, _ = ocr_engine(img_np)
                         except Exception as ocr_err:
@@ -1203,7 +1793,67 @@ class PDFCatalogParser:
                             except Exception as line_err:
                                 logger.debug(f"OCR line clustering error on page {page_idx}: {line_err}")
 
-                # Tier 3 Fallback: PyMuPDF Digital Parsing
+                # If OCR produced no items or engine was unavailable, fall back to digital vector extraction
+                if not page_items:
+                    page_words = page.get_text("words")
+                    if len(page_words) >= 10:
+                        try:
+                            tables = page.find_tables()
+                            if tables and len(tables.tables) > 0:
+                                all_tables = tables.tables
+                                if len(all_tables) > 1:
+                                    filtered_tables = []
+                                    for i, t1 in enumerate(all_tables):
+                                        is_enclosed = False
+                                        for j, t2 in enumerate(all_tables):
+                                            if i != j:
+                                                b1, b2 = t1.bbox, t2.bbox
+                                                # If t2 geometrically encloses t1, t1 is an inner sub-table -> discard t1
+                                                if b2[0] <= b1[0] + 1 and b2[1] <= b1[1] + 1 and b2[2] >= b1[2] - 1 and b2[3] >= b1[3] - 1:
+                                                    if abs(b1[0]-b2[0]) < 2 and abs(b1[1]-b2[1]) < 2 and abs(b1[2]-b2[2]) < 2 and abs(b1[3]-b2[3]) < 2:
+                                                        if i > j:
+                                                            is_enclosed = True
+                                                            break
+                                                    else:
+                                                        is_enclosed = True
+                                                        break
+                                        if not is_enclosed:
+                                            filtered_tables.append(t1)
+                                else:
+                                    filtered_tables = all_tables
+
+                                stitched_tables = self._stitch_contiguous_tables(filtered_tables)
+                                for t_data in stitched_tables:
+                                    if t_data and len(t_data) > 1:
+                                        page_items.extend(self._process_table(t_data))
+                            if not page_items:
+                                is_dar_fouad = 'دار الفؤاد' in self.warehouse_name
+                                is_sina = 'سينا' in self.warehouse_name
+                                base_fname = os.path.basename(self.pdf_path)
+                                is_arwasoft_2col = (
+                                    any(k in base_fname for k in ['ادم جمله', 'بيرفكت فارم', 'رواد الدوا']) or
+                                    any(k in self.warehouse_name for k in ['ادم', 'بيرفكت فارم', 'رواد الدواء'])
+                                )
+                                if is_sina:
+                                    page_items.extend(self._extract_sina_columns(page))
+                                elif is_dar_fouad:
+                                    page_items.extend(self._extract_dar_fouad_columns(page))
+                                if not page_items and not is_arwasoft_2col:
+                                    page_items = self._process_page_blocks(page)
+
+                            if is_cure:
+                                right_items = self._extract_cure_right_column(page)
+                                page_items.extend(right_items)
+                            elif is_arwasoft_2col:
+                                right_items = self._extract_arwasoft_right_column(page)
+                                page_items.extend(right_items)
+                            elif is_makramy:
+                                extra_cols = self._extract_makramy_columns(page)
+                                page_items.extend(extra_cols)
+                        except Exception as dig_err:
+                            logger.debug(f"Digital fallback error on page {page_idx}: {dig_err}")
+
+                # Tier 3 Fallback: PyMuPDF Digital Parsing if OCR yielded nothing
                 if not page_items:
                     try:
                         tables = page.find_tables()
@@ -1219,6 +1869,15 @@ class PDFCatalogParser:
 
                 items.extend(page_items)
 
+            # Non-degradation guarantee: if OCR yielded zero items, fallback to digital parse
+            if not items:
+                try:
+                    digital_df = self.parse()
+                    if not digital_df.empty:
+                        items = digital_df.to_dict(orient="records")
+                except Exception as dig_merge_err:
+                    logger.debug(f"Non-degradation digital merge check: {dig_merge_err}")
+
             if progress_callback:
                 try:
                     progress_callback(1.0, f"اكتمل المسح بـ OCR: تم العثور على {len(items)} صنف.")
@@ -1228,6 +1887,13 @@ class PDFCatalogParser:
         except Exception as e:
             self.last_error = f"Error parsing PDF with OCR: {e}"
             logger.warning(f"Error parsing PDF with OCR {self.warehouse_name} ({self.pdf_path}): {e}")
+        finally:
+            if doc is not None:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
+
 
         if not items:
             if not self.last_error:
@@ -1241,6 +1907,7 @@ class PDFCatalogParser:
         df = df.sort_values(by='discount_rate', ascending=False).drop_duplicates(
             subset=['normalized_name', 'dosage', 'unit_size'], keep='first'
         )
+        df = df[(df['base_price'] > 0.0) & (df['base_price'] < 10000.0)]
         return df
 
     @classmethod

@@ -51,6 +51,8 @@ class GeminiMedicineMatcher:
         unique_catalog_items = sorted(list(catalog_df['item_name'].dropna().unique()))
         
         for i in range(0, len(unmatched_items), batch_size):
+            if not self.enabled:
+                break
             batch = unmatched_items[i:i + batch_size]
             batch_res = self._process_batch(batch, unique_catalog_items)
             results.update(batch_res)
@@ -99,6 +101,13 @@ class GeminiMedicineMatcher:
                 config=config
             )
             raw_text = response.text.strip()
+            if raw_text.startswith("```"):
+                raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE)
+                raw_text = re.sub(r"\s*```$", "", raw_text)
+            raw_text = raw_text.strip()
+            m = re.search(r'\[.*\]', raw_text, re.DOTALL)
+            if m:
+                raw_text = m.group(0)
             data = json.loads(raw_text)
             
             validated_matches = {}

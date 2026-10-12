@@ -11,7 +11,7 @@ build/
 dist/
 dist_installer/
 *.egg-info/
-
+EgyptianPharmaOptimizer.zip
 
 # Environments
 .env
@@ -26,7 +26,23 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Large temporary files
+# Large temporary files and backups
 *.log
 *.tmp
+*.bak
 .tmp.driveupload/
+.pytest_cache/
+
+# Agent execution files, scratch, and archives
+.agents/
+scratch/
+archive/
+test1/
+test_out/
+train/
+
+# Runtime test data and large binary inputs/outputs
+input/catalogs/*.pdf
+input/orders/*.xlsx
+output/*.xlsx
+output/*.md
