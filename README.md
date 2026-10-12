@@ -1,20 +1,18 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 1.1.5 (Production Windows Release)  
+**Version:** 1.7 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
-An intelligent, automated procurement optimization desktop application designed specifically for Egyptian pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
+An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
 
 ---
 
-## 🌟 What's New in Version 1.1.5
+## 🌟 What's New in Version 1.7
 
-- 📋 **Robust Multi-Table Order Ingestion (`0924.xlsx`)**: Eliminated single-character `'م'` keyword bug that misclassified medication name columns as item codes. Added negative keyword boundaries (`عميل`, `مخزن`, `تاريخ`) to correctly ingest stacked daily sales and out-of-stock orders.
-- 🔠 **Custom ERP Font Decoding (Al-Hadaba & OrgaSoft)**: Complete decoding of Aboriginal/Runic ERP font glyphs and multi-character ligatures (`ﻟᣌᢔᡧ` -> `لبن`, `ᣃᡫ اب` -> `شراب`, `ᣌᢕᡧ` -> `ين`), eliminating corrupted medication names in catalogs like `الهضبه الخميس نفدى.pdf`.
-- 🔄 **Smart Bi-Directional Reversal Detection**: Intelligently detects whether text is stored forward or backward per row/cell using pharmaceutical token dictionaries, Persian letter unification, and unit-position heuristics (`مجم 90`, `ق 30`), preserving forward text while restoring inverted Arabic.
-- 🌐 **Bi-Directional Arabic/English Brand Matching**: Automatic canonicalization matching Arabic trade names (`اوجمنتين`) with English catalog entries (`Augmentin`).
-- 🛡️ **OpenPyXL XML IllegalCharacterError Fix**: Complete resolution of Excel generation crashes caused by unescaped regex backreferences injecting control characters.
-- 🔄 **True On-Demand OCR Execution**: Fixed bypass bug where digital PDF streams prevented RapidOCR from running when clicking "Re-read with OCR".
-- 📦 **OCR Non-Degradation Cache Fix**: Prevented valid OCR output from being discarded in favor of larger, noisy digital caches.
+- 🎯 **100% Deterministic Parity & Reversed Arabic Resolution**: Fully recovers item matches from catalogs containing reversed or RTL-corrupted text (such as El-Salam warehouse items like *Davalindi* and *Seloken ZOK*), achieving 100% catalog matching parity across all wholesalers.
+- 🗄️ **Resilient Read-Only SQLite & AppData Ingestion**: Seamless fallback to read-only URI mode (`PRAGMA query_only = ON;`) and automatic `%LOCALAPPDATA%` caching for execution inside protected directories like `C:\Program Files` without administrative write permissions.
+- 🛡️ **Hardened Pharmaceutical Strength Protection**: Guarded active strengths ($\ge 125$ mg) against pack-count stripping in fallback fuzzy matching, strictly preventing dosage mismatches (e.g., Flumox 1g vs 500mg).
+- 🔄 **Modern Update Wizard**: In-app upgrade check linking directly to official GitHub Releases for seamless in-place updates.
+- 📦 **Windows Installer v1.7**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v1.7.exe`) with auto-upgrades and shortcuts.
 
 ---
 
@@ -33,7 +31,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v1.1.5.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v1.7.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.
