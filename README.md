@@ -15,26 +15,6 @@ An intelligent, automated procurement optimization desktop application designed 
 
 ---
 
-## 🌟 What's New in Version 1.7
-
-- 🎯 **100% Deterministic Parity & Reversed Arabic Resolution**: Fully recovers item matches from catalogs containing reversed or RTL-corrupted text (such as El-Salam warehouse items like *Davalindi* and *Seloken ZOK*), achieving 100% catalog matching parity across all wholesalers.
-- 🗄️ **Resilient Read-Only SQLite & AppData Ingestion**: Seamless fallback to read-only URI mode (`PRAGMA query_only = ON;`) and automatic `%LOCALAPPDATA%` caching for execution inside protected directories like `C:\Program Files` without administrative write permissions.
-- 🛡️ **Hardened Pharmaceutical Strength Protection**: Guarded active strengths ($\ge 125$ mg) against pack-count stripping in fallback fuzzy matching, strictly preventing dosage mismatches (e.g., Flumox 1g vs 500mg).
-- 🔄 **Modern Update Wizard**: In-app upgrade check linking directly to official GitHub Releases for seamless in-place updates.
-- 📦 **Windows Installer v1.7**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v1.7.exe`) with auto-upgrades and shortcuts.
-
----
-
-## 🌟 What's New in Version 1.1.4
-
-- 🔄 **Multi-Line Table Cell Unzipping**: Fully recovers items merged into single table cells in borderless PDF catalogs (such as `الفرسان اسكندريه`), unzipping multi-item lines into discrete products without losing items.
-- 💊 **Explicit 0% Net Pricing Support ('صافي' / Net Items)**: Ingests essential medicines and quota supplies sold at official public price without discounts (`0`, `0.0`, `0%`, `صافي`, `net`).
-- 📐 **Shifted Column Inline Discount Recovery**: Automatically restores discount values that slipped into product name columns during PDF parsing (e.g. `سيدرال فورت ق \n 27`).
-- 📦 **Packaging Deduplication by Base Price**: Preserves different pack sizes and presentations sharing base drug names by incorporating `base_price` into deduplication keys.
-- 📦 **1-Click Standalone Installer**: Bundled as `EgyptianPharmaOptimizer_Setup_v1.1.5.exe` with desktop shortcut and automated uninstaller.
-
----
-
 ## 🚀 Quick Start & Installation
 
 ### Option 1: Standalone Windows Installer (Recommended)
@@ -166,5 +146,5 @@ python build_exe.py
 # 2. Compile Inno Setup installer
 & "C:\Users\<username>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer.iss
 ```
-Output setup will be placed in `dist_installer/EgyptianPharmaOptimizer_Setup_v1.1.4.exe`.
+Output setup will be placed in `dist_installer/EgyptianPharmaOptimizer_Setup_v1.8.exe`.
 
