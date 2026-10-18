@@ -102,6 +102,7 @@ def build():
         "--hidden-import", "google",
         "--hidden-import", "sqlite3",
         "--hidden-import", "src.medication_db",
+        "--hidden-import", "src.average_discounts",
     ]
 
     for d in datas:

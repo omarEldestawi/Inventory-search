@@ -19,15 +19,17 @@ import pandas as pd
 try:
     from .pdf_parser import PDFCatalogParser
     from .excel_parser import load_purchase_order
-    from .allocator import MedicineAllocator
+    from .allocator import MedicineAllocator, evaluate_above_average_discounts
     from .report_generator import ArabicExcelReportGenerator
     from .normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
+    from .average_discounts import load_average_discounts_file, resolve_default_avg_discounts_path
 except ImportError:
     from pdf_parser import PDFCatalogParser
     from excel_parser import load_purchase_order
-    from allocator import MedicineAllocator
+    from allocator import MedicineAllocator, evaluate_above_average_discounts
     from report_generator import ArabicExcelReportGenerator
     from normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
+    from average_discounts import load_average_discounts_file, resolve_default_avg_discounts_path
 
 logger = logging.getLogger("ProcurementPipeline")
 
@@ -378,6 +380,7 @@ def run_procurement_pipeline(
     custom_date_str: Optional[str] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
     catalog_cache: Optional[dict] = None,
+    avg_discounts_file: Optional[str] = None,
 ) -> dict:
     """
     Executes catalog ingestion, purchase order loading & combining, clinical safety allocation,
@@ -391,13 +394,16 @@ def run_procurement_pipeline(
         progress_callback: Optional callable(percent: float, message: str) reporting 0.0 to 1.0.
         custom_date_str: Optional date string ('YYYY-MM-DD') for report naming.
         cancel_check: Optional callable() returning True if operation should be aborted.
+        catalog_cache: Optional cache dictionary for parsed catalog DataFrames.
+        avg_discounts_file: Optional path to reference average discounts dataset ('أرصده المخازن' / 'خصم مرجح').
 
     Returns:
         dict:
-            'results': dict (full allocation output dict with 'kpis', 'master_comparison', etc.)
+            'results': dict (full allocation output dict with 'kpis', 'master_comparison', 'above_average_discounts', etc.)
             'report_path': str (absolute path to primary generated Excel workbook)
             'arabic_report_path': str (absolute path to Arabic alias workbook)
             'kpis': dict (summary procurement metrics)
+            'above_average_discounts': pd.DataFrame (medications with discounts > reference average)
 
     Raises:
         PipelineExecutionError: If any pipeline stage fails, wrapping diagnostics.
@@ -411,6 +417,7 @@ def run_procurement_pipeline(
         "catalog_files": list(catalog_files) if catalog_files else [],
         "output_dir": output_dir,
         "custom_date_str": custom_date_str,
+        "avg_discounts_file": avg_discounts_file,
         "catalogs_processed": 0,
         "orders_processed": 0,
         "total_catalog_items": 0,
@@ -565,12 +572,27 @@ def run_procurement_pipeline(
         _notify(0.72, f"تم تجهيز {len(buying_list)} صنف فريد للشراء والتوزيع.")
         _check_cancellation()
 
-        # 4. Run Optimization and Allocation
+        # 4. Resolve Reference Average Discounts Dataset & Run Allocation
+        current_stage = "reference_discounts_loading"
+        diagnostics["stage"] = current_stage
+        target_avg_path = avg_discounts_file
+        if not target_avg_path:
+            target_avg_path = resolve_default_avg_discounts_path()
+
+        avg_discounts_df = None
+        if target_avg_path and os.path.isfile(target_avg_path):
+            try:
+                avg_discounts_df = load_average_discounts_file(target_avg_path)
+                logger.info(f"Loaded {len(avg_discounts_df)} reference average discount items from {target_avg_path}")
+            except Exception as ad_err:
+                logger.warning(f"Failed to load average discounts file '{target_avg_path}': {ad_err}")
+                avg_discounts_df = None
+
         current_stage = "allocation"
         diagnostics["stage"] = current_stage
         _notify(0.75, "جاري مطابقة الأصناف وتوزيعها على أعلى الخصومات... / Running allocation engine...")
 
-        allocator = MedicineAllocator(consolidated_inventory)
+        allocator = MedicineAllocator(consolidated_inventory, avg_discounts_df=avg_discounts_df)
         results = allocator.allocate_order(buying_list)
 
         kpis = results.get('kpis', {})
@@ -578,6 +600,19 @@ def run_procurement_pipeline(
         total_req = kpis.get('total_items', len(buying_list))
         _notify(0.85, f"اكتمل التوزيع: تم تخصيص {matched} من {total_req} صنف بنجاح.")
         _check_cancellation()
+
+        # Above-average discounts evaluation across reference dataset
+        above_avg_df = pd.DataFrame()
+        if avg_discounts_df is not None and not avg_discounts_df.empty:
+            _notify(0.85, "تقييم الأصناف ذات الخصومات الأعلى من المرجح... / Evaluating above-average discounts...")
+            try:
+                above_avg_df = evaluate_above_average_discounts(avg_discounts_df, allocator, progress_callback=_notify)
+                logger.info(f"Evaluated {len(above_avg_df)} medications with catalog discounts exceeding reference average")
+            except Exception as eval_err:
+                logger.warning(f"Error evaluating above-average discounts: {eval_err}")
+                above_avg_df = pd.DataFrame()
+
+        results['above_average_discounts'] = above_avg_df
 
         # 5. Generate Arabic Excel Report
         current_stage = "report_generation"
@@ -604,7 +639,8 @@ def run_procurement_pipeline(
             'report_path': primary_report_path,
             'arabic_report_path': arabic_report_path,
             'output_dir': output_dir,
-            'kpis': kpis
+            'kpis': kpis,
+            'above_average_discounts': above_avg_df
         }
 
     except InterruptedError:

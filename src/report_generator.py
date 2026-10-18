@@ -118,6 +118,25 @@ class ArabicExcelReportGenerator:
 
         kpis = self.result.get('kpis', {})
         master_df = self.result.get('master_comparison')
+        if isinstance(master_df, list):
+            master_df = pd.DataFrame(master_df)
+        elif master_df is not None:
+            master_df = master_df.copy()
+
+        if master_df is not None and not master_df.empty:
+            if 'اسم الصنف في أمر الشراء' in master_df.columns and 'اسم الصنف المطلوب (في طلب الشراء)' in master_df.columns:
+                master_df = master_df.drop(columns=['اسم الصنف في أمر الشراء'])
+
+            first_11_cols = [c for c in master_df.columns if c not in ('الخصم المرجح %', 'فرق الخصم %')][:11]
+            remaining_cols = [c for c in master_df.columns if c not in ('الخصم المرجح %', 'فرق الخصم %')][11:]
+
+            if 'الخصم المرجح %' not in master_df.columns:
+                master_df['الخصم المرجح %'] = '-'
+            if 'فرق الخصم %' not in master_df.columns:
+                master_df['فرق الخصم %'] = '-'
+
+            master_df = master_df[first_11_cols + ['الخصم المرجح %', 'فرق الخصم %'] + remaining_cols]
+
         allocated = self.result.get('allocated_orders', {})
         oos_df = self.result.get('out_of_stock')
         rec_df = self.result.get('recommendations')
@@ -180,8 +199,6 @@ class ArabicExcelReportGenerator:
         # Row 8: Table Headers
         start_row = 8
         if master_df is not None and not master_df.empty:
-            if 'اسم الصنف في أمر الشراء' in master_df.columns and 'اسم الصنف المطلوب (في طلب الشراء)' in master_df.columns:
-                master_df = master_df.drop(columns=['اسم الصنف في أمر الشراء'])
             headers = [clean_excel_str(h) for h in master_df.columns]
             for col_idx, h in enumerate(headers, 1):
                 c = ws_master.cell(row=start_row, column=col_idx)
@@ -244,7 +261,29 @@ class ArabicExcelReportGenerator:
                         except (ValueError, TypeError):
                             c.value = clean_excel_str(val)
                         c.alignment = align_center
-                    # Warehouse discount columns
+                    # Col 12: Reference Weighted Average Discount %
+                    elif c_i == 12:
+                        try:
+                            if val is not None and not (isinstance(val, float) and val != val) and val != '-':
+                                c.value = float(val)
+                                c.number_format = '0.0%'
+                            else:
+                                c.value = '-'
+                        except (ValueError, TypeError):
+                            c.value = '-'
+                        c.alignment = align_center
+                    # Col 13: Difference %
+                    elif c_i == 13:
+                        try:
+                            if val is not None and not (isinstance(val, float) and val != val) and val != '-':
+                                c.value = float(val)
+                                c.number_format = '0.0%'
+                            else:
+                                c.value = '-'
+                        except (ValueError, TypeError):
+                            c.value = '-'
+                        c.alignment = align_center
+                    # Warehouse discount columns (Col 14+)
                     else:
                         if isinstance(val, (int, float)) and not (isinstance(val, float) and val != val):
                             c.value = float(val)
@@ -283,6 +322,161 @@ class ArabicExcelReportGenerator:
             ws_master.cell(row=start_row, column=1, value="لا توجد أصناف مطابقة للتخصيص حالياً.").font = font_cell
 
         self._autofit_columns(ws_master)
+
+        # -------------------------------------------------------------
+        # SHEET 2: Above Reference Average Discount (أصناف بخصم أعلى من المرجح)
+        # -------------------------------------------------------------
+        above_avg_df = self.result.get('above_average_discounts')
+        if isinstance(above_avg_df, list):
+            above_avg_df = pd.DataFrame(above_avg_df)
+
+        above_sheet_title = clean_sheet_title("أصناف بخصم أعلى من المرجح")
+        ws_above = wb.create_sheet(title=above_sheet_title)
+        ws_above.views.sheetView[0].rightToLeft = True
+
+        # Base header columns
+        base_above_headers = [
+            'م',
+            'اسم الصنف في أرصده المخازن',
+            'اسم الصنف في كشف المخزن الفائز',
+            'المخزن الفائز',
+            'الخصم المرجح %',
+            'أعلى خصم متاح %',
+            'فرق الخصم %',
+            'سعر الجمهور للوحدة',
+            'سعر التوريد الصافي'
+        ]
+        warehouses_list = list(allocated.keys()) if allocated else self.result.get('warehouses', [])
+        wh_above_headers = [f'خصم {w}' for w in warehouses_list]
+
+        if above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame) and not above_avg_df.empty:
+            ab_headers = [clean_excel_str(h) for h in above_avg_df.columns]
+            count_above_items = len(above_avg_df)
+        else:
+            ab_headers = base_above_headers + wh_above_headers
+            count_above_items = len(above_avg_df) if (above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame)) else 0
+
+        max_above_cols = max(len(ab_headers), 9)
+        end_above_col = get_column_letter(max_above_cols)
+
+        # Row 1: Title Banner
+        ws_above.merge_cells(f"A1:{end_above_col}1")
+        c_ab_title = ws_above["A1"]
+        c_ab_title.value = clean_excel_str("بيان الأصناف ذات الخصم الأعلى من متوسط المخازن المرجح")
+        c_ab_title.font = font_main_title
+        c_ab_title.alignment = align_center
+
+        # Row 2: Subtitle Banner
+        ws_above.merge_cells(f"A2:{end_above_col}2")
+        c_ab_sub = ws_above["A2"]
+        c_ab_sub.value = clean_excel_str(
+            f"حصر أصناف أرصده المخازن التي يتجاوز أعلى خصم متاح لها بالكتالوجات الخصم المرجح | عدد الأصناف: {count_above_items} صنف | {arabic_date_text}"
+        )
+        c_ab_sub.font = font_subtitle
+        c_ab_sub.alignment = align_center
+
+        # Row 4: Headers
+        start_row_ab = 4
+        for col_idx, h in enumerate(ab_headers, 1):
+            c = ws_above.cell(row=start_row_ab, column=col_idx)
+            c.value = clean_excel_str(h)
+            c.font = font_tbl_header
+            c.fill = fill_navy_header
+            c.alignment = align_center
+            c.border = thin_border
+
+        # Row 5+: Data Rows
+        current_ab_row = start_row_ab
+        if above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame) and not above_avg_df.empty:
+            df_ab_sorted = above_avg_df.copy()
+            if 'فرق الخصم %' in df_ab_sorted.columns:
+                try:
+                    sort_cols = ['فرق الخصم %']
+                    if 'أعلى خصم متاح %' in df_ab_sorted.columns:
+                        sort_cols.append('أعلى خصم متاح %')
+                    df_ab_sorted = df_ab_sorted.sort_values(by=sort_cols, ascending=False)
+                except Exception:
+                    pass
+
+            for r_i, row_data in enumerate(df_ab_sorted.values, start_row_ab + 1):
+                is_even = (r_i % 2 == 0)
+                for c_i, val in enumerate(row_data, 1):
+                    c = ws_above.cell(row=r_i, column=c_i)
+                    c.font = font_cell
+                    c.border = thin_border
+                    
+                    header_name = ab_headers[c_i - 1] if c_i - 1 < len(ab_headers) else ""
+
+                    if header_name == 'م' or c_i == 1:
+                        try:
+                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - start_row_ab
+                        except (ValueError, TypeError):
+                            c.value = r_i - start_row_ab
+                        c.alignment = align_center
+                    elif 'اسم الصنف' in header_name or c_i in (2, 3):
+                        c.value = clean_excel_str(val)
+                        c.alignment = align_right
+                    elif 'المخزن الفائز' in header_name or c_i == 4:
+                        c.value = clean_excel_str(val)
+                        c.alignment = align_center
+                    elif any(pct_kw in header_name for pct_kw in ['الخصم المرجح %', 'أعلى خصم متاح %', 'فرق الخصم %', '%']) or header_name.startswith('خصم '):
+                        try:
+                            if val is not None and not (isinstance(val, float) and val != val) and val != '-':
+                                c.value = float(val)
+                                c.number_format = '0.0%'
+                            else:
+                                c.value = '-'
+                        except (ValueError, TypeError):
+                            c.value = '-'
+                        c.alignment = align_center
+                    elif any(cur_kw in header_name for cur_kw in ['سعر الجمهور للوحدة', 'سعر التوريد الصافي', 'سعر', 'قيمة', 'تكلفة']):
+                        try:
+                            if val is not None and not (isinstance(val, float) and val != val) and val != '-':
+                                c.value = float(val)
+                                c.number_format = '#,##0.00'
+                            else:
+                                c.value = '-'
+                        except (ValueError, TypeError):
+                            c.value = '-'
+                        c.alignment = align_center
+                    else:
+                        c.value = clean_excel_str(val)
+                        c.alignment = align_center
+
+                    if is_even:
+                        c.fill = fill_zebra
+                current_ab_row = r_i
+
+            # Summary Row for Above Average Sheet
+            sum_ab_row = current_ab_row + 1
+            ws_above.cell(row=sum_ab_row, column=2, value=f"إجمالي الأصناف: {count_above_items} صنف").font = font_cell_bold
+            ws_above.cell(row=sum_ab_row, column=2).alignment = align_right
+
+            for c_i in range(1, len(ab_headers) + 1):
+                cell = ws_above.cell(row=sum_ab_row, column=c_i)
+                cell.fill = fill_total_row
+                cell.border = total_border
+        else:
+            current_ab_row = start_row_ab + 1
+            c_empty = ws_above.cell(
+                row=current_ab_row,
+                column=1,
+                value="لا توجد أصناف في أرصده المخازن ذات خصم أعلى من الخصم المرجح حالياً."
+            )
+            c_empty.font = font_cell
+            c_empty.alignment = align_right
+            
+            # Summary Row for empty sheet
+            sum_ab_row = current_ab_row + 1
+            ws_above.cell(row=sum_ab_row, column=2, value="إجمالي الأصناف: 0 صنف").font = font_cell_bold
+            ws_above.cell(row=sum_ab_row, column=2).alignment = align_right
+
+            for c_i in range(1, len(ab_headers) + 1):
+                cell = ws_above.cell(row=sum_ab_row, column=c_i)
+                cell.fill = fill_total_row
+                cell.border = total_border
+
+        self._autofit_columns(ws_above)
 
         # -------------------------------------------------------------
         # SHEETS 2+: Winning Supplier PO Sheets (طلب شراء - [اسم المخزن])
@@ -618,7 +812,7 @@ class ArabicExcelReportGenerator:
                 if cell.value is not None:
                     val_str = str(cell.value)
                     # Ignore title and KPI rows when calculating widths
-                    if cell.row in [1, 2, 4, 5]:
+                    if cell.row in [1, 2] or (ws.title == "المقارنة الشاملة وتوزيع الأصناف" and cell.row in [4, 5]):
                         continue
                     max_len = max(max_len, len(val_str))
             ws.column_dimensions[col_letter].width = max(max_len + 5, 14)

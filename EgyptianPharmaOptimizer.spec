@@ -16,7 +16,8 @@ hiddenimports = [
     'rapidfuzz',
     'google',
     'sqlite3',
-    'src.medication_db'
+    'src.medication_db',
+    'src.average_discounts',
 ]
 
 for pkg in ['customtkinter', 'rapidocr_onnxruntime', 'rapid_table', 'onnxruntime']:
@@ -27,6 +28,7 @@ for pkg in ['customtkinter', 'rapidocr_onnxruntime', 'rapid_table', 'onnxruntime
         hiddenimports += tmp_ret[2]
     except Exception:
         pass
+
 
 a = Analysis(
     ['app_gui.py'],

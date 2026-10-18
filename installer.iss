@@ -1,7 +1,7 @@
 ; Inno Setup 6 Script for Egyptian Pharma Procurement Optimizer
 #define MyAppName "Egyptian Pharma Procurement Optimizer"
 #define MyAppArabicName "نظام المشتريات الصيدلانية"
-#define MyAppVersion "1.7"
+#define MyAppVersion "1.8"
 #define MyAppPublisher "Pharma Tech Solutions"
 #define MyAppExeName "EgyptianPharmaOptimizer.exe"
 
@@ -15,7 +15,7 @@ DefaultDirName={autopf}\EgyptianPharmaOptimizer
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist_installer
-OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.7
+OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.8
 SetupIconFile=assets\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes

@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.8] - 2026-10-19
+
+### 🚀 Added
+- **Reference Weighted Average Discount (`خصم مرجح` / `أرصده المخازن`)**:
+  - Bundled `data/average_discounts.xlsx` and `data/average_discounts.csv` (4,751 reference medication entries) and implemented `src/average_discounts.py` with `xx...xx` marker stripping, English drug name preservation, and decimal normalization.
+  - Added auto-classification for `أرصده المخازن` / `خصم مرجح` files in `src/controller.py`, `--avg-discounts-file` CLI flag in `main.py`, and `AvgDiscounts` selector support in `app_gui.py`.
+- **Above-Average Discount RTL Worksheet (`أصناف بخصم أعلى من المرجح`)**:
+  - Implemented `evaluate_above_average_discounts()` in `src/allocator.py` to match all reference items against warehouse catalogs with full clinical safety gates (`is_safe_pharmaceutical_match`), filtering for `أعلى خصم متاح % > الخصم المرجح %` and sorting descending by `فرق الخصم %`.
+  - Updated `src/report_generator.py` to generate the RTL sheet `أصناف بخصم أعلى من المرجح` and append `الخصم المرجح %` and `فرق الخصم %` to `المقارنة الشاملة وتوزيع الأصناف`.
+- **Compiled Release Installer**: Generated `dist_installer/EgyptianPharmaOptimizer_Setup_v1.8.exe` via PyInstaller and Inno Setup 6.
+
+---
+
 ## [1.1.5] - 2026-09-24
 
 ### 🛡️ Fixed & Improved

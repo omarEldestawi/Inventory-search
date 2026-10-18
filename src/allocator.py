@@ -11,7 +11,7 @@ Features two-pass hybrid architecture:
 import os
 import re
 import logging
-from typing import Optional, Dict, Any, List, Set
+from typing import Optional, Dict, Any, List, Set, Union, Callable, Tuple
 import pandas as pd
 from rapidfuzz import fuzz
 from .normalizer import extract_dosage_form, extract_canonical_brand, extract_sorted_brand_tokens
@@ -33,6 +33,43 @@ except ImportError:
     except ImportError:
         MedicationDB = None
         DEFAULT_DB_PATH = None
+
+try:
+    from .average_discounts import clean_medication_display_name, _normalize_discount_rate
+except ImportError:
+    try:
+        from average_discounts import clean_medication_display_name, _normalize_discount_rate
+    except ImportError:
+        clean_medication_display_name = None
+        _normalize_discount_rate = None
+
+if clean_medication_display_name is None:
+    def clean_medication_display_name(text: str) -> str:
+        if not text:
+            return ""
+        cleaned = str(text).strip()
+        cleaned = re.sub(r'(?i)^\s*x+\s*(?=[\u0600-\u06FF\s])', '', cleaned)
+        cleaned = re.sub(r'(?i)(?<=[\u0600-\u06FF\s])\s*x+\s*$', '', cleaned)
+        cleaned = re.sub(r'^[xX]{2,}(?=[A-Z][a-z])', '', cleaned)
+        cleaned = re.sub(r'(?i)^\s*x{2,}\s*', '', cleaned)
+        cleaned = re.sub(r'(?<=[a-zA-Z]x)[xX]{2,}\s*$', '', cleaned)
+        cleaned = re.sub(r'(?i)\s*x{2,}\s*$', '', cleaned)
+        return cleaned.strip()
+
+if _normalize_discount_rate is None:
+    def _normalize_discount_rate(val: Any) -> Optional[float]:
+        if val is None or pd.isna(val):
+            return None
+        try:
+            v_str = str(val).strip()
+            is_pct = '%' in v_str
+            v_clean = v_str.replace('%', '').strip()
+            v_float = float(v_clean)
+            if is_pct or v_float > 1.0:
+                v_float = v_float / 100.0
+            return max(0.0, min(1.0, v_float))
+        except Exception:
+            return None
 
 logger = logging.getLogger("MedicineAllocator")
 
@@ -70,7 +107,13 @@ def _extract_clean_brand_tokens(text: str) -> Set[str]:
     return toks
 
 class MedicineAllocator:
-    def __init__(self, warehouse_inventory: Optional[pd.DataFrame] = None, enable_ai: Optional[bool] = None, medication_db: Optional[Any] = None):
+    def __init__(
+        self,
+        warehouse_inventory: Optional[pd.DataFrame] = None,
+        enable_ai: Optional[bool] = None,
+        medication_db: Optional[Any] = None,
+        avg_discounts_df: Optional[pd.DataFrame] = None
+    ):
         """
         warehouse_inventory DataFrame with columns:
         ['warehouse_name', 'item_name', 'normalized_name', 'dosage', 'unit_size', 'base_price', 'discount_rate', 'stock_status']
@@ -99,6 +142,20 @@ class MedicineAllocator:
         else:
             self.medication_db = None
 
+        if self.medication_db:
+            # Memoize MedicationDB.resolve to avoid redundant regex/unreverse passes on repeated strings
+            _orig_resolve = self.medication_db.resolve
+            _resolve_memo = {}
+
+            def _memoized_resolve(query: str):
+                if not query:
+                    return None
+                if query not in _resolve_memo:
+                    _resolve_memo[query] = _orig_resolve(query)
+                return _resolve_memo[query]
+
+            self.medication_db.resolve = _memoized_resolve
+
         self.standard_id_index = {}
         
         # Pre-index inventory with canonical brand and brand tokens for ultra-fast matching
@@ -109,6 +166,7 @@ class MedicineAllocator:
             self.inventory['sorted_brand'] = self.inventory['item_name'].apply(extract_sorted_brand_tokens)
             self.valid_inv = self.inventory[self.inventory['stock_status'] == True].copy().reset_index(drop=True)
             self.valid_inv_names = self.valid_inv['item_name'].to_dict()
+            self.valid_inv_discounts = self.valid_inv['discount_rate'].to_dict()
             
             # Fast index mappings - Tier 1
             self.canonical_index = {}
@@ -168,6 +226,7 @@ class MedicineAllocator:
         else:
             self.valid_inv = pd.DataFrame()
             self.valid_inv_names = {}
+            self.valid_inv_discounts = {}
             self.canonical_index = {}
             self.sorted_brand_index = {}
             self.brand_root_index = {}
@@ -178,16 +237,125 @@ class MedicineAllocator:
             self.form_category_index = {}
             self.first_char_index = {}
 
-    def optimize_procurement(self, order_df: pd.DataFrame, catalog_df: Optional[pd.DataFrame] = None, enable_ai: Optional[bool] = None) -> dict:
+        self.avg_discounts_df = avg_discounts_df
+        self.ref_discount_map: Dict[str, float] = {}
+        self.std_id_ref_map: Dict[int, float] = {}
+        if avg_discounts_df is not None and not avg_discounts_df.empty:
+            self._build_ref_discount_indexes(avg_discounts_df)
+
+    def _build_ref_discount_indexes(self, df: pd.DataFrame):
+        """Indexes reference average discounts for O(1) PO allocation enrichment."""
+        name_col = 'clean_name' if 'clean_name' in df.columns else None
+        disc_col = 'avg_discount_rate' if 'avg_discount_rate' in df.columns else None
+
+        if not name_col:
+            for c in df.columns:
+                if any(k in str(c) for k in ['إسم الصنف', 'اسم الصنف', 'الصنف', 'صنف', 'item_name', 'name']):
+                    name_col = c
+                    break
+        if not disc_col:
+            for c in df.columns:
+                if any(k in str(c) for k in ['خصم مرجح', 'الخصم المرجح', 'مرجح', 'avg_discount', 'discount']):
+                    disc_col = c
+                    break
+
+        if not name_col or not disc_col:
+            return
+
+        names = df[name_col].tolist()
+        discs = df[disc_col].tolist()
+
+        for raw_val, disc_val in zip(names, discs):
+            if raw_val is None or pd.isna(raw_val) or disc_val is None or pd.isna(disc_val):
+                continue
+
+            raw_s = str(raw_val).strip()
+            if not raw_s or raw_s.lower() in ['none', 'nan']:
+                continue
+            clean_s = clean_medication_display_name(raw_s)
+
+            norm_disc = _normalize_discount_rate(disc_val) if _normalize_discount_rate else None
+            if norm_disc is None or norm_disc < 0.0:
+                continue
+
+            # Store in direct mapping
+            if clean_s:
+                self.ref_discount_map[clean_s] = norm_disc
+                clean_ar = clean_arabic_string(clean_s)
+                if clean_ar:
+                    self.ref_discount_map[clean_ar] = norm_disc
+            if raw_s:
+                self.ref_discount_map[raw_s] = norm_disc
+                if raw_s != clean_s:
+                    raw_ar = clean_arabic_string(raw_s)
+                    if raw_ar:
+                        self.ref_discount_map[raw_ar] = norm_disc
+
+            # Standard ID mapping via MedicationDB
+            if self.medication_db:
+                std_rec = self.medication_db.resolve(clean_s)
+                if not std_rec and raw_s != clean_s:
+                    std_rec = self.medication_db.resolve(raw_s)
+                if std_rec and "id" in std_rec:
+                    self.std_id_ref_map[std_rec["id"]] = norm_disc
+
+    def _lookup_ref_discount(self, req_item: str, winning_catalog_item: Optional[str] = None) -> Optional[float]:
+        """Looks up reference average discount for an order item."""
+        if not self.ref_discount_map and not self.std_id_ref_map:
+            return None
+
+        clean_req = clean_medication_display_name(req_item)
+        if clean_req in self.ref_discount_map:
+            return self.ref_discount_map[clean_req]
+
+        if req_item in self.ref_discount_map:
+            return self.ref_discount_map[req_item]
+
+        norm_ar = clean_arabic_string(clean_req)
+        if norm_ar in self.ref_discount_map:
+            return self.ref_discount_map[norm_ar]
+
+        # Standard ID lookup
+        if self.medication_db and self.std_id_ref_map:
+            std_rec = self.medication_db.resolve(clean_req) or self.medication_db.resolve(req_item)
+            if std_rec and "id" in std_rec and std_rec["id"] in self.std_id_ref_map:
+                return self.std_id_ref_map[std_rec["id"]]
+
+        # Winning catalog item lookup
+        if winning_catalog_item:
+            clean_win = clean_medication_display_name(winning_catalog_item)
+            if clean_win in self.ref_discount_map:
+                return self.ref_discount_map[clean_win]
+            win_ar = clean_arabic_string(clean_win)
+            if win_ar in self.ref_discount_map:
+                return self.ref_discount_map[win_ar]
+            if self.medication_db and self.std_id_ref_map:
+                std_win = self.medication_db.resolve(clean_win) or self.medication_db.resolve(winning_catalog_item)
+                if std_win and "id" in std_win and std_win["id"] in self.std_id_ref_map:
+                    return self.std_id_ref_map[std_win["id"]]
+
+        return None
+
+    def optimize_procurement(
+        self,
+        order_df: pd.DataFrame,
+        catalog_df: Optional[pd.DataFrame] = None,
+        enable_ai: Optional[bool] = None,
+        avg_discounts_df: Optional[pd.DataFrame] = None
+    ) -> dict:
         """
         Executes deterministic clinical allocation.
         Supports both MedicineAllocator().optimize_procurement(order_df, catalog_df)
         and MedicineAllocator(catalog_df).optimize_procurement(order_df).
         """
         if catalog_df is not None:
-            self.__init__(catalog_df, enable_ai=enable_ai)
-        elif enable_ai is not None:
-            self.gemini_matcher.enabled = enable_ai
+            self.__init__(catalog_df, enable_ai=enable_ai, avg_discounts_df=avg_discounts_df)
+        else:
+            if enable_ai is not None:
+                self.gemini_matcher.enabled = enable_ai
+            if avg_discounts_df is not None:
+                self.avg_discounts_df = avg_discounts_df
+                self._build_ref_discount_indexes(avg_discounts_df)
         return self.allocate_order(order_df)
 
     def allocate_order(self, buying_list: pd.DataFrame) -> dict:
@@ -263,13 +431,22 @@ class MedicineAllocator:
             total_purchase = round(unit_purchase_price * qty_int, 2)
             savings = round(total_public - total_purchase, 2)
 
+            ref_disc = self._lookup_ref_discount(req_item, winning_row['item_name'])
+            if ref_disc is not None:
+                diff_disc = round(max_disc - ref_disc, 4)
+                ref_disc_val = ref_disc
+                diff_disc_val = diff_disc
+            else:
+                ref_disc_val = '-'
+                diff_disc_val = '-'
+
             remarks = 'أعلى نسبة خصم متاحة' if len(candidates['warehouse_name'].unique()) > 1 else 'المورد الوحيد المتاح'
 
             master_row = {
                 'م': len(matched_records) + 1,
                 'اسم الصنف المطلوب (في طلب الشراء)': req_item,
                 'اسم الصنف في كشف المخزن الفائز': winning_row['item_name'],
-                'الكمية المطلوبة': qty_int,
+                'الكمية': qty_int,
                 'المخزن الفائز': winning_warehouse,
                 'أعلى خصم %': max_disc,
                 'سعر الجمهور': base_price,
@@ -277,6 +454,8 @@ class MedicineAllocator:
                 'إجمالي سعر الجمهور': total_public,
                 'إجمالي تكلفة الشراء': total_purchase,
                 'قيمة الوفر': savings,
+                'الخصم المرجح %': ref_disc_val,
+                'فرق الخصم %': diff_disc_val,
                 '_base_price': base_price,
                 '_discount_rate_num': max_disc,
                 '_remarks': remarks
@@ -331,11 +510,20 @@ class MedicineAllocator:
                         
                         print(f"    ✓ AI Resolved: '{req_item}' -> '{cand_name}' (Supplier: {winning_warehouse}, Discount: {round(max_disc*100, 1)}%)")
                         
+                        ref_disc = self._lookup_ref_discount(req_item, winning_row['item_name'])
+                        if ref_disc is not None:
+                            diff_disc = round(max_disc - ref_disc, 4)
+                            ref_disc_val = ref_disc
+                            diff_disc_val = diff_disc
+                        else:
+                            ref_disc_val = '-'
+                            diff_disc_val = '-'
+
                         master_row = {
                             'م': len(matched_records) + 1,
                             'اسم الصنف المطلوب (في طلب الشراء)': req_item,
                             'اسم الصنف في كشف المخزن الفائز': winning_row['item_name'],
-                            'الكمية المطلوبة': qty_int,
+                            'الكمية': qty_int,
                             'المخزن الفائز': winning_warehouse,
                             'أعلى خصم %': max_disc,
                             'سعر الجمهور': base_price,
@@ -343,6 +531,8 @@ class MedicineAllocator:
                             'إجمالي سعر الجمهور': total_public,
                             'إجمالي تكلفة الشراء': total_purchase,
                             'قيمة الوفر': savings,
+                            'الخصم المرجح %': ref_disc_val,
+                            'فرق الخصم %': diff_disc_val,
                             '_base_price': base_price,
                             '_discount_rate_num': max_disc,
                             '_remarks': remarks
@@ -470,7 +660,7 @@ class MedicineAllocator:
                         'م': range(1, len(w_items) + 1),
                         'اسم الصنف في أمر الشراء': w_items['اسم الصنف المطلوب (في طلب الشراء)'],
                         'اسم الصنف في كتالوج المخزن': w_items['اسم الصنف في كشف المخزن الفائز'],
-                        'الكمية المطلوبة': w_items['الكمية المطلوبة'],
+                        'الكمية المطلوبة': w_items['الكمية'] if 'الكمية' in w_items.columns else w_items.get('الكمية المطلوبة', 1),
                         'نسبة الخصم %': w_items['أعلى خصم %'],
                         'سعر الجمهور للوحدة': w_items['سعر الجمهور'],
                         'سعر التوريد الصافي': w_items['سعر الشراء للوحدة'],
@@ -492,7 +682,7 @@ class MedicineAllocator:
 
         if matched_count > 0:
             avg_discount = round(master_df['_discount_rate_num'].mean() * 100, 1)
-            total_qty = int(master_df['الكمية المطلوبة'].sum())
+            total_qty = int(master_df['الكمية'].sum()) if 'الكمية' in master_df.columns else int(master_df.get('الكمية المطلوبة', pd.Series([0])).sum())
             total_public_val = round(float(master_df['إجمالي سعر الجمهور'].sum()), 2)
             total_purchase_val = round(float(master_df['إجمالي تكلفة الشراء'].sum()), 2)
             total_savings_val = round(float(master_df['قيمة الوفر'].sum()), 2)
@@ -537,7 +727,7 @@ class MedicineAllocator:
             'kpis': kpis
         }
 
-    def _find_safe_candidates(self, req_item: str) -> pd.DataFrame:
+    def _find_safe_candidates(self, req_item: str, min_discount: Optional[float] = None) -> pd.DataFrame:
         """Finds all catalog items that pass strict pharmaceutical validation."""
         req_parts = [p.strip() for p in re.split(r'(?<!\d)/(?!\d)', req_item) if p.strip()] if '/' in req_item else [req_item]
         
@@ -555,6 +745,8 @@ class MedicineAllocator:
                     s_id = req_std["id"]
                     if s_id in self.standard_id_index:
                         for idx in self.standard_id_index[s_id]:
+                            if min_discount is not None and self.valid_inv_discounts.get(idx, 0.0) <= min_discount:
+                                continue
                             cand_name = self.valid_inv_names.get(idx)
                             if cand_name:
                                 if is_safe_pharmaceutical_match(req_item, cand_name):
@@ -607,8 +799,9 @@ class MedicineAllocator:
             for idx in t1_cands:
                 cand_name = self.valid_inv_names.get(idx)
                 if cand_name and is_safe_pharmaceutical_match(req_item, cand_name):
-                    matching_indices.add(idx)
                     part_matched = True
+                    if min_discount is None or self.valid_inv_discounts.get(idx, 0.0) > min_discount:
+                        matching_indices.add(idx)
                     
             if part_matched:
                 continue
@@ -635,8 +828,9 @@ class MedicineAllocator:
             for idx in t2_cands:
                 cand_name = self.valid_inv_names.get(idx)
                 if cand_name and is_safe_pharmaceutical_match(req_item, cand_name):
-                    matching_indices.add(idx)
                     part_matched = True
+                    if min_discount is None or self.valid_inv_discounts.get(idx, 0.0) > min_discount:
+                        matching_indices.add(idx)
                     
             if part_matched:
                 continue
@@ -662,6 +856,8 @@ class MedicineAllocator:
                     len_req = len(b_root_no_al)
                     # Evaluate candidates in small pre-filtered pool
                     for idx in pool:
+                        if min_discount is not None and self.valid_inv_discounts.get(idx, 0.0) <= min_discount:
+                            continue
                         cand_br_no_al = self.valid_inv_brand_roots_no_al.get(idx)
                         if not cand_br_no_al:
                             continue
@@ -678,3 +874,164 @@ class MedicineAllocator:
             return self.valid_inv.iloc[0:0]
             
         return self.valid_inv.loc[list(matching_indices)]
+
+
+def evaluate_above_average_discounts(
+    avg_discounts_df: Optional[Union[pd.DataFrame, List[Tuple[str, float]]]] = None,
+    allocator: Optional[MedicineAllocator] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> pd.DataFrame:
+    """
+    Evaluates reference average discount medications against active warehouse catalogs.
+    Filters strictly for highest available warehouse catalog discount > reference weighted average discount.
+    Sorts strictly descending by discount gain (فرق الخصم %).
+
+    Returns a DataFrame with columns:
+    ['م', 'اسم الصنف في أرصده المخازن', 'اسم الصنف في كشف المخزن الفائز', 'المخزن الفائز',
+     'الخصم المرجح %', 'أعلى خصم متاح %', 'فرق الخصم %', 'سعر الجمهور للوحدة', 'سعر التوريد الصافي',
+     ... per-warehouse discount columns ...]
+    """
+    warehouses = allocator.warehouses if allocator is not None else []
+    base_cols = [
+        'م',
+        'اسم الصنف في أرصده المخازن',
+        'اسم الصنف في كشف المخزن الفائز',
+        'المخزن الفائز',
+        'الخصم المرجح %',
+        'أعلى خصم متاح %',
+        'فرق الخصم %',
+        'سعر الجمهور للوحدة',
+        'سعر التوريد الصافي'
+    ]
+    wh_cols = [f'خصم {w}' for w in warehouses]
+    all_cols = base_cols + wh_cols
+
+    if avg_discounts_df is None or allocator is None or allocator.valid_inv.empty:
+        return pd.DataFrame(columns=all_cols)
+
+    # Standardize input to DataFrame
+    if isinstance(avg_discounts_df, list):
+        records_in = []
+        for item in avg_discounts_df:
+            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                records_in.append({'clean_name': str(item[0]), 'avg_discount_rate': float(item[1])})
+        df = pd.DataFrame(records_in)
+    elif isinstance(avg_discounts_df, pd.DataFrame):
+        df = avg_discounts_df.copy()
+    else:
+        return pd.DataFrame(columns=all_cols)
+
+    if df.empty:
+        return pd.DataFrame(columns=all_cols)
+
+    # Resolve name and discount columns
+    name_col = 'clean_name' if 'clean_name' in df.columns else None
+    disc_col = 'avg_discount_rate' if 'avg_discount_rate' in df.columns else None
+
+    if not name_col:
+        for c in df.columns:
+            if any(k in str(c) for k in ['إسم الصنف', 'اسم الصنف', 'الصنف', 'صنف', 'item_name', 'name']):
+                name_col = c
+                break
+    if not disc_col:
+        for c in df.columns:
+            if any(k in str(c) for k in ['خصم مرجح', 'الخصم المرجح', 'مرجح', 'avg_discount', 'discount']):
+                disc_col = c
+                break
+
+    if not name_col or not disc_col:
+        logger.warning("Could not identify name or discount column in avg_discounts_df")
+        return pd.DataFrame(columns=all_cols)
+
+    records = []
+    total_items = len(df)
+    report_interval = max(50, total_items // 20)
+
+    names = df[name_col].tolist()
+    discs = df[disc_col].tolist()
+    max_catalog_disc = float(allocator.valid_inv['discount_rate'].max()) if not allocator.valid_inv.empty else 0.0
+
+    for idx, (raw_item, raw_disc) in enumerate(zip(names, discs)):
+        if progress_callback and (idx % report_interval == 0 or idx == total_items - 1):
+            pct = min(0.89, round(0.85 + (idx / max(total_items, 1)) * 0.04, 4))
+            progress_callback(pct, f"تقييم أصناف أرصدة المخازن ({idx+1}/{total_items})...")
+
+        if raw_item is None or pd.isna(raw_item) or raw_disc is None or pd.isna(raw_disc):
+            continue
+        raw_str = str(raw_item).strip()
+        if not raw_str or raw_str.lower() in ['none', 'nan']:
+            continue
+
+        norm_disc = _normalize_discount_rate(raw_disc) if _normalize_discount_rate else None
+        if norm_disc is None or norm_disc < 0.0:
+            continue
+
+        # If reference discount is already >= maximum discount available anywhere in the catalogs, skip immediately
+        if norm_disc >= max_catalog_disc:
+            continue
+
+        clean_name = clean_medication_display_name(raw_str)
+        if not clean_name:
+            continue
+
+        # Deterministic Pass 1 local safe candidates (bypassing Gemini Flash)
+        candidates = allocator._find_safe_candidates(clean_name, min_discount=norm_disc)
+        if candidates.empty:
+            continue
+
+        max_disc = float(candidates['discount_rate'].max())
+        # Strict inequality check: max_disc must be STRICTLY greater than ref_disc
+        if max_disc <= norm_disc:
+            continue
+
+        best_candidates = candidates[candidates['discount_rate'] == max_disc]
+        if len(best_candidates) > 1:
+            winning_row = best_candidates.sort_values(by='base_price', ascending=False).iloc[0]
+        else:
+            winning_row = best_candidates.iloc[0]
+
+        catalog_item_name = str(winning_row.get('item_name', '')).strip()
+        winning_wh = str(winning_row.get('warehouse_name', '')).strip()
+
+        # Hard clinical safety verification
+        if not is_safe_pharmaceutical_match(clean_name, catalog_item_name):
+            continue
+
+        diff_disc = round(max_disc - norm_disc, 4)
+        base_price = float(winning_row.get('base_price', 0.0) or 0.0)
+        net_price = round(base_price * (1.0 - max_disc), 2)
+
+        w_disc_dict = candidates.groupby('warehouse_name')['discount_rate'].max().to_dict()
+
+        record = {
+            'اسم الصنف في أرصده المخازن': clean_name,
+            'اسم الصنف في كشف المخزن الفائز': catalog_item_name,
+            'المخزن الفائز': winning_wh,
+            'الخصم المرجح %': norm_disc,
+            'أعلى خصم متاح %': max_disc,
+            'فرق الخصم %': diff_disc,
+            'سعر الجمهور للوحدة': base_price,
+            'سعر التوريد الصافي': net_price,
+        }
+        for w in warehouses:
+            record[f'خصم {w}'] = w_disc_dict.get(w, '-')
+
+        records.append(record)
+
+    if not records:
+        return pd.DataFrame(columns=all_cols)
+
+    # Sort strictly descending by فرق الخصم % (with highest discount as secondary tie-breaker)
+    records.sort(key=lambda r: (r['فرق الخصم %'], r['أعلى خصم متاح %']), reverse=True)
+
+    # Set 1-based serial number
+    for i, r in enumerate(records, 1):
+        r['م'] = i
+
+    res_df = pd.DataFrame(records)
+    # Ensure all columns exist
+    for col in all_cols:
+        if col not in res_df.columns:
+            res_df[col] = '-'
+    return res_df[all_cols]
+

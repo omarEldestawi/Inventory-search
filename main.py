@@ -80,6 +80,10 @@ def scan_drive_directory(drive_dir: str):
 
     for f in all_files:
         fname = os.path.basename(f)
+        # Exclude reference average discounts dataset from being treated as daily orders or catalogs
+        if any(k in fname.lower() for k in ['أرصده المخازن', 'ارصدة المخازن', 'خصم مرجح', 'average_discounts']):
+            continue
+
         if fname.endswith('.pdf'):
             pdf_catalogs.append(f)
         else:
@@ -110,6 +114,7 @@ def main():
     parser.add_argument("--catalogs-dir", default="input/catalogs", help="Directory containing warehouse PDF/Excel catalogs")
     parser.add_argument("--orders-dir", default="input/orders", help="Directory containing purchase order Excel/CSV files")
     parser.add_argument("--order-file", default=None, help="Specific purchase order file path")
+    parser.add_argument("--avg-discounts-file", default=None, help="Specific reference average discounts file ('أرصده المخازن') path")
     parser.add_argument("--output-dir", default=None, help="Directory to save generated Excel reports")
     parser.add_argument("--date", default=None, help="Custom date for report name (YYYY-MM-DD), default is today")
 

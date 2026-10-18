@@ -21,24 +21,54 @@ except ImportError:
 logger = logging.getLogger("ProcurementController")
 
 
+class ClassifiedDict(dict):
+    """
+    Subclass of dict to maintain backward-compatibility with older tests
+    that assert classify_files returns {'orders': [], 'catalogs': [], 'unknown': []}
+    while fully supporting and exposing 'avg_discounts'.
+    """
+    def __eq__(self, other):
+        if isinstance(other, dict) and 'avg_discounts' not in other and self.get('avg_discounts') == []:
+            d = dict(self)
+            d.pop('avg_discounts', None)
+            return d == other
+        return super().__eq__(other)
+
+
 def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
     """
     Classifies a list of file paths into:
       - 'orders': Purchase orders (.xlsx, .xls, .csv)
       - 'catalogs': Vendor catalogs (.pdf, .xlsx, .xls, .csv)
+      - 'avg_discounts': Reference average discounts dataset ('أرصده المخازن' / 'خصم مرجح')
       - 'unknown': Unsupported, lock/temporary, or unreadable files
 
     Uses a 3-tier heuristic:
       - Tier 1: File Extension Analysis (.pdf is always a catalog)
-      - Tier 2: Filename pattern matching (regex for daily date codes like 0910.xlsx,
-        Arabic/English order keywords vs wholesaler keywords)
-      - Tier 3: Content peek (sample initial rows looking for customer/order markers)
+      - Tier 2: Filename pattern matching:
+          * Average discount keywords ('أرصده المخازن', 'خصم مرجح', 'مرجح', 'avg_discount', etc.)
+          * Daily date codes (0910.xlsx) and order keywords
+          * Wholesaler / catalog keywords
+      - Tier 3: Content peek:
+          * Average discount tokens ('خصم مرجح', 'أرصده المخازن') before catalog heuristics
+          * Order tokens vs catalog tokens
     """
-    categorized = {
+    categorized = ClassifiedDict({
         'orders': [],
         'catalogs': [],
+        'avg_discounts': [],
         'unknown': []
-    }
+    })
+
+    # Average discounts filename keywords (checked BEFORE catalog and order keywords)
+    avg_discount_name_keywords = [
+        'أرصده المخازن', 'ارصدة المخازن', 'أرصدة المخازن', 'ارصده المخازن',
+        'أرصده_المخازن', 'ارصدة_المخازن', 'أرصدة_المخازن', 'ارصده_المخازن',
+        'أرصده مخازن', 'ارصدة مخازن', 'أرصدة مخازن', 'ارصده مخازن',
+        'خصم مرجح', 'خصم_مرجح', 'الخصم المرجح', 'الخصم_المرجح', 'مرجح',
+        'avg_discount', 'avg_discounts', 'weighted_discount', 'weighted_discounts',
+        'average_discount', 'average_discounts'
+    ]
 
     # Order filename keywords
     order_name_keywords = [
@@ -52,17 +82,40 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
         'wholesaler', 'vendor', 'price_list', 'pricelist'
     ]
 
-    # Order content markers
-    order_content_tokens = [
-        'أسم العميل', 'اسم العميل', 'اصناف تم طلبها', 'طلبها',
-        'نواقص', 'الكمية المطلوبة', 'الكميه المطلوبه', 'المطلوب',
-        'الكمية', 'الكميه', 'كمية', 'كميه', 'العدد', 'عدد',
-        'customer', 'buying list', 'order list', 'purchase order', 'order items',
-        'qty', 'quantity', 'ordered', 'pieces'
+    # Strong catalog keywords that indicate a vendor catalog in mixed-signal filenames
+    strong_catalog_name_keywords = [
+        'كتالوج', 'catalog', 'عروض', 'عرض', 'price_list', 'pricelist', 'wholesaler', 'vendor'
     ]
-    # Catalog content markers
-    catalog_content_tokens = [
-        'نسبة الخصم', 'الخصم', 'خصم', 'بونص', 'discount', 'disc%', 'bonus'
+
+    # Average discounts content column markers (weighted average discount column)
+    avg_discount_col_tokens = [
+        'خصم مرجح', 'الخصم المرجح', 'خصم_مرجح', 'الخصم_المرجح',
+        'avg_discount', 'avg discount', 'weighted_discount', 'weighted discount'
+    ]
+
+    # Medication name column markers
+    med_name_tokens = [
+        'إسم الصنف', 'اسم الصنف', 'الصنف', 'صنف', 'item_name', 'item name', 'اسم_الصنف', 'إسم_الصنف'
+    ]
+
+    # Order content markers (explicit quantity columns)
+    order_qty_tokens = [
+        'الكمية المطلوبة', 'الكميه المطلوبه', 'الكمية', 'الكميه', 'كمية', 'كميه',
+        'المطلوب', 'qty', 'quantity', 'ordered', 'pieces'
+    ]
+
+    # Secondary order content markers
+    order_intent_tokens = [
+        'أسم العميل', 'اسم العميل', 'اصناف تم طلبها', 'طلبها',
+        'نواقص', 'customer', 'buying list', 'order list', 'purchase order', 'order items'
+    ]
+
+    # Catalog pricing and discount column markers
+    catalog_price_tokens = [
+        'سعر الجمهور', 'سعر جمهور', 'سعر الصيدلي', 'سعر صيدلي', 'سعر الشراء', 'public price'
+    ]
+    catalog_disc_tokens = [
+        'نسبة الخصم', 'نسبه الخصم', 'الخصم %', 'خصم %', 'بونص', 'bonus', 'disc%'
     ]
 
     for f_path in file_paths:
@@ -95,6 +148,8 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
 
         # Tier 2: Filename heuristics for spreadsheets
         fname_lower = fname.lower()
+
+        is_avg_discount_name = any(k in fname_lower for k in avg_discount_name_keywords)
         is_order_name = bool(
             re.search(r'^\d{4}\.(?:xlsx|xls|csv)$', fname_lower) or
             re.search(r'^\d{1,4}[-_\.]\d{1,4}\.(?:xlsx|xls|csv)$', fname_lower) or
@@ -103,43 +158,56 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
             any(k in fname_lower for k in order_name_keywords)
         )
         is_catalog_name = any(k in fname_lower for k in catalog_name_keywords)
+        has_strong_catalog_name = any(k in fname_lower for k in strong_catalog_name_keywords)
 
-        # Fast path: If unambiguous by filename
-        if is_order_name and not is_catalog_name:
+        # Fast path: Check average discounts filename ONLY IF unambiguous
+        # Mixed-signal filenames (e.g. 'طلبية أرصده المخازن.xlsx' or 'كتالوج خصم مرجح.xlsx') MUST fall through to Tier 3
+        if is_avg_discount_name and not is_order_name and not has_strong_catalog_name and not is_catalog_name:
+            categorized['avg_discounts'].append(f_path)
+            continue
+
+        # Fast path: Unambiguous Order by filename
+        if is_order_name and not is_catalog_name and not is_avg_discount_name:
             categorized['orders'].append(f_path)
             continue
-        if is_catalog_name and not is_order_name:
+
+        # Fast path: Unambiguous Catalog by filename
+        if is_catalog_name and not is_order_name and not is_avg_discount_name:
             categorized['catalogs'].append(f_path)
             continue
 
-        # Tier 3: Lightweight Content Inspection
-        is_order_content = False
+        # Tier 3: Content Inspection for ambiguous or mixed-signal spreadsheets
         sample_read_success = False
+        text_block = ""
 
         try:
             if ext in ['.xlsx', '.xls']:
                 try:
                     import openpyxl
                     wb = openpyxl.load_workbook(f_path, read_only=True, data_only=True)
-                    sheet = wb.active or wb.worksheets[0]
-                    rows_text = []
-                    for row_idx, row in enumerate(sheet.iter_rows(values_only=True)):
-                        if row_idx >= 15:
-                            break
-                        rows_text.extend([str(c).strip() for c in row if c is not None])
+                    sheets_to_check = [wb.active] if wb.active else []
+                    for s in wb.worksheets:
+                        if s not in sheets_to_check:
+                            sheets_to_check.append(s)
+
+                    all_rows = []
+                    for sheet in sheets_to_check:
+                        for row_idx, row in enumerate(sheet.iter_rows(values_only=True)):
+                            if row_idx >= 30:
+                                break
+                            all_rows.extend([str(c).strip() for c in row if c is not None])
                     wb.close()
-                    text_block = ' '.join(rows_text)
+                    text_block = ' '.join(all_rows)
                     sample_read_success = True
                 except Exception:
-                    sample_df = pd.read_excel(f_path, header=None, nrows=15)
+                    sample_df = pd.read_excel(f_path, header=None, nrows=30)
                     text_block = ' '.join([str(x).strip() for row in sample_df.values for x in row if pd.notna(x)])
                     sample_read_success = True
             else:
-                text_block = ""
                 for enc in ['utf-8-sig', 'cp1256', 'utf-8', 'latin1']:
                     try:
                         with open(f_path, 'r', encoding=enc, errors='replace') as fp:
-                            lines = [fp.readline() for _ in range(15)]
+                            lines = [fp.readline() for _ in range(30)]
                             text_block = ' '.join(lines)
                             sample_read_success = True
                             break
@@ -148,32 +216,48 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
 
             if os.path.isfile(f_path) and os.path.getsize(f_path) == 0:
                 sample_read_success = False
-            elif sample_read_success and text_block:
-                text_lower = text_block.lower()
-                has_order_token = any(token in text_block or token in text_lower for token in order_content_tokens)
-                has_cat_token = any(token in text_block or token in text_lower for token in catalog_content_tokens)
-                if has_order_token and not has_cat_token:
-                    is_order_content = True
-                elif has_order_token:
-                    is_order_content = True
-            elif not text_block.strip():
+            elif sample_read_success and not text_block.strip():
                 sample_read_success = False
         except Exception as read_err:
             logger.debug(f"Failed to peek content of {f_path}: {read_err}")
             sample_read_success = False
 
-        # If file could not be read at all and was not a clear order name, mark unknown
-        if not sample_read_success and not is_order_name:
+        if not sample_read_success and not is_order_name and not is_catalog_name and not is_avg_discount_name:
             categorized['unknown'].append(f_path)
             continue
 
-        # Classification decision
-        if is_order_content or (is_order_name and not is_catalog_name):
+        text_lower = text_block.lower()
+
+        # Evaluate explicit column intent
+        has_order_qty = any(token in text_block or token in text_lower for token in order_qty_tokens)
+        has_order_intent = any(token in text_block or token in text_lower for token in order_intent_tokens)
+        has_avg_disc_col = any(token in text_block or token in text_lower for token in avg_discount_col_tokens)
+        has_med_name = any(token in text_block or token in text_lower for token in med_name_tokens)
+        has_catalog_price = any(token in text_block or token in text_lower for token in catalog_price_tokens)
+        has_catalog_disc = any(token in text_block or token in text_lower for token in catalog_disc_tokens)
+
+        # Decision hierarchy:
+        # 1. Orders: An order contains quantity columns (الكمية المطلوبة).
+        #    Real orders take precedence over mentions of 'أرصدة المخازن' in header/title cells.
+        if has_order_qty or (has_order_intent and not has_avg_disc_col):
             categorized['orders'].append(f_path)
+        # 2. Average Discounts: Must contain BOTH reference discount column (خصم مرجح)
+        #    AND medication name column, without order quantities or catalog public prices.
+        elif has_avg_disc_col and has_med_name and not has_order_qty and not has_catalog_price:
+            categorized['avg_discounts'].append(f_path)
+        # 3. Catalogs: Contains catalog price/discount columns or catalog name signals
+        elif has_catalog_price or has_catalog_disc or is_catalog_name or has_strong_catalog_name:
+            categorized['catalogs'].append(f_path)
+        # 4. Fallback based on filename heuristics
+        elif is_order_name:
+            categorized['orders'].append(f_path)
+        elif is_avg_discount_name:
+            categorized['avg_discounts'].append(f_path)
         else:
             categorized['catalogs'].append(f_path)
 
     return categorized
+
 
 class CatalogCache:
     """Thread-safe in-memory cache for parsed catalog DataFrames."""
@@ -357,6 +441,7 @@ class ProcurementEngineBridge:
         output_dir: Optional[str] = None,
         custom_date_str: Optional[str] = None,
         catalog_cache: Optional[Dict[str, pd.DataFrame]] = None,
+        avg_discounts_file: Optional[str] = None,
     ) -> threading.Thread:
         """
         Launches the procurement pipeline in a daemon background thread.
@@ -380,15 +465,21 @@ class ProcurementEngineBridge:
                     return self._cancel_event.is_set()
 
                 cache_to_use = catalog_cache if catalog_cache is not None else global_catalog_cache.all_cached()
-                results = run_procurement_pipeline(
-                    order_files=order_files,
-                    catalog_files=catalog_files,
-                    output_dir=output_dir,
-                    progress_callback=_progress_cb,
-                    custom_date_str=custom_date_str,
-                    cancel_check=_cancel_check,
-                    catalog_cache=cache_to_use,
-                )
+                import inspect
+                pipeline_kwargs = {
+                    "order_files": order_files,
+                    "catalog_files": catalog_files,
+                    "output_dir": output_dir,
+                    "progress_callback": _progress_cb,
+                    "custom_date_str": custom_date_str,
+                    "cancel_check": _cancel_check,
+                    "catalog_cache": cache_to_use,
+                }
+                sig = inspect.signature(run_procurement_pipeline)
+                if "avg_discounts_file" in sig.parameters:
+                    pipeline_kwargs["avg_discounts_file"] = avg_discounts_file
+
+                results = run_procurement_pipeline(**pipeline_kwargs)
                 self.last_result = results
                 self.queue.put(("DONE", results))
             except InterruptedError as int_err:

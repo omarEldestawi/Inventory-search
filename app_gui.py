@@ -24,7 +24,7 @@ from tkinter import filedialog, messagebox
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.1.7")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.1.8")
     except Exception:
         pass
 
@@ -219,9 +219,13 @@ class FileListModel:
         classification = classify_files(candidates)
         order_set = set(classification.get('orders', []))
         catalog_set = set(classification.get('catalogs', []))
+        avg_discounts_set = set(classification.get('avg_discounts', []))
 
         for cand in candidates:
-            if cand in order_set:
+            if cand in avg_discounts_set:
+                self.files.append(FileItem(cand, "AvgDiscounts"))
+                added += 1
+            elif cand in order_set:
                 self.files.append(FileItem(cand, "Order"))
                 added += 1
             elif cand in catalog_set:
@@ -257,14 +261,20 @@ class FileListModel:
         """Returns list of paths classified as wholesaler catalogs."""
         return [f.path for f in self.files if f.category == "Catalog"]
 
+    def get_avg_discounts_files(self) -> List[str]:
+        """Returns list of paths classified as average discounts reference datasets."""
+        return [f.path for f in self.files if f.category == "AvgDiscounts"]
+
     def get_summary(self) -> Dict[str, int]:
         """Returns dictionary of counts."""
         orders = len(self.get_order_files())
         catalogs = len(self.get_catalog_files())
+        avg_discounts = len(self.get_avg_discounts_files())
         return {
             "total": len(self.files),
             "orders": orders,
             "catalogs": catalogs,
+            "avg_discounts": avg_discounts,
         }
 
     def validate(self, output_dir: str) -> Tuple[bool, str]:
@@ -299,7 +309,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v1.7 / Egyptian Pharma Procurement Optimizer v1.7")
+        self.title("نظام المشتريات الصيدلانية v1.8 / Egyptian Pharma Procurement Optimizer v1.8")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -469,7 +479,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v1.7 Windows 11 Edition • Engine Ready",
+            text="v1.8 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -541,7 +551,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v1.7)",
+            text="🔄 التحديثات / Updates (v1.8)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -932,8 +942,13 @@ class PharmaProcurementApp(ctk.CTk):
 
     def _on_override_category(self, path: str, choice: str):
         """Handles manual category override from dropdown menu."""
-        # choice is either "أمر شراء (Order)" or "كتالوج مخزن (Catalog)"
-        new_category = "Order" if "Order" in choice or "شراء" in choice else "Catalog"
+        # choice is "أمر شراء (Order)", "كتالوج مخزن (Catalog)", or "خصم مرجح (Avg Discounts)"
+        if "Avg" in choice or "مرجح" in choice:
+            new_category = "AvgDiscounts"
+        elif "Order" in choice or "شراء" in choice:
+            new_category = "Order"
+        else:
+            new_category = "Catalog"
         self.file_model.set_override(path, new_category)
         self._render_file_list()
         self._update_ui_state()
@@ -1123,7 +1138,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v1.7 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v1.8 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -1229,9 +1244,18 @@ class PharmaProcurementApp(ctk.CTk):
             name_label.grid(row=0, column=1, padx=5, pady=8, sticky="ew")
 
             # Category Status Badge
-            is_order = (f_item.category == "Order")
-            cat_badge_text = "📋 أمر شراء / Order" if is_order else "🏷️ كتالوج / Catalog"
-            cat_badge_color = COLOR_ORDER_BADGE if is_order else COLOR_CATALOG_BADGE
+            if f_item.category == "AvgDiscounts":
+                cat_badge_text = "📊 خصم مرجح / Avg Disc"
+                cat_badge_color = COLOR_ACCENT
+                current_choice = "خصم مرجح (Avg Discounts)"
+            elif f_item.category == "Order":
+                cat_badge_text = "📋 أمر شراء / Order"
+                cat_badge_color = COLOR_ORDER_BADGE
+                current_choice = "أمر شراء (Order)"
+            else:
+                cat_badge_text = "🏷️ كتالوج / Catalog"
+                cat_badge_color = COLOR_CATALOG_BADGE
+                current_choice = "كتالوج مخزن (Catalog)"
 
             cat_badge = ctk.CTkLabel(
                 card,
@@ -1243,12 +1267,11 @@ class PharmaProcurementApp(ctk.CTk):
             cat_badge.grid(row=0, column=2, padx=5, pady=8, sticky="e")
 
             # Manual Category Override Dropdown
-            current_choice = "أمر شراء (Order)" if is_order else "كتالوج مخزن (Catalog)"
             override_menu = ctk.CTkOptionMenu(
                 card,
-                values=["أمر شراء (Order)", "كتالوج مخزن (Catalog)"],
+                values=["أمر شراء (Order)", "كتالوج مخزن (Catalog)", "خصم مرجح (Avg Discounts)"],
                 font=get_font(10),
-                width=140,
+                width=165,
                 height=26,
                 command=lambda val, p=f_item.path: self._on_override_category(p, val)
             )
@@ -1390,6 +1413,8 @@ class PharmaProcurementApp(ctk.CTk):
 
         order_files = self.file_model.get_order_files()
         catalog_files = self.file_model.get_catalog_files()
+        avg_discounts_files = self.file_model.get_avg_discounts_files()
+        avg_discounts_file = avg_discounts_files[0] if avg_discounts_files else None
         output_dir = self.output_dir_var.get()
 
         # Reset Progress and Status
@@ -1403,7 +1428,8 @@ class PharmaProcurementApp(ctk.CTk):
         self.bridge.start(
             order_files=order_files,
             catalog_files=catalog_files,
-            output_dir=output_dir
+            output_dir=output_dir,
+            avg_discounts_file=avg_discounts_file
         )
 
         self._update_ui_state()
