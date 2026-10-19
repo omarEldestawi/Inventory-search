@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Above-Average Discount RTL Worksheet (`أصناف بخصم أعلى من المرجح`)**:
   - Implemented `evaluate_above_average_discounts()` in `src/allocator.py` to match all reference items against warehouse catalogs with full clinical safety gates (`is_safe_pharmaceutical_match`), filtering for `أعلى خصم متاح % > الخصم المرجح %` and sorting descending by `فرق الخصم %`.
   - Updated `src/report_generator.py` to generate the RTL sheet `أصناف بخصم أعلى من المرجح` and append `الخصم المرجح %` and `فرق الخصم %` to `المقارنة الشاملة وتوزيع الأصناف`.
+- **Background WiFi Auto-Updater**:
+  - Added `src/updater.py` with silent background querying of GitHub Releases and non-blocking download to `%TEMP%`.
+  - Added dynamic "🚀 إعادة التشغيل والتحديث / Restart & Update" toolbar pill button and manual fallback in the Update Wizard modal.
 - **Compiled Release Installer**: Generated `dist_installer/EgyptianPharmaOptimizer_Setup_v1.8.exe` via PyInstaller and Inno Setup 6.
 
 ---

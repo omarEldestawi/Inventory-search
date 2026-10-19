@@ -1,33 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('src', 'src'), ('input', 'input'), ('assets', 'assets'), ('data', 'data')]
+datas = [('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/customtkinter', 'customtkinter'), ('src', 'src'), ('input', 'input'), ('assets', 'assets'), ('data', 'data'), ('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/rapidocr_onnxruntime', 'rapidocr_onnxruntime'), ('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/rapidocr_onnxruntime/models', 'rapidocr_onnxruntime/models'), ('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/rapid_table', 'rapid_table'), ('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/rapid_table/models', 'rapid_table/models')]
 binaries = []
-hiddenimports = [
-    'customtkinter',
-    'PIL._tkinter_finder',
-    'openpyxl',
-    'pandas',
-    'fitz',
-    'pymupdf',
-    'rapidocr_onnxruntime',
-    'rapid_table',
-    'onnxruntime',
-    'rapidfuzz',
-    'google',
-    'sqlite3',
-    'src.medication_db',
-    'src.average_discounts',
-]
-
-for pkg in ['customtkinter', 'rapidocr_onnxruntime', 'rapid_table', 'onnxruntime']:
-    try:
-        tmp_ret = collect_all(pkg)
-        datas += tmp_ret[0]
-        binaries += tmp_ret[1]
-        hiddenimports += tmp_ret[2]
-    except Exception:
-        pass
+hiddenimports = ['customtkinter', 'PIL._tkinter_finder', 'openpyxl', 'pandas', 'fitz', 'pymupdf', 'rapidocr_onnxruntime', 'rapid_table', 'onnxruntime', 'rapidfuzz', 'google', 'sqlite3', 'src.medication_db', 'src.average_discounts', 'src.updater']
+tmp_ret = collect_all('customtkinter')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('rapidocr_onnxruntime')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('rapid_table')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('onnxruntime')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(

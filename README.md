@@ -11,6 +11,7 @@ An intelligent, automated procurement optimization desktop application designed 
 - 📊 **Reference Weighted Average Discount (`خصم مرجح` / `أرصده المخازن`)**: Bundles the 4,751-medication reference average discount dataset (`data/average_discounts.xlsx`) and supports custom `أرصده المخازن` Excel/CSV uploads via GUI, CLI (`--avg-discounts-file`), or input folder.
 - 📑 **Above-Average Discount RTL Worksheet (`أصناف بخصم أعلى من المرجح`)**: Evaluates all 4,751 reference medications against ingested warehouse catalogs with strict clinical safety guardrails and generates a dedicated RTL sheet sorted by largest discount gain (`فرق الخصم %`).
 - 📈 **Master Comparison Discount Gain Columns**: Enriches `المقارنة الشاملة وتوزيع الأصناف` with `الخصم المرجح %` and `فرق الخصم %` columns while preserving `=SUM(...)` accounting formulas.
+- 🌐 **Silent Background WiFi Auto-Updater**: Automatically queries GitHub Releases on startup, quietly streams new update installers into `%TEMP%`, and displays a 1-click **"🚀 إعادة التشغيل والتحديث / Restart & Update"** pill button with manual fallback.
 - 📦 **Windows Installer v1.8**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v1.8.exe`) with auto-upgrades and shortcuts.
 
 ---

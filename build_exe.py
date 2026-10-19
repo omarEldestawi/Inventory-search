@@ -103,6 +103,7 @@ def build():
         "--hidden-import", "sqlite3",
         "--hidden-import", "src.medication_db",
         "--hidden-import", "src.average_discounts",
+        "--hidden-import", "src.updater",
     ]
 
     for d in datas:

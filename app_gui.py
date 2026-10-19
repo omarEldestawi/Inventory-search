@@ -45,6 +45,7 @@ try:
         validate_directory_writable,
         is_in_installation_dir,
     )
+    from src.updater import AutoUpdateManager
 except ImportError:
     from controller import (
         classify_files,
@@ -62,6 +63,7 @@ except ImportError:
         validate_directory_writable,
         is_in_installation_dir,
     )
+    from updater import AutoUpdateManager
 
 
 logger = logging.getLogger("PharmaGUI")
@@ -341,11 +343,18 @@ class PharmaProcurementApp(ctk.CTk):
         self._ocr_queue: queue.Queue = queue.Queue()
         self._active_ocr_threads: Dict[str, threading.Thread] = {}
 
+        # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
+        self.app_version = "1.8"
+        self.updater = AutoUpdateManager(current_version=self.app_version)
+
         # Update initial validation and state
         self._update_ui_state()
 
         # Start OCR queue poller
         self.after(100, self._poll_ocr_queue)
+
+        # Start background auto-update check after 2 seconds
+        self.after(2000, self._start_auto_update_service)
 
 
     def _setup_grid_layout(self):
@@ -561,6 +570,18 @@ class PharmaProcurementApp(ctk.CTk):
         )
         self.top_update_btn.grid(row=0, column=3, padx=(0, 8), sticky="w")
 
+        # Hidden-by-default "Restart & Update" Pill Button (appears when background download finishes)
+        self.restart_update_btn = ctk.CTkButton(
+            self.toolbar_frame,
+            text="🚀 إعادة التشغيل والتحديث / Restart & Update",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_SUCCESS,
+            hover_color="#059669",
+            text_color="white",
+            command=self._on_click_restart_and_update
+        )
+        # Initially not gridded, placed dynamically when ready
+
         # File Counter Badge
         self.counter_badge = ctk.CTkLabel(
             self.toolbar_frame,
@@ -568,7 +589,7 @@ class PharmaProcurementApp(ctk.CTk):
             font=get_font(12, "bold"),
             anchor="e"
         )
-        self.counter_badge.grid(row=0, column=4, sticky="e")
+        self.counter_badge.grid(row=0, column=5, sticky="e")
 
     def _build_file_list(self):
         """Builds scrollable container displaying selected files with badges and overrides."""
@@ -1150,14 +1171,28 @@ class PharmaProcurementApp(ctk.CTk):
         card.grid(row=1, column=0, sticky="nsew", padx=24, pady=10)
         card.grid_columnconfigure(0, weight=1)
 
+        # Dynamic Status in Wizard
+        status_text = ""
+        up_status = self.updater.status
+        if up_status == self.updater.STATUS_READY:
+            status_text = f"🎉 تم تحميل التحديث (الإصدار {self.updater.check_result.latest_version if self.updater.check_result else ''}) وهو جاهز للتثبيت بنقرة واحدة!"
+        elif up_status == self.updater.STATUS_DOWNLOADING:
+            prog_pct = int(self.updater.download_progress * 100)
+            status_text = f"⏳ جاري تحميل التحديث الجديد في الخلفية ({prog_pct}%)..."
+        elif up_status == self.updater.STATUS_CHECKING:
+            status_text = "🔍 جاري الاتصال بخوادم GitHub للتحقق من وجود تحديثات..."
+        elif up_status == self.updater.STATUS_ERROR:
+            status_text = f"⚠️ تعذر التحديث التلقائي ({self.updater.error_message}) - يمكنك التحديث اليدوي أدناه."
+        else:
+            status_text = "✨ النظام متصل بالإنترنت ويقوم بالفحص والتحميل تلقائياً في الخلفية."
+
         info_text = (
-            "✨ مميزات نظام التحديث التلقائي (Inno Setup In-Place Upgrade):\n\n"
-            "• ترقية آمنة 100%: يتم تثبيت التحديث فوق النسخة الحالية مباشرة.\n"
-            "• الحفاظ على البيانات: لا يتم حذف ملفات الطلبيات أو المخرجات المحفوظة.\n"
-            "• أيقونة وسطح مكتب موحد: يتم تحديث الاختصارات وأيقونة شريط المهام تلقائياً.\n\n"
-            "لترقية النظام إلى النسخة الأحدث:\n"
-            "1. يمكنك تحميل أحدث مثبت Setup.exe عبر صفحة التحديثات.\n"
-            "2. أو تشغيل ملف التثبيت الجديد وسيقوم باستبدال الملفات تلقائياً."
+            f"{status_text}\n\n"
+            "✨ مميزات نظام التحديث التلقائي عبر الإنترنت (Background In-Place Update):\n\n"
+            "• فحص صامت وتلقائي فور الاتصال بالإنترنت أو شبكة الـ Wi-Fi.\n"
+            "• تحميل غير مرئي في الخلفية دون تعطيل عمل الصيدلية أو إيقاف الواجهة.\n"
+            "• ترقية آمنة 100%: تثبيت فوري فوق النسخة الحالية مع الحفاظ التام على البيانات.\n"
+            "• إمكانية التحديث اليدوي المباشر كحل بديل في حال انقطاع الشبكة.\n"
         )
 
         txt_widget = ctk.CTkLabel(
@@ -1173,21 +1208,37 @@ class PharmaProcurementApp(ctk.CTk):
         # Bottom Action Bar
         bottom = ctk.CTkFrame(wizard, fg_color="transparent")
         bottom.grid(row=2, column=0, sticky="ew", padx=24, pady=(10, 20))
-        bottom.grid_columnconfigure(0, weight=1)
+        bottom.grid_columnconfigure(2, weight=1)
 
         def _open_releases():
             import webbrowser
-            webbrowser.open("https://github.com/omarEldestawi/Inventory-search/releases")
+            target = "https://github.com/omarEldestawi/Inventory-search/releases"
+            if self.updater.check_result and self.updater.check_result.html_url:
+                target = self.updater.check_result.html_url
+            webbrowser.open(target)
 
-        check_btn = ctk.CTkButton(
+        # 1. Manual GitHub button (Fallback)
+        manual_btn = ctk.CTkButton(
             bottom,
-            text="🌐 فحص التحديثات في GitHub / Check Online",
+            text="🌐 تحميل يدوي من GitHub / Manual Download",
             font=get_font(11, "bold"),
             fg_color=COLOR_ACCENT,
             hover_color=COLOR_ACCENT_HOVER,
             command=_open_releases
         )
-        check_btn.grid(row=0, column=0, sticky="w")
+        manual_btn.grid(row=0, column=0, padx=(0, 10), sticky="w")
+
+        # 2. Restart and Apply button (if ready)
+        if self.updater.status == self.updater.STATUS_READY:
+            apply_now_btn = ctk.CTkButton(
+                bottom,
+                text="🚀 إعادة التشغيل والتحديث الآن",
+                font=get_font(11, "bold"),
+                fg_color=COLOR_SUCCESS,
+                hover_color="#059669",
+                command=self._on_click_restart_and_update
+            )
+            apply_now_btn.grid(row=0, column=1, sticky="w")
 
         close_w_btn = ctk.CTkButton(
             bottom,
@@ -1198,7 +1249,50 @@ class PharmaProcurementApp(ctk.CTk):
             hover_color=("gray60", "gray40"),
             command=wizard.destroy
         )
-        close_w_btn.grid(row=0, column=1, sticky="e", padx=(10, 0))
+        close_w_btn.grid(row=0, column=3, sticky="e", padx=(10, 0))
+
+    def _start_auto_update_service(self):
+        """Starts background auto-update checks and poller."""
+        self.updater.on_status_change = self._on_updater_status_changed
+        self.updater.start_background_check_and_download()
+        self.after(3000, self._poll_auto_update_state)
+
+    def _on_updater_status_changed(self, new_status: str):
+        """Thread-safe status callback from AutoUpdateManager."""
+        pass  # Handled safely via UI thread in _poll_auto_update_state
+
+    def _poll_auto_update_state(self):
+        """Polls updater status on GUI thread to reveal update pill button when ready."""
+        try:
+            if self.updater.status == self.updater.STATUS_READY:
+                # Reveal the Restart & Update pill on the toolbar
+                if not self.restart_update_btn.winfo_ismapped():
+                    self.restart_update_btn.grid(row=0, column=4, padx=(0, 8), sticky="w")
+                    self.top_update_btn.configure(
+                        text="🎉 تحديث متاح! / Update Ready",
+                        fg_color=COLOR_SUCCESS,
+                        text_color="white"
+                    )
+            elif self.updater.status == self.updater.STATUS_DOWNLOADING:
+                pct = int(self.updater.download_progress * 100)
+                if pct > 0:
+                    self.top_update_btn.configure(text=f"⏳ جاري التحميل {pct}%")
+        except Exception:
+            pass
+        finally:
+            # Continue polling every 4 seconds
+            self.after(4000, self._poll_auto_update_state)
+
+    def _on_click_restart_and_update(self):
+        """Prompts user confirmation and restarts into installer."""
+        if messagebox.askyesno(
+            "تأكيد التحديث / Confirm Update",
+            "هل ترغب في إعادة تشغيل البرنامج الآن وتثبيت التحديث الجديد؟\n\nلن يتم فقدان أي ملفات أو بيانات محفوظة."
+        ):
+            try:
+                self.updater.apply_update()
+            except Exception as e:
+                messagebox.showerror("خطأ في التثبيت / Installation Error", f"تعذر تشغيل المثبت تلقائياً:\n{e}\n\nيرجى استخدام زر التحميل اليدوي.")
 
     def _render_file_list(self):
         """Renders individual file cards inside the scrollable container."""
