@@ -613,6 +613,8 @@ def run_procurement_pipeline(
                 above_avg_df = pd.DataFrame()
 
         results['above_average_discounts'] = above_avg_df
+        per_wh_above_avg = getattr(above_avg_df, 'attrs', {}).get('per_warehouse', {})
+        results['per_warehouse_above_average_discounts'] = per_wh_above_avg
 
         # 5. Generate Arabic Excel Report
         current_stage = "report_generation"
@@ -640,7 +642,8 @@ def run_procurement_pipeline(
             'arabic_report_path': arabic_report_path,
             'output_dir': output_dir,
             'kpis': kpis,
-            'above_average_discounts': above_avg_df
+            'above_average_discounts': above_avg_df,
+            'per_warehouse_above_average_discounts': per_wh_above_avg
         }
 
     except InterruptedError:

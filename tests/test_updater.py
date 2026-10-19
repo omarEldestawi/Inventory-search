@@ -54,13 +54,13 @@ def test_check_for_updates_same_version(mock_urlopen):
     mock_resp = MagicMock()
     mock_resp.status = 200
     mock_data = {
-        "tag_name": "v1.8",
+        "tag_name": "v1.9",
         "body": "Current release",
-        "html_url": "https://github.com/omarEldestawi/Inventory-search/releases/tag/v1.8",
+        "html_url": "https://github.com/omarEldestawi/Inventory-search/releases/tag/v1.9",
         "assets": [
             {
-                "name": "EgyptianPharmaOptimizer_Setup_v1.8.exe",
-                "browser_download_url": "https://github.com/.../Setup_v1.8.exe",
+                "name": "EgyptianPharmaOptimizer_Setup_v1.9.exe",
+                "browser_download_url": "https://github.com/.../Setup_v1.9.exe",
                 "size": 140000000,
             }
         ]
@@ -70,6 +70,6 @@ def test_check_for_updates_same_version(mock_urlopen):
     mock_resp.__enter__.return_value = mock_resp
     mock_urlopen.return_value = mock_resp
 
-    res = check_for_updates("1.8")
+    res = check_for_updates("1.9")
     assert res.has_update is False
-    assert res.latest_version == "1.8"
+    assert res.latest_version == "1.9"

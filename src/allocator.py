@@ -944,6 +944,7 @@ def evaluate_above_average_discounts(
         return pd.DataFrame(columns=all_cols)
 
     records = []
+    per_warehouse_records = {w: [] for w in warehouses}
     total_items = len(df)
     report_interval = max(50, total_items // 20)
 
@@ -1003,6 +1004,50 @@ def evaluate_above_average_discounts(
 
         w_disc_dict = candidates.groupby('warehouse_name')['discount_rate'].max().to_dict()
 
+        # Pass 1: Collect best qualifying candidate per warehouse (saving >= 4.00 EGP)
+        wh_best_cands = {}
+        for w in warehouses:
+            w_cands = candidates[candidates['warehouse_name'] == w]
+            if not w_cands.empty:
+                valid_w_cands = []
+                for _, cand_row in w_cands.iterrows():
+                    c_disc = float(cand_row['discount_rate'])
+                    c_bp = float(cand_row.get('base_price', 0.0) or base_price)
+                    c_saving = round(c_bp * (c_disc - norm_disc), 2)
+                    if c_saving >= 4.00 - 1e-6:
+                        valid_w_cands.append((c_saving, c_disc, c_bp, cand_row))
+
+                if valid_w_cands:
+                    # Pick candidate maximizing unit saving, tie-breaking by discount rate and base price
+                    valid_w_cands.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+                    wh_best_cands[w] = valid_w_cands[0]
+
+        # Pass 2: Determine winning qualifying warehouse and build per-warehouse records
+        if wh_best_cands:
+            sec_max_disc = max(c[1] for c in wh_best_cands.values())
+            sec_winners = [w for w, c in wh_best_cands.items() if c[1] >= sec_max_disc - 1e-6]
+            if len(sec_winners) > 1:
+                sec_winners.sort(key=lambda w: (wh_best_cands[w][0], wh_best_cands[w][2]), reverse=True)
+            sec_win_wh = sec_winners[0]
+
+            for w, (unit_saving, w_disc, w_bp, w_row) in wh_best_cands.items():
+                w_cat_name = str(w_row.get('item_name', '')).strip()
+                is_winner = (w_disc >= sec_max_disc - 1e-6)
+                wh_status = w if is_winner else f"{sec_win_wh} ({sec_max_disc * 100:.1f}%)"
+                per_warehouse_records[w].append({
+                    'اسم الصنف في أرصدة المخازن': clean_name,
+                    'اسم الصنف في الكتالوج': w_cat_name,
+                    'سعر الجمهور للوحدة': w_bp,
+                    'الخصم المرجح %': norm_disc,
+                    'خصم هذا المخزن %': w_disc,
+                    'أعلى خصم متاح %': sec_max_disc,
+                    'المخزن صاحب أعلى خصم': wh_status,
+                    'فرق السعر (الوفر بالجنيه)': unit_saving,
+                    '_is_winner': is_winner,
+                    '_winning_wh': sec_win_wh,
+                    '_winning_disc': sec_max_disc,
+                })
+
         record = {
             'اسم الصنف في أرصده المخازن': clean_name,
             'اسم الصنف في كشف المخزن الفائز': catalog_item_name,
@@ -1018,8 +1063,25 @@ def evaluate_above_average_discounts(
 
         records.append(record)
 
+    per_wh_dfs = {}
+    for w in warehouses:
+        w_recs = per_warehouse_records.get(w, [])
+        if w_recs:
+            w_recs.sort(key=lambda r: (r['فرق السعر (الوفر بالجنيه)'], r['خصم هذا المخزن %']), reverse=True)
+            for i, r in enumerate(w_recs, 1):
+                r['م'] = i
+            per_wh_dfs[w] = pd.DataFrame(w_recs)
+        else:
+            per_wh_dfs[w] = pd.DataFrame(columns=[
+                'م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج',
+                'سعر الجمهور للوحدة', 'الخصم المرجح %', 'خصم هذا المخزن %',
+                'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم', 'فرق السعر (الوفر بالجنيه)'
+            ])
+
     if not records:
-        return pd.DataFrame(columns=all_cols)
+        empty_df = pd.DataFrame(columns=all_cols)
+        empty_df.attrs['per_warehouse'] = per_wh_dfs
+        return empty_df
 
     # Sort strictly descending by فرق الخصم % (with highest discount as secondary tie-breaker)
     records.sort(key=lambda r: (r['فرق الخصم %'], r['أعلى خصم متاح %']), reverse=True)
@@ -1033,5 +1095,6 @@ def evaluate_above_average_discounts(
     for col in all_cols:
         if col not in res_df.columns:
             res_df[col] = '-'
+    res_df.attrs['per_warehouse'] = per_wh_dfs
     return res_df[all_cols]
 

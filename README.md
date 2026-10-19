@@ -1,18 +1,17 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 1.8 (Production Windows Release)  
+**Version:** 1.9 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
 
 ---
 
-## 🌟 What's New in Version 1.8
+## 🌟 What's New in Version 1.9
 
-- 📊 **Reference Weighted Average Discount (`خصم مرجح` / `أرصده المخازن`)**: Bundles the 4,751-medication reference average discount dataset (`data/average_discounts.xlsx`) and supports custom `أرصده المخازن` Excel/CSV uploads via GUI, CLI (`--avg-discounts-file`), or input folder.
-- 📑 **Above-Average Discount RTL Worksheet (`أصناف بخصم أعلى من المرجح`)**: Evaluates all 4,751 reference medications against ingested warehouse catalogs with strict clinical safety guardrails and generates a dedicated RTL sheet sorted by largest discount gain (`فرق الخصم %`).
-- 📈 **Master Comparison Discount Gain Columns**: Enriches `المقارنة الشاملة وتوزيع الأصناف` with `الخصم المرجح %` and `فرق الخصم %` columns while preserving `=SUM(...)` accounting formulas.
-- 🌐 **Silent Background WiFi Auto-Updater**: Automatically queries GitHub Releases on startup, quietly streams new update installers into `%TEMP%`, and displays a 1-click **"🚀 إعادة التشغيل والتحديث / Restart & Update"** pill button with manual fallback.
-- 📦 **Windows Installer v1.8**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v1.8.exe`) with auto-upgrades and shortcuts.
+- 📊 **Per-Warehouse Above-Average Discounts Secondary Table**: Injects a secondary table directly into each supplier's purchase order sheet (`طلب شراء - [اسم المخزن]`) listing all products available from that supplier saving `>= 4.00 EGP` per pack compared to the reference weighted average discount.
+- 🎨 **Visual Price Status Highlighting (Soft Green & Soft Yellow)**: Highlights Column 8 (`المخزن صاحب أعلى خصم`) in Soft Green (`#E2EFDA`) if the warehouse offers the highest catalog discount across all suppliers, and Soft Yellow (`#FFF2CC`) displaying the winning warehouse and rate if another warehouse offers a higher discount.
+- 🧹 **Clean Workbook Layout**: Removed the standalone sheet `أصناف بخصم أعلى من المرجح` in favor of per-supplier integrated tables.
+- 📦 **Windows Installer v1.9**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v1.9.exe`) with auto-upgrades and shortcuts.
 
 ---
 
@@ -21,7 +20,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v1.8.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v1.9.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.
@@ -147,5 +146,5 @@ python build_exe.py
 # 2. Compile Inno Setup installer
 & "C:\Users\<username>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer.iss
 ```
-Output setup will be placed in `dist_installer/EgyptianPharmaOptimizer_Setup_v1.8.exe`.
+Output setup will be placed in `dist_installer/EgyptianPharmaOptimizer_Setup_v1.9.exe`.
 

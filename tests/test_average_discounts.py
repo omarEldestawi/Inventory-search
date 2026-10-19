@@ -515,7 +515,7 @@ class TestRequirementR3ExcelReportingAndAccounting:
                 'سعر الجمهور للوحدة': 80.0,
                 'سعر التوريد الصافي': 52.0,
                 'خصم مخزن السلام فارم': 0.35 - (i * 0.03),
-                'خصم مخزن الفرسان بنها': 0.18,
+                'خصم مخزن الفرسان بنها': 0.26,
             })
         above_df = pd.DataFrame(above_rows)
 
@@ -536,7 +536,7 @@ class TestRequirementR3ExcelReportingAndAccounting:
         }
 
     def test_dual_workbook_generation_and_sheet_parity(self, sample_report_payload):
-        """ArabicExcelReportGenerator produces both primary and Arabic workbooks with identical sheets."""
+        """ArabicExcelReportGenerator produces both primary and Arabic workbooks with no standalone discounts sheet."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             generator = ArabicExcelReportGenerator(sample_report_payload, output_dir=tmp_dir)
             primary_path = generator.generate(custom_date_str="2026-10-18")
@@ -556,7 +556,9 @@ class TestRequirementR3ExcelReportingAndAccounting:
             # Assert identical sheets
             assert wb_primary.sheetnames == wb_arabic.sheetnames
             assert "المقارنة الشاملة وتوزيع الأصناف" in wb_primary.sheetnames
-            assert "أصناف بخصم أعلى من المرجح" in wb_primary.sheetnames
+            # R1: Standalone discounts sheet must NOT exist
+            assert "أصناف بخصم أعلى من المرجح" not in wb_primary.sheetnames
+            assert "أصناف بخصم أعلى من المرجح" not in wb_arabic.sheetnames
 
     def test_right_to_left_on_100_percent_of_sheets_in_both_workbooks(self, sample_report_payload):
         """ws.views.sheetView[0].rightToLeft is True on 100% of sheets in both workbooks."""
@@ -573,43 +575,119 @@ class TestRequirementR3ExcelReportingAndAccounting:
                         f"Sheet '{sheetname}' in {os.path.basename(wb_path)} does not have rightToLeft = True"
                     )
 
-    def test_above_average_sheet_layout_styling_and_formatting(self, sample_report_payload):
-        """أصناف بخصم أعلى من المرجح contains title/subtitle banners, corporate navy headers, zebra striping, and summary row."""
+    def test_per_warehouse_above_average_discounts_secondary_table_and_styling(self, sample_report_payload):
+        """
+        R2 & R3: Warehouse PO sheets render secondary above-average discount table
+        with Soft Green (winning) and Soft Yellow (competing) highlights.
+        """
         with tempfile.TemporaryDirectory() as tmp_dir:
             generator = ArabicExcelReportGenerator(sample_report_payload, output_dir=tmp_dir)
             primary_path = generator.generate(custom_date_str="2026-10-18")
 
             wb = openpyxl.load_workbook(primary_path)
-            ws = wb["أصناف بخصم أعلى من المرجح"]
 
-            # Row 1: Merged Title banner
-            title_cell = ws.cell(row=1, column=1)
-            assert "بيان الأصناف ذات الخصم الأعلى من متوسط المخازن المرجح" in str(title_cell.value)
-            assert title_cell.font.bold is True
+            # 1. Inspect winning warehouse sheet (مخزن السلام فارم)
+            ws_salam = None
+            for sname in wb.sheetnames:
+                if "السلام" in sname:
+                    ws_salam = wb[sname]
+                    break
+            assert ws_salam is not None, "Winning warehouse PO sheet not found"
 
-            # Row 2: Merged Subtitle banner with item count
-            sub_cell = ws.cell(row=2, column=1)
-            assert "حصر أصناف أرصده المخازن" in str(sub_cell.value)
-            assert "3 صنف" in str(sub_cell.value)
+            # Find secondary table header row
+            expected_sec_headers = [
+                'م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج',
+                'سعر الجمهور للوحدة', 'الخصم المرجح %', 'خصم هذا المخزن %',
+                'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم', 'فرق السعر (الوفر بالجنيه)'
+            ]
 
-            # Row 4: Corporate Navy headers
-            header_col1 = ws.cell(row=4, column=1)
-            assert header_col1.value == 'م'
-            assert header_col1.fill.start_color.rgb in ['001F4E79', 'FF1F4E79', '1F4E79']
+            sec_header_row_salam = None
+            for r in range(1, ws_salam.max_row + 1):
+                if ws_salam.cell(row=r, column=1).value == 'م' and ws_salam.cell(row=r, column=2).value == 'اسم الصنف في أرصدة المخازن':
+                    sec_header_row_salam = r
+                    break
 
-            # Data rows: Row 5 to 7
-            for r in range(5, 8):
-                diff_val = ws.cell(row=r, column=7).value
-                assert isinstance(diff_val, (int, float))
-                assert ws.cell(row=r, column=7).number_format == '0.0%'
-                assert ws.cell(row=r, column=8).number_format == '#,##0.00'
+            assert sec_header_row_salam is not None, "Secondary table headers not found on Salam sheet"
+            for c_i, exp_h in enumerate(expected_sec_headers, 1):
+                assert ws_salam.cell(row=sec_header_row_salam, column=c_i).value == exp_h
 
-            # Summary row
-            sum_row = 8
-            assert "إجمالي الأصناف: 3 صنف" in str(ws.cell(row=sum_row, column=2).value)
+            # Salam is winner: status cell (Col 8) must have Soft Green fill (#E2EFDA / text #375623)
+            data_row_1 = sec_header_row_salam + 1
+            cell_status_salam = ws_salam.cell(row=data_row_1, column=8)
+            assert cell_status_salam.fill.start_color.rgb in ['E2EFDA', '00E2EFDA', 'FFE2EFDA']
+            assert cell_status_salam.font.color.rgb in ['375623', '00375623', 'FF375623']
+            assert ws_salam.cell(row=data_row_1, column=9).value >= 4.00
+
+            # 2. Inspect non-winning warehouse sheet (مخزن الفرسان بنها)
+            ws_forsan = None
+            for sname in wb.sheetnames:
+                if "الفرسان" in sname:
+                    ws_forsan = wb[sname]
+                    break
+            assert ws_forsan is not None, "Competing warehouse PO sheet not found"
+
+            sec_header_row_forsan = None
+            for r in range(1, ws_forsan.max_row + 1):
+                if ws_forsan.cell(row=r, column=1).value == 'م' and ws_forsan.cell(row=r, column=2).value == 'اسم الصنف في أرصدة المخازن':
+                    sec_header_row_forsan = r
+                    break
+
+            assert sec_header_row_forsan is not None, "Secondary table headers not found on Forsan sheet"
+            data_row_forsan_1 = sec_header_row_forsan + 1
+            cell_status_forsan = ws_forsan.cell(row=data_row_forsan_1, column=8)
+
+            # Forsan is not winner: status cell (Col 8) must have Soft Yellow fill (#FFF2CC / text #7F6000)
+            assert cell_status_forsan.fill.start_color.rgb in ['FFF2CC', '00FFF2CC', 'FFFFF2CC']
+            assert cell_status_forsan.font.color.rgb in ['7F6000', '007F6000', 'FF7F6000']
+            # Must display winning warehouse and rate
+            assert "السلام" in str(cell_status_forsan.value)
+            assert "%" in str(cell_status_forsan.value)
+            assert ws_forsan.cell(row=data_row_forsan_1, column=9).value >= 4.00
+
+    def test_sub_4egp_saving_items_strictly_excluded(self, sample_report_payload):
+        """R2: Items with saving < 4.00 EGP are strictly excluded from the secondary table."""
+        payload = dict(sample_report_payload)
+        # Add item with saving < 4.00 EGP (Base price 20, disc 0.20, ref 0.15 -> 20 * 0.05 = 1.00 EGP < 4.00)
+        low_saving_item = {
+            'م': 4,
+            'اسم الصنف في أرصده المخازن': 'دواء منخفض الوفر',
+            'اسم الصنف في كشف المخزن الفائز': 'صنف منخفض الوفر',
+            'المخزن الفائز': 'مخزن السلام فارم',
+            'الخصم المرجح %': 0.15,
+            'أعلى خصم متاح %': 0.20,
+            'فرق الخصم %': 0.05,
+            'سعر الجمهور للوحدة': 20.0,
+            'سعر التوريد الصافي': 16.0,
+            'خصم مخزن السلام فارم': 0.20,
+            'خصم مخزن الفرسان بنها': 0.18
+        }
+        above_df_mod = pd.concat([sample_report_payload['above_average_discounts'], pd.DataFrame([low_saving_item])], ignore_index=True)
+        payload['above_average_discounts'] = above_df_mod
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            generator = ArabicExcelReportGenerator(payload, output_dir=tmp_dir)
+            primary_path = generator.generate(custom_date_str="2026-10-18")
+
+            wb = openpyxl.load_workbook(primary_path)
+            for sname in wb.sheetnames:
+                if "طلب شراء" in sname:
+                    ws = wb[sname]
+                    # Verify low-saving item is not present in secondary table
+                    sec_hdr = None
+                    for r in range(1, ws.max_row + 1):
+                        if ws.cell(row=r, column=1).value == 'م' and ws.cell(row=r, column=2).value == 'اسم الصنف في أرصدة المخازن':
+                            sec_hdr = r
+                            break
+                    if sec_hdr:
+                        for r in range(sec_hdr + 1, ws.max_row + 1):
+                            val = ws.cell(row=r, column=2).value
+                            assert val != 'دواء منخفض الوفر'
+                            saving_val = ws.cell(row=r, column=9).value
+                            if isinstance(saving_val, (int, float)):
+                                assert saving_val >= 4.00
 
     def test_above_average_sheet_empty_and_none_resilience(self, sample_report_payload):
-        """Report generator cleanly renders Arabic placeholder when above_average_discounts is None or empty."""
+        """Clean notice message row is rendered without error when no items meet >= 4.00 EGP."""
         for empty_val in [None, pd.DataFrame()]:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 payload = dict(sample_report_payload)
@@ -620,17 +698,23 @@ class TestRequirementR3ExcelReportingAndAccounting:
                 assert os.path.isfile(primary_path)
 
                 wb = openpyxl.load_workbook(primary_path)
-                assert "أصناف بخصم أعلى من المرجح" in wb.sheetnames
-                ws = wb["أصناف بخصم أعلى من المرجح"]
-                assert ws.views.sheetView[0].rightToLeft is True
+                assert "أصناف بخصم أعلى من المرجح" not in wb.sheetnames
 
-                # Row 5 must contain Arabic notification message
-                placeholder_text = str(ws.cell(row=5, column=1).value)
-                assert "لا توجد أصناف في أرصده المخازن" in placeholder_text or "لا توجد أصناف في أرصدة المخازن" in placeholder_text
-
-                # Summary row renders 0 items without error
-                sum_cell = ws.cell(row=6, column=2).value
-                assert "إجمالي الأصناف: 0 صنف" in str(sum_cell)
+                # Check PO sheets for clean notice row
+                for sname in wb.sheetnames:
+                    if "طلب شراء" in sname:
+                        ws = wb[sname]
+                        # Locate secondary table
+                        sec_hdr = None
+                        for r in range(1, ws.max_row + 1):
+                            if ws.cell(row=r, column=1).value == 'م' and ws.cell(row=r, column=2).value == 'اسم الصنف في أرصدة المخازن':
+                                sec_hdr = r
+                                break
+                        assert sec_hdr is not None
+                        notice_cell = ws.cell(row=sec_hdr + 1, column=1)
+                        assert "لا توجد أصناف إضافية" in str(notice_cell.value)
+                        sum_cell = ws.cell(row=sec_hdr + 2, column=2)
+                        assert "إجمالي الأصناف: 0 صنف" in str(sum_cell.value)
 
     def test_master_comparison_column_preservation_and_structure(self, sample_report_payload):
         """Columns 1–11 are strictly preserved in original order, Col 12 is الخصم المرجح %, Col 13 is فرق الخصم %."""

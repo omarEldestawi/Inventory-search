@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.9] - 2026-10-19
+
+### 🚀 Added & Improved
+- **Per-Warehouse Above-Average Discounts Secondary Table**:
+  - Integrated per-supplier discount opportunity tables directly into each warehouse purchase order sheet (`طلب شراء - [اسم المخزن]`) below the primary PO items list.
+  - Strictly filters for available products where `Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP` per pack. Items saving < 4.00 EGP are strictly excluded.
+  - Secondary table columns: `[م, اسم الصنف في أرصدة المخازن, اسم الصنف في الكتالوج, سعر الجمهور للوحدة, الخصم المرجح %, خصم هذا المخزن %, أعلى خصم متاح %, المخزن صاحب أعلى خصم, فرق السعر (الوفر بالجنيه)]`.
+  - Added clean notice row handling when a warehouse has 0 items meeting the >= 4.00 EGP threshold without errors.
+- **Visual Price Status Highlighting**:
+  - Styled Column 8 (`المخزن صاحب أعلى خصم`) in Soft Green (`#E2EFDA` / text `#375623`) if the warehouse offers the highest catalog discount across all warehouses.
+  - Styled Column 8 in Soft Yellow (`#FFF2CC` / text `#7F6000`) if another warehouse offers a higher discount, clearly displaying the competing warehouse name and its higher discount.
+- **Removed Standalone Discounts Sheet**:
+  - Removed the dedicated worksheet `أصناف بخصم أعلى من المرجح` from generated workbooks in favor of per-warehouse integrated tables.
+- **Version Bump to Release 1.9**:
+  - Updated all version strings and identifiers across GUI (`app_gui.py`), installer (`installer.iss`), updater, and application metadata from 1.8 to 1.9.
+
+---
+
 ## [1.8] - 2026-10-19
 
 ### 🚀 Added

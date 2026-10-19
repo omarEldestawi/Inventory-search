@@ -747,9 +747,14 @@ class TestTier1Feature810SheetRTLExcelWorkbookParity:
 
         wb = openpyxl.load_workbook(out_path, data_only=False)
         ws = wb["طلب شراء - الرواد"]
-        last_row = ws.max_row
-        col_d = str(ws.cell(row=last_row, column=4).value or "")
-        col_h = str(ws.cell(row=last_row, column=8).value or "")
+        po_sum_row = None
+        for r in range(1, ws.max_row + 1):
+            if ws.cell(row=r, column=2).value == "الإجمالي":
+                po_sum_row = r
+                break
+        assert po_sum_row is not None, "Primary PO summary row 'الإجمالي' not found"
+        col_d = str(ws.cell(row=po_sum_row, column=4).value or "")
+        col_h = str(ws.cell(row=po_sum_row, column=8).value or "")
         assert "=SUM(" in col_d.upper()
         assert "=SUM(" in col_h.upper()
         wb.close()

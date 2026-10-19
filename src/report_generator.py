@@ -49,6 +49,33 @@ def clean_sheet_title(title: str) -> str:
     return cleaned[:31] or "Sheet"
 
 
+def _parse_discount_value(val: Any) -> Optional[float]:
+    """Safely parses discount rate value handling floats, ints, percentage strings, and dashes."""
+    if val is None or pd.isna(val) or val == '-':
+        return None
+    try:
+        v_str = str(val).strip()
+        is_pct = '%' in v_str
+        v_clean = v_str.replace('%', '').strip()
+        v_float = float(v_clean)
+        if is_pct or v_float > 1.0:
+            v_float = v_float / 100.0
+        return max(0.0, min(1.0, v_float))
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_currency_value(val: Any) -> Optional[float]:
+    """Safely parses currency amounts handling comma separators, EGP symbols, and strings."""
+    if val is None or pd.isna(val) or val == '-':
+        return None
+    try:
+        v_str = str(val).replace(',', '').replace('ج.م', '').replace('EGP', '').replace('LE', '').strip()
+        return float(v_str)
+    except (ValueError, TypeError):
+        return None
+
+
 class ArabicExcelReportGenerator:
     def __init__(self, allocation_result: dict, output_dir: Optional[str] = None):
         self.result = allocation_result
@@ -99,6 +126,10 @@ class ArabicExcelReportGenerator:
         fill_zebra = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
         fill_total_row = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
         fill_oos_row = PatternFill(start_color="FFF5F5", end_color="FFF5F5", fill_type="solid")
+        fill_soft_green = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+        font_soft_green = Font(name="Calibri", size=11, bold=True, color="375623")
+        fill_soft_yellow = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        font_soft_yellow = Font(name="Calibri", size=11, bold=True, color="7F6000")
 
         align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
         align_right = Alignment(horizontal="right", vertical="center", wrap_text=True)
@@ -324,162 +355,7 @@ class ArabicExcelReportGenerator:
         self._autofit_columns(ws_master)
 
         # -------------------------------------------------------------
-        # SHEET 2: Above Reference Average Discount (أصناف بخصم أعلى من المرجح)
-        # -------------------------------------------------------------
-        above_avg_df = self.result.get('above_average_discounts')
-        if isinstance(above_avg_df, list):
-            above_avg_df = pd.DataFrame(above_avg_df)
-
-        above_sheet_title = clean_sheet_title("أصناف بخصم أعلى من المرجح")
-        ws_above = wb.create_sheet(title=above_sheet_title)
-        ws_above.views.sheetView[0].rightToLeft = True
-
-        # Base header columns
-        base_above_headers = [
-            'م',
-            'اسم الصنف في أرصده المخازن',
-            'اسم الصنف في كشف المخزن الفائز',
-            'المخزن الفائز',
-            'الخصم المرجح %',
-            'أعلى خصم متاح %',
-            'فرق الخصم %',
-            'سعر الجمهور للوحدة',
-            'سعر التوريد الصافي'
-        ]
-        warehouses_list = list(allocated.keys()) if allocated else self.result.get('warehouses', [])
-        wh_above_headers = [f'خصم {w}' for w in warehouses_list]
-
-        if above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame) and not above_avg_df.empty:
-            ab_headers = [clean_excel_str(h) for h in above_avg_df.columns]
-            count_above_items = len(above_avg_df)
-        else:
-            ab_headers = base_above_headers + wh_above_headers
-            count_above_items = len(above_avg_df) if (above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame)) else 0
-
-        max_above_cols = max(len(ab_headers), 9)
-        end_above_col = get_column_letter(max_above_cols)
-
-        # Row 1: Title Banner
-        ws_above.merge_cells(f"A1:{end_above_col}1")
-        c_ab_title = ws_above["A1"]
-        c_ab_title.value = clean_excel_str("بيان الأصناف ذات الخصم الأعلى من متوسط المخازن المرجح")
-        c_ab_title.font = font_main_title
-        c_ab_title.alignment = align_center
-
-        # Row 2: Subtitle Banner
-        ws_above.merge_cells(f"A2:{end_above_col}2")
-        c_ab_sub = ws_above["A2"]
-        c_ab_sub.value = clean_excel_str(
-            f"حصر أصناف أرصده المخازن التي يتجاوز أعلى خصم متاح لها بالكتالوجات الخصم المرجح | عدد الأصناف: {count_above_items} صنف | {arabic_date_text}"
-        )
-        c_ab_sub.font = font_subtitle
-        c_ab_sub.alignment = align_center
-
-        # Row 4: Headers
-        start_row_ab = 4
-        for col_idx, h in enumerate(ab_headers, 1):
-            c = ws_above.cell(row=start_row_ab, column=col_idx)
-            c.value = clean_excel_str(h)
-            c.font = font_tbl_header
-            c.fill = fill_navy_header
-            c.alignment = align_center
-            c.border = thin_border
-
-        # Row 5+: Data Rows
-        current_ab_row = start_row_ab
-        if above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame) and not above_avg_df.empty:
-            df_ab_sorted = above_avg_df.copy()
-            if 'فرق الخصم %' in df_ab_sorted.columns:
-                try:
-                    sort_cols = ['فرق الخصم %']
-                    if 'أعلى خصم متاح %' in df_ab_sorted.columns:
-                        sort_cols.append('أعلى خصم متاح %')
-                    df_ab_sorted = df_ab_sorted.sort_values(by=sort_cols, ascending=False)
-                except Exception:
-                    pass
-
-            for r_i, row_data in enumerate(df_ab_sorted.values, start_row_ab + 1):
-                is_even = (r_i % 2 == 0)
-                for c_i, val in enumerate(row_data, 1):
-                    c = ws_above.cell(row=r_i, column=c_i)
-                    c.font = font_cell
-                    c.border = thin_border
-                    
-                    header_name = ab_headers[c_i - 1] if c_i - 1 < len(ab_headers) else ""
-
-                    if header_name == 'م' or c_i == 1:
-                        try:
-                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - start_row_ab
-                        except (ValueError, TypeError):
-                            c.value = r_i - start_row_ab
-                        c.alignment = align_center
-                    elif 'اسم الصنف' in header_name or c_i in (2, 3):
-                        c.value = clean_excel_str(val)
-                        c.alignment = align_right
-                    elif 'المخزن الفائز' in header_name or c_i == 4:
-                        c.value = clean_excel_str(val)
-                        c.alignment = align_center
-                    elif any(pct_kw in header_name for pct_kw in ['الخصم المرجح %', 'أعلى خصم متاح %', 'فرق الخصم %', '%']) or header_name.startswith('خصم '):
-                        try:
-                            if val is not None and not (isinstance(val, float) and val != val) and val != '-':
-                                c.value = float(val)
-                                c.number_format = '0.0%'
-                            else:
-                                c.value = '-'
-                        except (ValueError, TypeError):
-                            c.value = '-'
-                        c.alignment = align_center
-                    elif any(cur_kw in header_name for cur_kw in ['سعر الجمهور للوحدة', 'سعر التوريد الصافي', 'سعر', 'قيمة', 'تكلفة']):
-                        try:
-                            if val is not None and not (isinstance(val, float) and val != val) and val != '-':
-                                c.value = float(val)
-                                c.number_format = '#,##0.00'
-                            else:
-                                c.value = '-'
-                        except (ValueError, TypeError):
-                            c.value = '-'
-                        c.alignment = align_center
-                    else:
-                        c.value = clean_excel_str(val)
-                        c.alignment = align_center
-
-                    if is_even:
-                        c.fill = fill_zebra
-                current_ab_row = r_i
-
-            # Summary Row for Above Average Sheet
-            sum_ab_row = current_ab_row + 1
-            ws_above.cell(row=sum_ab_row, column=2, value=f"إجمالي الأصناف: {count_above_items} صنف").font = font_cell_bold
-            ws_above.cell(row=sum_ab_row, column=2).alignment = align_right
-
-            for c_i in range(1, len(ab_headers) + 1):
-                cell = ws_above.cell(row=sum_ab_row, column=c_i)
-                cell.fill = fill_total_row
-                cell.border = total_border
-        else:
-            current_ab_row = start_row_ab + 1
-            c_empty = ws_above.cell(
-                row=current_ab_row,
-                column=1,
-                value="لا توجد أصناف في أرصده المخازن ذات خصم أعلى من الخصم المرجح حالياً."
-            )
-            c_empty.font = font_cell
-            c_empty.alignment = align_right
-            
-            # Summary Row for empty sheet
-            sum_ab_row = current_ab_row + 1
-            ws_above.cell(row=sum_ab_row, column=2, value="إجمالي الأصناف: 0 صنف").font = font_cell_bold
-            ws_above.cell(row=sum_ab_row, column=2).alignment = align_right
-
-            for c_i in range(1, len(ab_headers) + 1):
-                cell = ws_above.cell(row=sum_ab_row, column=c_i)
-                cell.fill = fill_total_row
-                cell.border = total_border
-
-        self._autofit_columns(ws_above)
-
-        # -------------------------------------------------------------
-        # SHEETS 2+: Winning Supplier PO Sheets (طلب شراء - [اسم المخزن])
+        # Winning Supplier PO Sheets (طلب شراء - [اسم المخزن])
         # -------------------------------------------------------------
         existing_sheet_titles = set(wb.sheetnames)
         for w_name, po_df in allocated.items():
@@ -583,16 +459,16 @@ class ArabicExcelReportGenerator:
             ws_po.cell(row=po_sum_row, column=2, value="الإجمالي").font = font_cell_bold
             ws_po.cell(row=po_sum_row, column=2).alignment = align_right
             
-            c_qty = ws_po.cell(row=po_sum_row, column=4, value=f"=SUM(D5:D{current_po_row})")
+            c_qty = ws_po.cell(row=po_sum_row, column=4, value=f"=SUM(D5:D{current_po_row})" if current_po_row >= 5 else 0)
             c_qty.font = font_cell_bold
             c_qty.alignment = align_center
             
-            c_pub = ws_po.cell(row=po_sum_row, column=8, value=f"=SUM(H5:H{current_po_row})")
+            c_pub = ws_po.cell(row=po_sum_row, column=8, value=f"=SUM(H5:H{current_po_row})" if current_po_row >= 5 else 0.0)
             c_pub.font = font_cell_bold
             c_pub.number_format = '#,##0.00'
             c_pub.alignment = align_center
             
-            c_net = ws_po.cell(row=po_sum_row, column=9, value=f"=SUM(I5:I{current_po_row})")
+            c_net = ws_po.cell(row=po_sum_row, column=9, value=f"=SUM(I5:I{current_po_row})" if current_po_row >= 5 else 0.0)
             c_net.font = font_cell_bold
             c_net.number_format = '#,##0.00'
             c_net.alignment = align_center
@@ -601,6 +477,194 @@ class ArabicExcelReportGenerator:
                 cell = ws_po.cell(row=po_sum_row, column=c_i)
                 cell.fill = fill_total_row
                 cell.border = total_border
+
+            # ---------------------------------------------------------
+            # Secondary Table: Per-Warehouse Above-Average Discounts (Saving >= 4.00 EGP)
+            # ---------------------------------------------------------
+            sec_df = self._get_warehouse_above_average_discounts(w_name)
+
+            sec_title_row = po_sum_row + 2
+            sec_sub_row = sec_title_row + 1
+            sec_header_row = sec_sub_row + 2
+
+            # Section Title Banner
+            ws_po.merge_cells(f"A{sec_title_row}:I{sec_title_row}")
+            c_sec_title = ws_po[f"A{sec_title_row}"]
+            c_sec_title.value = clean_excel_str("أصناف إضافية متاحة بالمخزن بخصم أعلى من المتوسط المرجح (وفر 4.00 ج.م فأكثر لكل عبوة)")
+            c_sec_title.font = Font(name="Calibri", size=13, bold=True, color="1F4E79")
+            c_sec_title.alignment = align_center
+
+            # Section Subtitle Banner
+            ws_po.merge_cells(f"A{sec_sub_row}:I{sec_sub_row}")
+            c_sec_sub = ws_po[f"A{sec_sub_row}"]
+            c_sec_sub.value = clean_excel_str(
+                f"الأصناف التي تحقق وفراً يبدأ من 4.00 ج.م للعبوة مقارنة بالخصم المرجح | عدد الأصناف: {len(sec_df)} صنف"
+            )
+            c_sec_sub.font = font_subtitle
+            c_sec_sub.alignment = align_center
+
+            # Secondary Table Headers (Columns 1-9)
+            sec_headers = [
+                'م',
+                'اسم الصنف في أرصدة المخازن',
+                'اسم الصنف في الكتالوج',
+                'سعر الجمهور للوحدة',
+                'الخصم المرجح %',
+                'خصم هذا المخزن %',
+                'أعلى خصم متاح %',
+                'المخزن صاحب أعلى خصم',
+                'فرق السعر (الوفر بالجنيه)'
+            ]
+
+            for c_i, h in enumerate(sec_headers, 1):
+                c = ws_po.cell(row=sec_header_row, column=c_i)
+                c.value = clean_excel_str(h)
+                c.font = font_tbl_header
+                c.fill = fill_navy_header
+                c.alignment = align_center
+                c.border = thin_border
+
+            # Data Rows or Clean Notice Row
+            if sec_df is not None and not sec_df.empty:
+                start_sec_data = sec_header_row + 1
+                current_sec_row = sec_header_row
+                for r_idx, (_, r_data) in enumerate(sec_df.iterrows(), start_sec_data):
+                    is_even = (r_idx % 2 == 0)
+
+                    # Determine Winner status for Column 8
+                    w_disc_f = _parse_discount_value(r_data.get('خصم هذا المخزن %', 0.0)) or 0.0
+                    max_disc_f = _parse_discount_value(r_data.get('أعلى خصم متاح %', 0.0)) or 0.0
+
+                    is_winner_flag = r_data.get('_is_winner')
+                    if is_winner_flag is not None and not pd.isna(is_winner_flag):
+                        is_winner = bool(is_winner_flag) and (w_disc_f >= max_disc_f - 1e-6)
+                    else:
+                        is_winner = (w_disc_f >= max_disc_f - 1e-6)
+
+                    winning_wh_status = str(r_data.get('المخزن صاحب أعلى خصم', '')).strip()
+                    if is_winner:
+                        winning_wh_status = w_name
+                    else:
+                        w_clean = str(w_name).replace(".pdf", "").strip()
+                        w_short = w_clean.replace("مخزن ", "").strip()
+                        is_self_ref = (
+                            not winning_wh_status
+                            or winning_wh_status in (w_name, clean_excel_str(w_name), w_clean, '-')
+                            or (w_short and (winning_wh_status == w_short or winning_wh_status == f"مخزن {w_short}"))
+                        )
+                        if is_self_ref:
+                            cand_win = str(r_data.get('_winning_wh', '')).strip()
+                            if not cand_win or cand_win in (w_name, clean_excel_str(w_name), w_clean) or (w_short and cand_win == w_short):
+                                cand_win = "مخزن منافس"
+                            winning_wh_status = f"{cand_win} ({max_disc_f * 100:.1f}%)"
+                        elif "%" not in winning_wh_status and max_disc_f > 0:
+                            winning_wh_status = f"{winning_wh_status} ({max_disc_f * 100:.1f}%)"
+
+                    for c_i in range(1, 10):
+                        c = ws_po.cell(row=r_idx, column=c_i)
+                        c.font = font_cell
+                        c.border = thin_border
+
+                        if c_i == 1:
+                            c.value = r_idx - sec_header_row
+                            c.alignment = align_center
+                        elif c_i == 2:
+                            ref_drug_name = (
+                                r_data.get('اسم الصنف في أرصدة المخازن')
+                                or r_data.get('اسم الصنف في أرصده المخازن')
+                                or r_data.get('اسم الصنف المطلوب (في طلب الشراء)')
+                                or r_data.get('clean_name')
+                                or r_data.get('اسم الصنف')
+                                or ''
+                            )
+                            c.value = clean_excel_str(ref_drug_name)
+                            c.alignment = align_right
+                        elif c_i == 3:
+                            cat_drug_name = (
+                                r_data.get('اسم الصنف في الكتالوج')
+                                or r_data.get('اسم الصنف في كشف المخزن الفائز')
+                                or r_data.get('اسم الصنف في كتالوج المخزن')
+                                or r_data.get('item_name')
+                                or ''
+                            )
+                            c.value = clean_excel_str(cat_drug_name)
+                            c.alignment = align_right
+                        elif c_i == 4:
+                            bp_val = _parse_currency_value(r_data.get('سعر الجمهور للوحدة', 0.0))
+                            if bp_val is not None:
+                                c.value = bp_val
+                                c.number_format = '#,##0.00'
+                            else:
+                                c.value = '-'
+                            c.alignment = align_center
+                        elif c_i in (5, 6, 7):
+                            col_keys = {5: 'الخصم المرجح %', 6: 'خصم هذا المخزن %', 7: 'أعلى خصم متاح %'}
+                            val = _parse_discount_value(r_data.get(col_keys[c_i]))
+                            if val is not None:
+                                c.value = float(val)
+                                c.number_format = '0.0%'
+                            else:
+                                c.value = '-'
+                            c.alignment = align_center
+                        elif c_i == 8:
+                            c.value = clean_excel_str(winning_wh_status)
+                            c.alignment = align_center
+                            if is_winner:
+                                c.fill = fill_soft_green
+                                c.font = font_soft_green
+                            else:
+                                c.fill = fill_soft_yellow
+                                c.font = font_soft_yellow
+                        elif c_i == 9:
+                            diff_egp = _parse_currency_value(r_data.get('فرق السعر (الوفر بالجنيه)', 0.0))
+                            if diff_egp is not None:
+                                c.value = diff_egp
+                                c.number_format = '#,##0.00'
+                            else:
+                                c.value = '-'
+                            c.font = font_cell_bold
+                            c.alignment = align_center
+
+                        if is_even and c_i != 8:
+                            c.fill = fill_zebra
+
+                    current_sec_row = r_idx
+
+                # Secondary Table Summary Row
+                sec_sum_row = current_sec_row + 1
+                ws_po.cell(row=sec_sum_row, column=2, value=f"إجمالي الأصناف: {len(sec_df)} صنف").font = font_cell_bold
+                ws_po.cell(row=sec_sum_row, column=2).alignment = align_right
+
+                c_sec_saving_sum = ws_po.cell(row=sec_sum_row, column=9, value=f"=SUM(I{start_sec_data}:I{current_sec_row})")
+                c_sec_saving_sum.font = font_cell_bold
+                c_sec_saving_sum.number_format = '#,##0.00'
+                c_sec_saving_sum.alignment = align_center
+
+                for c_i in range(1, len(sec_headers) + 1):
+                    cell = ws_po.cell(row=sec_sum_row, column=c_i)
+                    cell.fill = fill_total_row
+                    cell.border = total_border
+            else:
+                sec_empty_row = sec_header_row + 1
+                ws_po.merge_cells(f"A{sec_empty_row}:I{sec_empty_row}")
+                c_empty = ws_po.cell(
+                    row=sec_empty_row,
+                    column=1,
+                    value="لا توجد أصناف إضافية ذات وفر يتجاوز 4.00 ج.م في هذا المخزن حالياً."
+                )
+                c_empty.font = font_cell
+                c_empty.alignment = align_center
+                for c_i in range(1, len(sec_headers) + 1):
+                    ws_po.cell(row=sec_empty_row, column=c_i).border = thin_border
+
+                sec_sum_row = sec_empty_row + 1
+                ws_po.cell(row=sec_sum_row, column=2, value="إجمالي الأصناف: 0 صنف").font = font_cell_bold
+                ws_po.cell(row=sec_sum_row, column=2).alignment = align_right
+
+                for c_i in range(1, len(sec_headers) + 1):
+                    cell = ws_po.cell(row=sec_sum_row, column=c_i)
+                    cell.fill = fill_total_row
+                    cell.border = total_border
 
             self._autofit_columns(ws_po)
 
@@ -803,16 +867,221 @@ class ArabicExcelReportGenerator:
             
         return filepath
 
+    def _get_warehouse_above_average_discounts(self, warehouse_name: str) -> pd.DataFrame:
+        """
+        Extracts above-average discount items for a specific warehouse where:
+        Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP.
+        Returns a DataFrame with columns:
+        ['م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج', 'سعر الجمهور للوحدة',
+         'الخصم المرجح %', 'خصم هذا المخزن %', 'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم',
+         'فرق السعر (الوفر بالجنيه)', '_is_winner', '_winning_wh', '_winning_disc']
+        """
+        w_clean = str(warehouse_name).replace(".pdf", "").strip()
+        w_short = w_clean.replace("مخزن ", "").strip()
+
+        # 1. Check per_warehouse_above_average_discounts in result
+        per_wh_dict = self.result.get('per_warehouse_above_average_discounts')
+        if isinstance(per_wh_dict, dict):
+            for k, df_cand in per_wh_dict.items():
+                k_clean = str(k).replace(".pdf", "").strip()
+                k_short = k_clean.replace("مخزن ", "").strip()
+                if warehouse_name == k or w_clean == k_clean or (w_short and w_short == k_short):
+                    if isinstance(df_cand, pd.DataFrame) and not df_cand.empty:
+                        res_rows = []
+                        for _, r in df_cand.iterrows():
+                            bp = _parse_currency_value(r.get('سعر الجمهور للوحدة') or r.get('سعر الجمهور') or r.get('base_price') or 0.0) or 0.0
+                            wd = _parse_discount_value(r.get('خصم هذا المخزن %') or r.get('خصم هذا المخزن') or r.get('نسبة الخصم %') or 0.0) or 0.0
+                            rd = _parse_discount_value(r.get('الخصم المرجح %') or r.get('خصم مرجح') or r.get('ref_discount') or 0.0) or 0.0
+                            saving = r.get('فرق السعر (الوفر بالجنيه)') or r.get('فرق السعر') or r.get('الوفر بالجنيه') or r.get('unit_saving')
+                            saving_val = _parse_currency_value(saving)
+                            if saving_val is None:
+                                saving_val = round(bp * (wd - rd), 2)
+                            if saving_val >= 4.00 - 1e-6:
+                                r_dict = dict(r)
+                                r_dict['سعر الجمهور للوحدة'] = bp
+                                r_dict['خصم هذا المخزن %'] = wd
+                                r_dict['الخصم المرجح %'] = rd
+                                r_dict['فرق السعر (الوفر بالجنيه)'] = saving_val
+                                md = _parse_discount_value(r.get('أعلى خصم متاح %') or r.get('أعلى خصم %') or 0.0)
+                                if md is not None and md > 0:
+                                    r_dict['أعلى خصم متاح %'] = md
+                                else:
+                                    r_dict['أعلى خصم متاح %'] = wd
+                                res_rows.append(r_dict)
+                        if res_rows:
+                            filtered_df = pd.DataFrame(res_rows)
+                            filtered_df = filtered_df.sort_values(
+                                by=['فرق السعر (الوفر بالجنيه)', 'خصم هذا المخزن %'],
+                                ascending=[False, False]
+                            ).reset_index(drop=True)
+                            filtered_df['م'] = range(1, len(filtered_df) + 1)
+                            return filtered_df
+                        return pd.DataFrame(columns=[
+                            'م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج',
+                            'سعر الجمهور للوحدة', 'الخصم المرجح %', 'خصم هذا المخزن %',
+                            'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم', 'فرق السعر (الوفر بالجنيه)'
+                        ])
+
+        # 2. Check above_average_discounts
+        above_avg_df = self.result.get('above_average_discounts')
+        if isinstance(above_avg_df, list):
+            above_avg_df = pd.DataFrame(above_avg_df)
+
+        if above_avg_df is not None and isinstance(above_avg_df, pd.DataFrame) and not above_avg_df.empty:
+            # Check attrs['per_warehouse']
+            attrs_dict = getattr(above_avg_df, 'attrs', {}).get('per_warehouse', {})
+            if isinstance(attrs_dict, dict):
+                for k, df_cand in attrs_dict.items():
+                    k_clean = str(k).replace(".pdf", "").strip()
+                    k_short = k_clean.replace("مخزن ", "").strip()
+                    if warehouse_name == k or w_clean == k_clean or (w_short and w_short == k_short):
+                        if isinstance(df_cand, pd.DataFrame) and not df_cand.empty:
+                            res_rows = []
+                            for _, r in df_cand.iterrows():
+                                bp = _parse_currency_value(r.get('سعر الجمهور للوحدة') or r.get('سعر الجمهور') or r.get('base_price') or 0.0) or 0.0
+                                wd = _parse_discount_value(r.get('خصم هذا المخزن %') or r.get('خصم هذا المخزن') or r.get('نسبة الخصم %') or 0.0) or 0.0
+                                rd = _parse_discount_value(r.get('الخصم المرجح %') or r.get('خصم مرجح') or r.get('ref_discount') or 0.0) or 0.0
+                                saving = r.get('فرق السعر (الوفر بالجنيه)') or r.get('فرق السعر') or r.get('الوفر بالجنيه') or r.get('unit_saving')
+                                saving_val = _parse_currency_value(saving)
+                                if saving_val is None:
+                                    saving_val = round(bp * (wd - rd), 2)
+                                if saving_val >= 4.00 - 1e-6:
+                                    r_dict = dict(r)
+                                    r_dict['سعر الجمهور للوحدة'] = bp
+                                    r_dict['خصم هذا المخزن %'] = wd
+                                    r_dict['الخصم المرجح %'] = rd
+                                    r_dict['فرق السعر (الوفر بالجنيه)'] = saving_val
+                                    md = _parse_discount_value(r.get('أعلى خصم متاح %') or r.get('أعلى خصم %') or 0.0)
+                                    if md is not None and md > 0:
+                                        r_dict['أعلى خصم متاح %'] = md
+                                    else:
+                                        r_dict['أعلى خصم متاح %'] = wd
+                                    res_rows.append(r_dict)
+                            if res_rows:
+                                filtered_df = pd.DataFrame(res_rows)
+                                filtered_df = filtered_df.sort_values(
+                                    by=['فرق السعر (الوفر بالجنيه)', 'خصم هذا المخزن %'],
+                                    ascending=[False, False]
+                                ).reset_index(drop=True)
+                                filtered_df['م'] = range(1, len(filtered_df) + 1)
+                                return filtered_df
+                            return pd.DataFrame(columns=[
+                                'م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج',
+                                'سعر الجمهور للوحدة', 'الخصم المرجح %', 'خصم هذا المخزن %',
+                                'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم', 'فرق السعر (الوفر بالجنيه)'
+                            ])
+
+            # Fallback: Extract from above_avg_df columns
+            target_disc_col = None
+            for c in above_avg_df.columns:
+                c_str = str(c).strip()
+                c_norm = c_str.replace(".pdf", "").strip()
+                c_short = c_norm.replace("خصم ", "").replace("مخزن ", "").strip()
+                if c_str == f"خصم {warehouse_name}" or c_norm == f"خصم {w_clean}":
+                    target_disc_col = c
+                    break
+                if c_short == w_short or c_norm == w_clean:
+                    target_disc_col = c
+                    break
+                if c_str.startswith("خصم ") and (w_short in c_str or w_clean in c_str):
+                    target_disc_col = c
+                    break
+
+            records = []
+            for _, r in above_avg_df.iterrows():
+                ref_name = r.get('اسم الصنف في أرصدة المخازن') or r.get('اسم الصنف في أرصده المخازن') or r.get('clean_name') or r.get('اسم الصنف المطلوب (في طلب الشراء)') or ''
+                if not ref_name:
+                    continue
+
+                bp = _parse_currency_value(r.get('سعر الجمهور للوحدة') or r.get('سعر الجمهور') or r.get('base_price') or 0.0) or 0.0
+                if bp <= 0:
+                    continue
+
+                rd = _parse_discount_value(r.get('الخصم المرجح %') or r.get('خصم مرجح') or r.get('ref_discount') or 0.0) or 0.0
+                md = _parse_discount_value(r.get('أعلى خصم متاح %') or r.get('أعلى خصم %') or 0.0) or 0.0
+
+                winning_wh = str(r.get('المخزن الفائز') or r.get('المخزن صاحب أعلى خصم') or '').strip()
+
+                wd = None
+                if target_disc_col and target_disc_col in r:
+                    wd = _parse_discount_value(r[target_disc_col])
+
+                if wd is None and (winning_wh == warehouse_name or winning_wh == w_clean or (w_short and w_short in winning_wh)):
+                    wd = md
+
+                if wd is None or wd <= 0.0:
+                    continue
+
+                unit_saving = round(bp * (wd - rd), 2)
+                if unit_saving < 4.00 - 1e-6:
+                    continue
+
+                is_winner = (wd >= md - 1e-6)
+                if is_winner:
+                    wh_status = warehouse_name
+                else:
+                    cand_win = winning_wh
+                    if not cand_win or cand_win == warehouse_name or cand_win == w_clean or (w_short and w_short == cand_win.replace("مخزن ", "").replace(".pdf", "").strip()):
+                        for col_k in r.index:
+                            if str(col_k).startswith('خصم ') and col_k != target_disc_col:
+                                try:
+                                    c_val = _parse_discount_value(r[col_k])
+                                    if c_val is not None and abs(c_val - md) < 1e-6:
+                                        cand_win = str(col_k).replace('خصم ', '').strip()
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+                    if not cand_win:
+                        cand_win = "مخزن منافس"
+                    wh_status = f"{cand_win} ({md * 100:.1f}%)"
+
+                cat_name = r.get(f'اسم الصنف في كتالوج {warehouse_name}') or r.get('اسم الصنف في كشف المخزن الفائز') or r.get('اسم الصنف في كتالوج المخزن') or ref_name
+
+                records.append({
+                    'اسم الصنف في أرصدة المخازن': ref_name,
+                    'اسم الصنف في الكتالوج': cat_name,
+                    'سعر الجمهور للوحدة': bp,
+                    'الخصم المرجح %': rd,
+                    'خصم هذا المخزن %': wd,
+                    'أعلى خصم متاح %': md if md > 0 else wd,
+                    'المخزن صاحب أعلى خصم': wh_status,
+                    'فرق السعر (الوفر بالجنيه)': unit_saving,
+                    '_is_winner': is_winner,
+                    '_winning_wh': cand_win if not is_winner else warehouse_name,
+                    '_winning_disc': md,
+                })
+
+            if records:
+                records.sort(key=lambda x: (x['فرق السعر (الوفر بالجنيه)'], x['خصم هذا المخزن %']), reverse=True)
+                for idx, item in enumerate(records, 1):
+                    item['م'] = idx
+                return pd.DataFrame(records)
+
+        return pd.DataFrame(columns=[
+            'م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج',
+            'سعر الجمهور للوحدة', 'الخصم المرجح %', 'خصم هذا المخزن %',
+            'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم', 'فرق السعر (الوفر بالجنيه)'
+        ])
+
     def _autofit_columns(self, ws):
         """Adjust column widths dynamically for professional visual presentation."""
+        multi_col_merged_rows = set()
+        for rng in ws.merged_cells.ranges:
+            if rng.min_col != rng.max_col:
+                for r in range(rng.min_row, rng.max_row + 1):
+                    multi_col_merged_rows.add(r)
+
         for col in ws.columns:
             max_len = 0
             col_letter = get_column_letter(col[0].column)
             for cell in col:
                 if cell.value is not None:
+                    # Ignore rows that span multiple columns (titles/banners) or KPI cards
+                    if cell.row in multi_col_merged_rows or cell.row in [1, 2] or (ws.title == "المقارنة الشاملة وتوزيع الأصناف" and cell.row in [4, 5]):
+                        continue
                     val_str = str(cell.value)
-                    # Ignore title and KPI rows when calculating widths
-                    if cell.row in [1, 2] or (ws.title == "المقارنة الشاملة وتوزيع الأصناف" and cell.row in [4, 5]):
+                    # Ignore notice/placeholder rows spanning long text
+                    if "لا توجد أصناف" in val_str:
                         continue
                     max_len = max(max_len, len(val_str))
             ws.column_dimensions[col_letter].width = max(max_len + 5, 14)
