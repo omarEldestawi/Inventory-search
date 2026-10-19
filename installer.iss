@@ -20,7 +20,11 @@ SetupIconFile=assets\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+CloseApplications=yes
+RestartApplications=yes
 DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
 

@@ -151,22 +151,25 @@ def download_installer(
 
 def apply_update_and_restart(installer_path: str):
     """
-    Executes the Inno Setup installer silently and exits the current process.
+    Executes the Inno Setup installer completely silently without admin prompts
+    and restarts the application automatically upon completion.
     Switches:
-      /SILENT : Inno Setup silent install (shows progress bar without prompts)
-      /CLOSEAPPLICATIONS : Instructs Inno Setup to automatically close the running app
-      /RESTARTAPPLICATIONS : Automatically launches the newly installed app when done
+      /VERYSILENT : Fully invisible install without wizard or progress windows
+      /SUPPRESSMSGBOXES : Automatically dismisses all message boxes with default answers
+      /FORCECLOSEAPPLICATIONS : Force closes running processes cleanly without prompting
+      /RESTARTAPPLICATIONS : Automatically re-launches the newly installed app when done
     """
     if not os.path.isfile(installer_path):
         raise FileNotFoundError(f"Installer not found at {installer_path}")
         
     cmd = [
         installer_path,
-        "/SILENT",
-        "/CLOSEAPPLICATIONS",
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/FORCECLOSEAPPLICATIONS",
         "/RESTARTAPPLICATIONS",
     ]
-    logger.info(f"Launching updater: {' '.join(cmd)}")
+    logger.info(f"Launching silent updater: {' '.join(cmd)}")
     subprocess.Popen(cmd, shell=False)
     sys.exit(0)
 
