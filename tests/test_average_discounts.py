@@ -645,21 +645,21 @@ class TestRequirementR3ExcelReportingAndAccounting:
             assert ws_forsan.cell(row=data_row_forsan_1, column=9).value >= 4.00
 
     def test_sub_4egp_saving_items_strictly_excluded(self, sample_report_payload):
-        """R2: Items with saving < 4.00 EGP are strictly excluded from the secondary table."""
+        """R2: Items with discount difference < 4.0% are strictly excluded from the secondary table."""
         payload = dict(sample_report_payload)
-        # Add item with saving < 4.00 EGP (Base price 20, disc 0.20, ref 0.15 -> 20 * 0.05 = 1.00 EGP < 4.00)
+        # Add item with discount diff < 4.0% (disc 0.18, ref 0.15 -> diff 0.03 = 3.0% < 4.0%)
         low_saving_item = {
             'م': 4,
             'اسم الصنف في أرصده المخازن': 'دواء منخفض الوفر',
             'اسم الصنف في كشف المخزن الفائز': 'صنف منخفض الوفر',
             'المخزن الفائز': 'مخزن السلام فارم',
             'الخصم المرجح %': 0.15,
-            'أعلى خصم متاح %': 0.20,
-            'فرق الخصم %': 0.05,
+            'أعلى خصم متاح %': 0.18,
+            'فرق الخصم %': 0.03,
             'سعر الجمهور للوحدة': 20.0,
-            'سعر التوريد الصافي': 16.0,
-            'خصم مخزن السلام فارم': 0.20,
-            'خصم مخزن الفرسان بنها': 0.18
+            'سعر التوريد الصافي': 16.4,
+            'خصم مخزن السلام فارم': 0.18,
+            'خصم مخزن الفرسان بنها': 0.16
         }
         above_df_mod = pd.concat([sample_report_payload['above_average_discounts'], pd.DataFrame([low_saving_item])], ignore_index=True)
         payload['above_average_discounts'] = above_df_mod

@@ -1004,7 +1004,7 @@ def evaluate_above_average_discounts(
 
         w_disc_dict = candidates.groupby('warehouse_name')['discount_rate'].max().to_dict()
 
-        # Pass 1: Collect best qualifying candidate per warehouse (saving >= 4.00 EGP)
+        # Pass 1: Collect best qualifying candidate per warehouse (discount diff >= 4.0% / 0.04)
         wh_best_cands = {}
         for w in warehouses:
             w_cands = candidates[candidates['warehouse_name'] == w]
@@ -1013,13 +1013,14 @@ def evaluate_above_average_discounts(
                 for _, cand_row in w_cands.iterrows():
                     c_disc = float(cand_row['discount_rate'])
                     c_bp = float(cand_row.get('base_price', 0.0) or base_price)
-                    c_saving = round(c_bp * (c_disc - norm_disc), 2)
-                    if c_saving >= 4.00 - 1e-6:
-                        valid_w_cands.append((c_saving, c_disc, c_bp, cand_row))
+                    c_diff_disc = round(c_disc - norm_disc, 4)
+                    c_saving = round(c_bp * c_diff_disc, 2)
+                    if c_diff_disc >= 0.04 - 1e-6:
+                        valid_w_cands.append((c_diff_disc, c_disc, c_saving, c_bp, cand_row))
 
                 if valid_w_cands:
-                    # Pick candidate maximizing unit saving, tie-breaking by discount rate and base price
-                    valid_w_cands.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+                    # Pick candidate maximizing discount diff, tie-breaking by unit saving and base price
+                    valid_w_cands.sort(key=lambda x: (x[0], x[2], x[3]), reverse=True)
                     wh_best_cands[w] = valid_w_cands[0]
 
         # Pass 2: Determine winning qualifying warehouse and build per-warehouse records
@@ -1030,7 +1031,7 @@ def evaluate_above_average_discounts(
                 sec_winners.sort(key=lambda w: (wh_best_cands[w][0], wh_best_cands[w][2]), reverse=True)
             sec_win_wh = sec_winners[0]
 
-            for w, (unit_saving, w_disc, w_bp, w_row) in wh_best_cands.items():
+            for w, (diff_disc, w_disc, unit_saving, w_bp, w_row) in wh_best_cands.items():
                 w_cat_name = str(w_row.get('item_name', '')).strip()
                 is_winner = (w_disc >= sec_max_disc - 1e-6)
                 wh_status = w if is_winner else f"{sec_win_wh} ({sec_max_disc * 100:.1f}%)"
@@ -1042,6 +1043,7 @@ def evaluate_above_average_discounts(
                     'خصم هذا المخزن %': w_disc,
                     'أعلى خصم متاح %': sec_max_disc,
                     'المخزن صاحب أعلى خصم': wh_status,
+                    'فرق الخصم %': diff_disc,
                     'فرق السعر (الوفر بالجنيه)': unit_saving,
                     '_is_winner': is_winner,
                     '_winning_wh': sec_win_wh,
@@ -1067,7 +1069,7 @@ def evaluate_above_average_discounts(
     for w in warehouses:
         w_recs = per_warehouse_records.get(w, [])
         if w_recs:
-            w_recs.sort(key=lambda r: (r['فرق السعر (الوفر بالجنيه)'], r['خصم هذا المخزن %']), reverse=True)
+            w_recs.sort(key=lambda r: (r.get('فرق الخصم %', 0.0), r['خصم هذا المخزن %']), reverse=True)
             for i, r in enumerate(w_recs, 1):
                 r['م'] = i
             per_wh_dfs[w] = pd.DataFrame(w_recs)

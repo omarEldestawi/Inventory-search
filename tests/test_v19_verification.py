@@ -71,12 +71,12 @@ class TestRelease19Verification:
             }
         ])
 
-        # Above average reference items:
-        # Item 1: High saving in Salam (50 * (0.30 - 0.20) = 5.00 EGP >= 4.00) -> Salam is winner (30%)
-        #         Medium saving in Forsan (50 * (0.28 - 0.20) = 4.00 EGP >= 4.00) -> Forsan is NOT winner (Salam 30.0%)
-        # Item 2: High saving in Forsan (100 * (0.25 - 0.15) = 10.00 EGP >= 4.00) -> Forsan is winner (25%)
-        #         Low saving in Salam (100 * (0.18 - 0.15) = 3.00 EGP < 4.00) -> Salam MUST strictly EXCLUDE!
-        # Item 3: Low saving everywhere (40 * (0.25 - 0.20) = 2.00 EGP < 4.00) -> Strictly excluded everywhere!
+        # Above average reference items (Threshold: discount difference >= 4.0% / 0.04):
+        # Item 1: Salam disc = 0.30, ref = 0.20 -> diff = 10.0% >= 4.0% -> Salam is winner (30.0%)
+        #         Forsan disc = 0.28, ref = 0.20 -> diff = 8.0% >= 4.0% -> Forsan is NOT winner (Salam 30.0%)
+        # Item 2: Forsan disc = 0.25, ref = 0.15 -> diff = 10.0% >= 4.0% -> Forsan is winner (25.0%)
+        #         Salam disc = 0.18, ref = 0.15 -> diff = 3.0% < 4.0% -> Salam MUST strictly EXCLUDE!
+        # Item 3: Low discount diff everywhere (0.22 - 0.20 = 2.0% < 4.0%) -> Strictly excluded everywhere!
         above_df = pd.DataFrame([
             {
                 'م': 1,
@@ -112,11 +112,11 @@ class TestRelease19Verification:
                 'اسم الصنف في كشف المخزن الفائز': 'Low Saving Drug',
                 'المخزن الفائز': 'مخزن السلام فارم',
                 'الخصم المرجح %': 0.20,
-                'أعلى خصم متاح %': 0.25,
-                'فرق الخصم %': 0.05,
+                'أعلى خصم متاح %': 0.22,
+                'فرق الخصم %': 0.02,
                 'سعر الجمهور للوحدة': 40.0,
-                'سعر التوريد الصافي': 30.0,
-                'خصم مخزن السلام فارم': 0.25,
+                'سعر التوريد الصافي': 31.2,
+                'خصم مخزن السلام فارم': 0.22,
                 'خصم مخزن الفرسان بنها': 0.22,
                 'خصم مخزن الأمل': 0.19,
             }
@@ -181,8 +181,8 @@ class TestRelease19Verification:
         """
         R2: Secondary table on warehouse PO sheets:
         - Exact 9 columns.
-        - Strict filtering: Unit Saving >= 4.00 EGP.
-        - Items saving < 4.00 EGP are strictly excluded.
+        - Strict filtering: Discount difference >= 4.0% (0.04).
+        - Items with discount diff < 4.0% are strictly excluded.
         """
         with tempfile.TemporaryDirectory() as tmp_dir:
             generator = ArabicExcelReportGenerator(v19_report_payload, output_dir=tmp_dir)
@@ -207,9 +207,9 @@ class TestRelease19Verification:
             for idx, col_name in enumerate(expected_cols, 1):
                 assert ws_salam.cell(row=sec_header_row, column=idx).value == col_name
 
-            # In Salam: Item 1 has saving = 50 * (0.30 - 0.20) = 5.00 EGP >= 4.00 -> Included
-            # Item 2 has saving = 100 * (0.18 - 0.15) = 3.00 EGP < 4.00 -> Strictly excluded
-            # Item 3 has saving = 40 * (0.25 - 0.20) = 2.00 EGP < 4.00 -> Strictly excluded
+            # In Salam: Item 1 has diff = 0.30 - 0.20 = 10% >= 4% -> Included
+            # Item 2 has diff = 0.18 - 0.15 = 3% < 4% -> Strictly excluded
+            # Item 3 has diff = 0.22 - 0.20 = 2% < 4% -> Strictly excluded
             salam_items = []
             for r in range(sec_header_row + 1, ws_salam.max_row + 1):
                 c2 = ws_salam.cell(row=r, column=2).value
@@ -268,15 +268,19 @@ class TestRelease19Verification:
             ws_forsan = [wb[s] for s in wb.sheetnames if "الفرسان" in s][0]
             sec_hdr_forsan = [r for r in range(1, ws_forsan.max_row + 1) if ws_forsan.cell(row=r, column=1).value == 'م' and ws_forsan.cell(row=r, column=2).value == 'اسم الصنف في أرصدة المخازن'][0]
 
-            # Row 1 in Forsan is Concor 5mg (saving 10.00, winner in Forsan)
-            row_concor = sec_hdr_forsan + 1
-            cell_concor_status = ws_forsan.cell(row=row_concor, column=8)
+            # Forsan contains two items: Concor (winner in Forsan, Green) and Panadol (non-winner, Yellow)
+            rows_by_name = {}
+            for r in range(sec_hdr_forsan + 1, sec_hdr_forsan + 3):
+                drug = ws_forsan.cell(row=r, column=2).value
+                rows_by_name[drug] = r
+
+            r_concor = rows_by_name['كونكور 5 مجم 30 قرص']
+            cell_concor_status = ws_forsan.cell(row=r_concor, column=8)
             assert cell_concor_status.fill.start_color.rgb in ['E2EFDA', '00E2EFDA', 'FFE2EFDA']
             assert cell_concor_status.font.color.rgb in ['375623', '00375623', 'FF375623']
 
-            # Row 2 in Forsan is Panadol Extra (saving 4.00, non-winner: Salam 30.0%)
-            row_panadol = sec_hdr_forsan + 2
-            cell_panadol_status = ws_forsan.cell(row=row_panadol, column=8)
+            r_panadol = rows_by_name['بانادول اكسترا 24 قرص']
+            cell_panadol_status = ws_forsan.cell(row=r_panadol, column=8)
             # Non-winning styling: Soft Yellow
             assert cell_panadol_status.fill.start_color.rgb in ['FFF2CC', '00FFF2CC', 'FFFFF2CC']
             assert cell_panadol_status.font.color.rgb in ['7F6000', '007F6000', 'FF7F6000']
@@ -346,8 +350,8 @@ class TestRelease19Verification:
     def test_variant_catalog_entries_selects_optimal_saving(self):
         """
         Edge Case: Supplier catalog contains multiple variant entries of the same drug.
-        Variant 1 has higher discount (26%) on lower base price (50.0 EGP) -> Saving: 3.00 EGP (< 4.00 EGP).
-        Variant 2 has lower discount (24%) on higher base price (120.0 EGP) -> Saving: 4.80 EGP (>= 4.00 EGP).
+        Variant 1 has discount 22% (diff: 2% < 4% threshold) -> Disqualified.
+        Variant 2 has discount 25% (diff: 5% >= 4% threshold) -> Qualified.
         Ensures the qualifying variant is chosen rather than prematurely discarded.
         """
         inv = pd.DataFrame([
@@ -356,14 +360,14 @@ class TestRelease19Verification:
                 'item_name': 'بانادول اكسترا 24 قرص',
                 'normalized_name': 'بانادول اكسترا 24 قرص',
                 'dosage': '', 'unit_size': '',
-                'base_price': 50.0, 'discount_rate': 0.26, 'stock_status': True
+                'base_price': 50.0, 'discount_rate': 0.22, 'stock_status': True
             },
             {
                 'warehouse_name': 'مخزن السلام فارم',
                 'item_name': 'بانادول اكسترا 24 قرص',
                 'normalized_name': 'بانادول اكسترا 24 قرص',
                 'dosage': '', 'unit_size': '',
-                'base_price': 120.0, 'discount_rate': 0.24, 'stock_status': True
+                'base_price': 120.0, 'discount_rate': 0.25, 'stock_status': True
             },
         ])
         ref_df = pd.DataFrame([{'clean_name': 'بانادول اكسترا 24 قرص', 'avg_discount_rate': 0.20}])
@@ -374,8 +378,8 @@ class TestRelease19Verification:
 
         assert len(salam_df) == 1, "Expected qualifying variant to be included in secondary table"
         assert salam_df.iloc[0]['سعر الجمهور للوحدة'] == 120.0
-        assert salam_df.iloc[0]['فرق السعر (الوفر بالجنيه)'] == 4.80
-        assert salam_df.iloc[0]['خصم هذا المخزن %'] == 0.24
+        assert salam_df.iloc[0]['خصم هذا المخزن %'] == 0.25
+        assert salam_df.iloc[0]['فرق الخصم %'] == 0.05
 
     def test_empty_secondary_table_merged_notice_banner(self, v19_report_payload):
         """
@@ -418,7 +422,7 @@ class TestRelease19Verification:
                 'item_name': 'بانادول اكسترا 24 قرص',
                 'normalized_name': 'بانادول اكسترا 24 قرص',
                 'dosage': '', 'unit_size': '',
-                'base_price': 50.0, 'discount_rate': 0.26, 'stock_status': True
+                'base_price': 50.0, 'discount_rate': 0.22, 'stock_status': True
             },
             {
                 'warehouse_name': 'مخزن السلام فارم',

@@ -490,7 +490,7 @@ class ArabicExcelReportGenerator:
             # Section Title Banner
             ws_po.merge_cells(f"A{sec_title_row}:I{sec_title_row}")
             c_sec_title = ws_po[f"A{sec_title_row}"]
-            c_sec_title.value = clean_excel_str("أصناف إضافية متاحة بالمخزن بخصم أعلى من المتوسط المرجح (وفر 4.00 ج.م فأكثر لكل عبوة)")
+            c_sec_title.value = clean_excel_str("أصناف إضافية متاحة بالمخزن بخصم أعلى من المتوسط المرجح (بفارق 4% فأكثر)")
             c_sec_title.font = Font(name="Calibri", size=13, bold=True, color="1F4E79")
             c_sec_title.alignment = align_center
 
@@ -498,7 +498,7 @@ class ArabicExcelReportGenerator:
             ws_po.merge_cells(f"A{sec_sub_row}:I{sec_sub_row}")
             c_sec_sub = ws_po[f"A{sec_sub_row}"]
             c_sec_sub.value = clean_excel_str(
-                f"الأصناف التي تحقق وفراً يبدأ من 4.00 ج.م للعبوة مقارنة بالخصم المرجح | عدد الأصناف: {len(sec_df)} صنف"
+                f"الأصناف التي يتجاوز خصمها الخصم المرجح بـ 4% فأكثر | الأخضر: أفضل سعر متاح لدى هذا المخزن | الأصفر: متاح بنسبة أعلى لدى مخزن آخر | عدد الأصناف: {len(sec_df)} صنف"
             )
             c_sec_sub.font = font_subtitle
             c_sec_sub.alignment = align_center
@@ -650,7 +650,7 @@ class ArabicExcelReportGenerator:
                 c_empty = ws_po.cell(
                     row=sec_empty_row,
                     column=1,
-                    value="لا توجد أصناف إضافية ذات وفر يتجاوز 4.00 ج.م في هذا المخزن حالياً."
+                    value="لا توجد أصناف إضافية بخصم يتجاوز الخصم المرجح بـ 4% فأكثر لدى هذا المخزن حالياً."
                 )
                 c_empty.font = font_cell
                 c_empty.alignment = align_center
@@ -870,7 +870,7 @@ class ArabicExcelReportGenerator:
     def _get_warehouse_above_average_discounts(self, warehouse_name: str) -> pd.DataFrame:
         """
         Extracts above-average discount items for a specific warehouse where:
-        Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP.
+        Difference = (Warehouse Discount - Reference Weighted Average Discount) >= 4.0% (0.04).
         Returns a DataFrame with columns:
         ['م', 'اسم الصنف في أرصدة المخازن', 'اسم الصنف في الكتالوج', 'سعر الجمهور للوحدة',
          'الخصم المرجح %', 'خصم هذا المخزن %', 'أعلى خصم متاح %', 'المخزن صاحب أعلى خصم',
@@ -894,9 +894,10 @@ class ArabicExcelReportGenerator:
                             rd = _parse_discount_value(r.get('الخصم المرجح %') or r.get('خصم مرجح') or r.get('ref_discount') or 0.0) or 0.0
                             saving = r.get('فرق السعر (الوفر بالجنيه)') or r.get('فرق السعر') or r.get('الوفر بالجنيه') or r.get('unit_saving')
                             saving_val = _parse_currency_value(saving)
+                            diff_disc = round(wd - rd, 4)
                             if saving_val is None:
-                                saving_val = round(bp * (wd - rd), 2)
-                            if saving_val >= 4.00 - 1e-6:
+                                saving_val = round(bp * diff_disc, 2)
+                            if diff_disc >= 0.04 - 1e-6:
                                 r_dict = dict(r)
                                 r_dict['سعر الجمهور للوحدة'] = bp
                                 r_dict['خصم هذا المخزن %'] = wd
@@ -911,7 +912,7 @@ class ArabicExcelReportGenerator:
                         if res_rows:
                             filtered_df = pd.DataFrame(res_rows)
                             filtered_df = filtered_df.sort_values(
-                                by=['فرق السعر (الوفر بالجنيه)', 'خصم هذا المخزن %'],
+                                by=['فرق الخصم %', 'خصم هذا المخزن %'] if 'فرق الخصم %' in filtered_df.columns else ['فرق السعر (الوفر بالجنيه)', 'خصم هذا المخزن %'],
                                 ascending=[False, False]
                             ).reset_index(drop=True)
                             filtered_df['م'] = range(1, len(filtered_df) + 1)
@@ -943,9 +944,10 @@ class ArabicExcelReportGenerator:
                                 rd = _parse_discount_value(r.get('الخصم المرجح %') or r.get('خصم مرجح') or r.get('ref_discount') or 0.0) or 0.0
                                 saving = r.get('فرق السعر (الوفر بالجنيه)') or r.get('فرق السعر') or r.get('الوفر بالجنيه') or r.get('unit_saving')
                                 saving_val = _parse_currency_value(saving)
+                                diff_disc = round(wd - rd, 4)
                                 if saving_val is None:
-                                    saving_val = round(bp * (wd - rd), 2)
-                                if saving_val >= 4.00 - 1e-6:
+                                    saving_val = round(bp * diff_disc, 2)
+                                if diff_disc >= 0.04 - 1e-6:
                                     r_dict = dict(r)
                                     r_dict['سعر الجمهور للوحدة'] = bp
                                     r_dict['خصم هذا المخزن %'] = wd
@@ -960,7 +962,7 @@ class ArabicExcelReportGenerator:
                             if res_rows:
                                 filtered_df = pd.DataFrame(res_rows)
                                 filtered_df = filtered_df.sort_values(
-                                    by=['فرق السعر (الوفر بالجنيه)', 'خصم هذا المخزن %'],
+                                    by=['فرق الخصم %', 'خصم هذا المخزن %'] if 'فرق الخصم %' in filtered_df.columns else ['فرق السعر (الوفر بالجنيه)', 'خصم هذا المخزن %'],
                                     ascending=[False, False]
                                 ).reset_index(drop=True)
                                 filtered_df['م'] = range(1, len(filtered_df) + 1)
@@ -1012,9 +1014,10 @@ class ArabicExcelReportGenerator:
                 if wd is None or wd <= 0.0:
                     continue
 
-                unit_saving = round(bp * (wd - rd), 2)
-                if unit_saving < 4.00 - 1e-6:
+                diff_disc = round(wd - rd, 4)
+                if diff_disc < 0.04 - 1e-6:
                     continue
+                unit_saving = round(bp * diff_disc, 2)
 
                 is_winner = (wd >= md - 1e-6)
                 if is_winner:
@@ -1052,7 +1055,7 @@ class ArabicExcelReportGenerator:
                 })
 
             if records:
-                records.sort(key=lambda x: (x['فرق السعر (الوفر بالجنيه)'], x['خصم هذا المخزن %']), reverse=True)
+                records.sort(key=lambda x: (x.get('فرق الخصم %', 0.0), x.get('خصم هذا المخزن %', 0.0)), reverse=True)
                 for idx, item in enumerate(records, 1):
                     item['م'] = idx
                 return pd.DataFrame(records)
