@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.0] - 2026-10-20
+
+### 🛡️ Fixed & Improved
+- **Price / Discount Column Inversion Sanity Check (`src/pdf_parser.py`)**:
+  - Implemented multi-signal batch/column-level (`_should_swap_price_and_discount`) and per-item row-level (`_sanity_check_item_price_and_discount`) sanity checks across merged single-cell rows, standard multi-column tables, and 2-column ArwaSoft coordinate layouts.
+  - Automatically detects and corrects PDF catalogs where `السعر` (Price) and `الخصم` (Discount) positions are switched using header coordinate/text order (`_detect_page_header_price_first`, `_detect_table_header_price_first`), pharmaceutical discount upper bounds (`> 85%`), inline public price mentions (`extract_inline_price_hint`, e.g. `سعر 76`, `41.5ج`, `س 81 س ج`), and numeric distribution heuristics.
+  - Fixed headerless continuation page detection in `_process_table()` and `_find_column_indices()` so rows starting with numeric data or containing dosage percentages (e.g. `%2`) are not misclassified as headers.
+- **2-Column ArwaSoft Right-Column & Arabic Decimal Normalization (`src/pdf_parser.py`, `src/normalizer.py`)**:
+  - Updated `_extract_arwasoft_right_column()` to reconstruct RTL word sequences with sub-word glyph stitching, expand vertical bounds (`88 < Y < 795`) to capture top-of-page rows, and dynamically detect 2-column ArwaSoft layouts (`is_page_arwasoft_2col`).
+  - Normalized Arabic decimal separator `٫` (`U+066B`) between digits in `unreverse_arabic_text()` and added table-level reversal voting (`is_table_reversed`) for short 2-word Arabic items.
+  - Refined `is_catalog_noise()` word boundaries so `'فاكس'` does not falsely filter legitimate medications like `برونكوفاكسوم` (`Broncho-Vaxom`).
+- **Expanded Medication Knowledge Base (`data/medications.db`)**:
+  - Added `شركة مخزن الدولية الحديثة للادوية.pdf` (`مخزن الدولية الحديثة`, 529 items) to `input/catalogs/` and ingested all standards and reversed/normalized aliases into `data/medications.db` (6,260 standard references, 108,094 aliases), with automatic sync to `%LOCALAPPDATA%\EgyptianPharmaOptimizer\data\medications.db`.
+- **Version Bump to Release 2.0**:
+  - Updated all version strings and identifiers across GUI (`app_gui.py`), installer (`installer.iss`), documentation, and application metadata to `2.0`.
+
+---
+
 ## [1.9] - 2026-10-19
 
 ### 🚀 Added & Improved

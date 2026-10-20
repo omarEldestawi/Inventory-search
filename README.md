@@ -1,17 +1,18 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 1.9 (Production Windows Release)  
+**Version:** 2.0 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
 
 ---
 
-## 🌟 What's New in Version 1.9
+## 🌟 What's New in Version 2.0
 
+- 🛡️ **Automated Price & Discount Sanity Check**: Multi-signal column-level and row-level sanity check in `src/pdf_parser.py` automatically detects and corrects PDF catalogs where **Price (`السعر`)** and **Discount (`الخصم`)** columns are switched (using header coordinates, `>85%` discount bounds, inline public price hints like `سعر 144` / `41.5ج`, and distribution checks).
+- 📄 **Enhanced 2-Column ArwaSoft & Headerless Page Parsing**: Full RTL glyph stitching on right-column ArwaSoft layouts, table-level Arabic reversal consistency, Arabic decimal `٫` preservation, and headerless continuation page handling.
+- 💊 **Expanded Medication Knowledge Base (`data/medications.db`)**: Added `شركة مخزن الدولية الحديثة للادوية` catalog (529 items) and expanded `medications.db` to **6,260 standards** and **108,094 aliases** with automatic user AppData synchronization.
 - 📊 **Per-Warehouse Above-Average Discounts Secondary Table**: Injects a secondary table directly into each supplier's purchase order sheet (`طلب شراء - [اسم المخزن]`) listing all products available from that supplier saving `>= 4.00 EGP` per pack compared to the reference weighted average discount.
-- 🎨 **Visual Price Status Highlighting (Soft Green & Soft Yellow)**: Highlights Column 8 (`المخزن صاحب أعلى خصم`) in Soft Green (`#E2EFDA`) if the warehouse offers the highest catalog discount across all suppliers, and Soft Yellow (`#FFF2CC`) displaying the winning warehouse and rate if another warehouse offers a higher discount.
-- 🧹 **Clean Workbook Layout**: Removed the standalone sheet `أصناف بخصم أعلى من المرجح` in favor of per-supplier integrated tables.
-- 📦 **Windows Installer v1.9**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v1.9.exe`) with auto-upgrades and shortcuts.
+- 📦 **Windows Installer v2.0**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v2.0.exe`) with auto-upgrades and shortcuts.
 
 ---
 
@@ -20,7 +21,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v1.9.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v2.0.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.
@@ -109,11 +110,12 @@ Inventory-search/
 ├── archive/                             <-- Older backups and archived distribution
 ├── docs/current/                        <-- Current project documentation
 ├── docs/PROJECT_LAYOUT.md               <-- Folder organization guide
+├── PROJECT_HISTORY.md                   <-- Comprehensive developer onboarding & project history
 ├── CHANGELOG.md                         <-- Release history
 └── README.md                            <-- Project overview
 ```
 
-See [`docs/PROJECT_LAYOUT.md`](docs/PROJECT_LAYOUT.md) for the full explanation of current, archived, and generated folders.
+See [`PROJECT_HISTORY.md`](PROJECT_HISTORY.md) for a complete developer onboarding guide and architectural history (`v1.0.0` $\rightarrow$ `v2.0`), and [`docs/PROJECT_LAYOUT.md`](docs/PROJECT_LAYOUT.md) for the folder organization guide.
 
 ---
 
@@ -146,5 +148,5 @@ python build_exe.py
 # 2. Compile Inno Setup installer
 & "C:\Users\<username>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer.iss
 ```
-Output setup will be placed in `dist_installer/EgyptianPharmaOptimizer_Setup_v1.9.exe`.
+Output setup will be placed in `dist_installer/EgyptianPharmaOptimizer_Setup_v2.0.exe`.
 

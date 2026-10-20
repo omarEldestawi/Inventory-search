@@ -411,6 +411,8 @@ def normalize_vendor_name(filename_or_raw_name: str) -> str:
         return 'مخزن د أحمد عبد الله'
     if 'فريندس' in name_clean:
         return 'فريندس تو ام'
+    if 'الدولية الحديثة' in name_clean or 'الدوليه الحديثه' in name_clean:
+        return 'مخزن الدولية الحديثة'
     if 'الدولية' in name_clean or 'الدوليه' in name_clean:
         return 'الدولية فارما'
     if 'الرؤى' in name_clean or 'النور' in name_clean or 'الروى' in name_clean:
@@ -669,6 +671,10 @@ def unreverse_arabic_text(text: str, force_reverse: Optional[bool] = None) -> st
     
     # Decode custom ERP font encodings (ArwaSoft Greek, Al-Hadaba Aboriginal/Runic)
     text = decode_custom_catalog_glyphs(text)
+    
+    # Normalize Arabic decimal separator (٫) between digits before word splitting so decimals like 41٫5 stay intact
+    text = re.sub(r'(?<=[\d\u0660-\u0669])٫(?=[\d\u0660-\u0669])', '.', text)
+    text = text.translate(EASTERN_ARABIC_DIGITS)
     
     # Decouple punctuation attached to letters
     text = re.sub(r'([)\]}>(])([a-zA-Z\u0600-\u06ff])', r'\1 \2', text)
@@ -2141,11 +2147,13 @@ def is_catalog_noise(text: str) -> bool:
     noise_keywords = [
         'اورجا سوفت', 'اروا سوفت', 'أورجا سوفت', 'أروا سوفت',
         'لتجارة وتوزيع', 'توزيع الادوية', 'توزيع الأدوية', 'مخزن الفارس',
-        'تليفون', 'هاتف', 'موبايل', 'فاكس', 'س.ت', 'ب.ض',
-        'سجل تجاري', 'بطاقة ضريبية', 'صفحة', 'page'
+        'تليفون', 'هاتف', 'موبايل', 'س.ت', 'ب.ض',
+        'سجل تجاري', 'بطاقة ضريبية', 'صفحة'
     ]
     t_lower = t.lower()
     if any(k in t_lower for k in noise_keywords):
+        return True
+    if re.search(r'(?:^|[\s:/\-])(?:فاكس|page)(?:$|[\s:/\-\d])', t_lower):
         return True
     # Telephone / hotline numbers (e.g. 010..., 011..., 012..., 015..., 02..., 040...)
     if re.search(r'(?:01[0-9]{9}|0[2-5][0-9]{7,8})', t.translate(EASTERN_ARABIC_DIGITS)):

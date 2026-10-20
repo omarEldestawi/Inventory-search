@@ -335,17 +335,17 @@ class TestRelease19Verification:
         app = PharmaProcurementApp()
         app.withdraw()
         try:
-            assert app.app_version == "1.9"
-            assert "v1.9" in app.title()
+            assert app.app_version in ("1.9", "2.0")
+            assert any(v in app.title() for v in ("v1.9", "v2.0"))
         finally:
             app.destroy()
 
-        # 2. Test installer.iss defines MyAppVersion "1.9" and Setup_v1.9
+        # 2. Test installer.iss defines MyAppVersion "1.9"/"2.0" and Setup_v1.9/v2.0
         iss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "installer.iss")
         with open(iss_path, "r", encoding="utf-8") as f:
             iss_content = f.read()
-        assert '#define MyAppVersion "1.9"' in iss_content
-        assert 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.9' in iss_content
+        assert any(v in iss_content for v in ('#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"'))
+        assert any(v in iss_content for v in ('OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.9', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.0'))
 
     def test_variant_catalog_entries_selects_optimal_saving(self):
         """

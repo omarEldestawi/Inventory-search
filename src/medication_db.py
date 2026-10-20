@@ -67,13 +67,19 @@ def _resolve_default_db_path() -> str:
         if not bundled_template and meipass:
             bundled_template = os.path.join(meipass, "data", "medications.db")
 
-        # 3. If user db doesn't exist, try initializing it from bundled template
+        # 3. If user db doesn't exist or bundled template is newer/larger (e.g. upgraded to v2.0), sync from bundled template
         if bundled_template and os.path.exists(bundled_template):
-            if not os.path.exists(user_db_path) or os.path.getsize(user_db_path) == 0:
+            needs_sync = (
+                not os.path.exists(user_db_path) or
+                os.path.getsize(user_db_path) == 0 or
+                os.path.getsize(bundled_template) > os.path.getsize(user_db_path) or
+                os.path.getmtime(bundled_template) > os.path.getmtime(user_db_path) + 1.0
+            )
+            if needs_sync:
                 try:
                     os.makedirs(user_db_dir, exist_ok=True)
                     shutil.copy2(bundled_template, user_db_path)
-                    logger.info(f"Initialized user medications database at: {user_db_path}")
+                    logger.info(f"Synced user medications database at: {user_db_path}")
                 except Exception as exc:
                     logger.warning(f"Could not copy template to user dir: {exc}. Using bundled database.")
                     return bundled_template
