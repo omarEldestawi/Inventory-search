@@ -388,6 +388,7 @@ class MedicineAllocator:
 
         matched_records = []
         warehouse_allocation_counts = {w: 0 for w in self.warehouses}
+        warehouse_order_items = {w: [] for w in self.warehouses}
         
         deterministic_matches = 0
         unmatched_items = []
@@ -466,6 +467,32 @@ class MedicineAllocator:
                 master_row[f'خصم {w}'] = w_disc_dict.get(w, '-')
 
             matched_records.append(master_row)
+
+            # Record per-warehouse available item with competitive status
+            for w in candidates['warehouse_name'].unique():
+                w_match = candidates[candidates['warehouse_name'] == w]
+                w_best = w_match.sort_values(by='discount_rate', ascending=False).iloc[0]
+                w_disc = float(w_best['discount_rate'])
+                w_cat_name = str(w_best['item_name'])
+                w_bp = float(w_best.get('base_price', 0.0) or base_price)
+                is_win = (w == winning_warehouse) or (abs(w_disc - max_disc) < 1e-6)
+                if is_win:
+                    win_status = w
+                else:
+                    win_status = f"{winning_warehouse} ({max_disc * 100:.1f}%)"
+                warehouse_order_items[w].append({
+                    'اسم الصنف في فارما': req_item,
+                    'اسم الصنف في أمر الشراء': req_item,
+                    'اسم الصنف في كتالوج المخزن': w_cat_name,
+                    'الكمية المطلوبة': qty_int,
+                    'نسبة الخصم %': w_disc,
+                    'سعر الجمهور للوحدة': w_bp,
+                    'أعلى خصم متاح %': max_disc,
+                    'المخزن صاحب أعلى خصم': win_status,
+                    '_is_winner': is_win,
+                    '_winning_wh': winning_warehouse,
+                    '_winning_disc': max_disc,
+                })
 
         # =====================================================================
         # PASS 2: Hybrid AI Assistance (Gemini Flash) with Safety Gates
@@ -547,6 +574,31 @@ class MedicineAllocator:
                                 master_row[f'خصم {w}'] = '-'
                                 
                         matched_records.append(master_row)
+
+                        for w in cand_rows['warehouse_name'].unique():
+                            w_match = cand_rows[cand_rows['warehouse_name'] == w]
+                            w_best = w_match.sort_values(by='discount_rate', ascending=False).iloc[0]
+                            w_disc = float(w_best['discount_rate'])
+                            w_cat_name = str(w_best['item_name'])
+                            w_bp = float(w_best.get('base_price', 0.0) or base_price)
+                            is_win = (w == winning_warehouse) or (abs(w_disc - max_disc) < 1e-6)
+                            if is_win:
+                                win_status = w
+                            else:
+                                win_status = f"{winning_warehouse} ({max_disc * 100:.1f}%)"
+                            warehouse_order_items[w].append({
+                                'اسم الصنف في فارما': req_item,
+                                'اسم الصنف في أمر الشراء': req_item,
+                                'اسم الصنف في كتالوج المخزن': w_cat_name,
+                                'الكمية المطلوبة': qty_int,
+                                'نسبة الخصم %': w_disc,
+                                'سعر الجمهور للوحدة': w_bp,
+                                'أعلى خصم متاح %': max_disc,
+                                'المخزن صاحب أعلى خصم': win_status,
+                                '_is_winner': is_win,
+                                '_winning_wh': winning_warehouse,
+                                '_winning_disc': max_disc,
+                            })
                         continue
                         
                 remaining_unmatched.append((req_item, qty_int, dosage_form))
@@ -650,19 +702,31 @@ class MedicineAllocator:
         oos_df = pd.DataFrame(out_of_stock_records)
         recommendations_df = pd.DataFrame(recommendations_records)
 
-        # Step 2: Separate allocations per winning warehouse
+        # Step 2: Separate allocations per warehouse (All available items with competitive comparison)
         allocated_orders = {}
-        if not master_df.empty and 'المخزن الفائز' in master_df.columns:
-            for w in self.warehouses:
+        for w in self.warehouses:
+            w_list = warehouse_order_items.get(w, [])
+            if w_list:
+                for idx, itm in enumerate(w_list, 1):
+                    itm['م'] = idx
+                po_df = pd.DataFrame(w_list)
+                if 'اسم الصنف في أمر الشراء' not in po_df.columns and 'اسم الصنف في فارما' in po_df.columns:
+                    po_df['اسم الصنف في أمر الشراء'] = po_df['اسم الصنف في فارما']
+                allocated_orders[w] = po_df
+            elif not master_df.empty and 'المخزن الفائز' in master_df.columns:
                 w_items = master_df[master_df['المخزن الفائز'] == w].copy()
                 if not w_items.empty:
                     po_df = pd.DataFrame({
                         'م': range(1, len(w_items) + 1),
+                        'اسم الصنف في فارما': w_items['اسم الصنف المطلوب (في طلب الشراء)'],
                         'اسم الصنف في أمر الشراء': w_items['اسم الصنف المطلوب (في طلب الشراء)'],
                         'اسم الصنف في كتالوج المخزن': w_items['اسم الصنف في كشف المخزن الفائز'],
                         'الكمية المطلوبة': w_items['الكمية'] if 'الكمية' in w_items.columns else w_items.get('الكمية المطلوبة', 1),
                         'نسبة الخصم %': w_items['أعلى خصم %'],
                         'سعر الجمهور للوحدة': w_items['سعر الجمهور'],
+                        'أعلى خصم متاح %': w_items['أعلى خصم %'],
+                        'المخزن صاحب أعلى خصم': w,
+                        '_is_winner': True,
                         'سعر التوريد الصافي': w_items['سعر الشراء للوحدة'],
                         'إجمالي القيمة بسعر الجمهور': w_items['إجمالي سعر الجمهور'],
                         'إجمالي القيمة الصافية': w_items['إجمالي تكلفة الشراء'],
@@ -689,11 +753,15 @@ class MedicineAllocator:
 
         savings_pct = round((total_savings_val / total_public_val * 100), 1) if total_public_val > 0 else 0.0
 
-        allocation_counts = {w: len(df) for w, df in allocated_orders.items()}
-        allocation_values = {
-            w: round(float(df['إجمالي القيمة الصافية'].sum()), 2)
+        allocation_counts = {
+            w: len(master_df[master_df['المخزن الفائز'] == w]) if not master_df.empty and 'المخزن الفائز' in master_df.columns else len(df)
             for w, df in allocated_orders.items()
-            if 'إجمالي القيمة الصافية' in df.columns
+        }
+        allocation_values = {
+            w: round(float(master_df[master_df['المخزن الفائز'] == w]['إجمالي تكلفة الشراء'].sum()), 2)
+            if not master_df.empty and 'المخزن الفائز' in master_df.columns and 'إجمالي تكلفة الشراء' in master_df.columns
+            else 0.0
+            for w in allocated_orders.keys()
         }
 
         kpis = {

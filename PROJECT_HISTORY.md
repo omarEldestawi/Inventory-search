@@ -110,7 +110,21 @@ flowchart TD
   2. `Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP`.
 - Added visual competitive highlighting on Column 8 (`المخزن صاحب أعلى خصم`): **Soft Green (`#E2EFDA`)** when the current warehouse offers the highest discount market-wide, and **Soft Yellow (`#FFF2CC`)** showing the competing warehouse name and discount when another supplier is higher.
 
-### **v2.0 – v2.1 (October 2026) — Price/Discount Inversion Sanity Checks, 3-Column ArwaSoft Rect Extractor, Failed OCR Archival & Expanded Knowledge Base**
+### **v2.1 (October 2026) — Streamlined 6-Column PO Table, All-Item Wholesaler Comparison & Installer Build**
+- **Restructured Primary Purchase Order Table**:
+  - Replaced the legacy 10-column purchase order table with 6 focused columns:
+    1. `م` (Serial Number)
+    2. `اسم الصنف في فارما` (Requested Drug Name in Pharmacy Order)
+    3. `اسم الصنف في كتالوج المخزن` (Catalog Match Name in Supplier Sheet)
+    4. `نسبة الخصم %` (Supplier Discount Rate, formatted as `0.0%`)
+    5. `سعر الجمهور للوحدة` (Official Unit Public Price, formatted as `#,##0.00`)
+    6. `المخزن صاحب أعلى خصم` (Merged winning wholesaler and competitive discount with soft green / yellow conditional styling).
+- **All-Available-Items Wholesaler Scope**:
+  - Expanded each warehouse sheet (`طلب شراء - [اسم المخزن]`) to present all requested items available in that warehouse's price list, allowing direct side-by-side comparison of that warehouse's discount against the market leader.
+- **Compiled Release 2.1 Setup Installer**:
+  - Built standalone executable via PyInstaller and packaged into `dist_installer/EgyptianPharmaOptimizer_Setup_v2.1.exe`.
+
+### **v2.0 (October 2026) — Price/Discount Inversion Sanity Checks, 3-Column ArwaSoft Rect Extractor, Failed OCR Archival & Expanded Knowledge Base**
 - **Root Problems Solved**:
   1. Some wholesaler ArwaSoft catalogs (such as `شركة مخزن الدولية الحديثة للادوية د/محمود`) invert the positions of **Price (`السعر`)** and **Discount (`الخصم`)** (`[السعر | الخصم | إسم الصنف]` instead of `[الخصم | السعر | إسم الصنف]`), and omit headers on continuation pages 2–6.
   2. 3-column ArwaSoft catalogs (such as **Zahra Pharm / `تحديث زهره.pdf`**) draw a vector bounding rectangle around each item row (`width ≈ 181.6 pt, height ≈ 14.2 pt`) without internal vertical cell borders. PyMuPDF's `page.find_tables()` returned `0` tables, causing the parser to fall back to the 2-column `_extract_dar_fouad_columns()` extractor, which cut across Column 2 names and produced only 5 corrupted items out of 1,167.

@@ -24,7 +24,7 @@ from tkinter import filedialog, messagebox
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.0")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.1")
     except Exception:
         pass
 
@@ -560,7 +560,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.0)",
+            text="🔄 التحديثات / Updates (v2.1)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),

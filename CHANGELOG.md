@@ -7,6 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [2.1] - 2026-10-25
 
+### 🚀 Added & Improved
+- **Restructured Primary PO Table on Warehouse Sheets (`طلب شراء - [اسم المخزن]`)**:
+  - Streamlined primary table to 6 essential columns:
+    1. `م` (Serial Number)
+    2. `اسم الصنف في فارما` (Requested Item Name in Pharma Order)
+    3. `اسم الصنف في كتالوج المخزن` (Catalog Item Name in Wholesaler Offer)
+    4. `نسبة الخصم %` (Discount Rate of this Wholesaler, formatted as `0.0%`)
+    5. `سعر الجمهور للوحدة` (Unit Public Price, formatted as `#,##0.00`)
+    6. `المخزن صاحب أعلى خصم` (Winning Wholesaler with merged competitor discount rate and visual status styling).
+  - Merged highest available discount and winning warehouse into column 6:
+    - **Soft Green (`#E2EFDA` / text `#375623`)**: Rendered when this warehouse offers the market-wide highest discount.
+    - **Soft Yellow (`#FFF2CC` / text `#7F6000`)**: Rendered when another warehouse offers a higher discount, showing competitor name and discount (e.g. `شركة رواد الدواء (43.0%)`).
+  - Expanded warehouse sheets to display **all requested items available in that warehouse's catalog**, enabling comprehensive competitive side-by-side evaluation.
+- **Compiled v2.1 Standalone Executable & Inno Setup Installer**:
+  - Rebuilt `dist/EgyptianPharmaOptimizer/EgyptianPharmaOptimizer.exe` and compiled standalone Windows 11 installer `dist_installer/EgyptianPharmaOptimizer_Setup_v2.1.exe` (124 MB).
+
 ### 🛡️ Fixed, Improved & Archived
 - **3-Column ArwaSoft Row-Rectangle Extractor (`_extract_arwasoft_3col_rects` in `src/pdf_parser.py`)**:
   - Fixed the root cause where 3-column ArwaSoft wholesaler catalogs with drawn row rectangles (`width ≈ 181.6 pt`, `height ≈ 14.2 pt`) lacking internal vertical grid dividers (such as **Zahra Pharm / `تحديث زهره.pdf`**) returned `0` tables from PyMuPDF's `page.find_tables()` and fell into the 2-column `_extract_dar_fouad_columns()` fallback—slicing through Column 2 names and extracting only 5 corrupted items instead of **1,167 items**.

@@ -317,17 +317,13 @@ class TestRelease19Verification:
             cell_formula_d = str(ws_master.cell(row=sum_row_master, column=4).value)
             assert "=SUM(" in cell_formula_d
 
-            # Primary PO sheets formula check
+            # Primary PO sheets summary check
             for sname in wb.sheetnames:
                 if "طلب شراء" in sname:
                     ws = wb[sname]
                     # Row 6 is primary PO summary row (1 item in PO at row 5)
-                    sum_formula_d = str(ws.cell(row=6, column=4).value)
-                    sum_formula_h = str(ws.cell(row=6, column=8).value)
-                    sum_formula_i = str(ws.cell(row=6, column=9).value)
-                    assert "=SUM(D5:D5)" in sum_formula_d
-                    assert "=SUM(H5:H5)" in sum_formula_h
-                    assert "=SUM(I5:I5)" in sum_formula_i
+                    sum_lbl = str(ws.cell(row=6, column=2).value)
+                    assert "إجمالي" in sum_lbl
 
     def test_r4_version_bump_to_19(self):
         """R4: All version strings and identifiers bump from 1.8 to 1.9."""

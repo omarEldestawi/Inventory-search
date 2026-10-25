@@ -374,25 +374,27 @@ class ArabicExcelReportGenerator:
             ws_po.views.sheetView[0].rightToLeft = True
 
             # Row 1: Title
-            ws_po.merge_cells("A1:J1")
+            ws_po.merge_cells("A1:F1")
             po_title = ws_po["A1"]
             po_title.value = clean_excel_str(f"أمر توريد أدوية - {w_name}")
             po_title.font = font_main_title
             po_title.alignment = align_center
 
             # Row 2: Subtitle
-            ws_po.merge_cells("A2:J2")
+            ws_po.merge_cells("A2:F2")
             po_sub = ws_po["A2"]
-            po_sub.value = clean_excel_str(f"تاريخ الطلب: {arabic_date_text} | عدد الأصناف المعتمدة: {len(po_df)} صنف")
+            po_sub.value = clean_excel_str(f"تاريخ الطلب: {arabic_date_text} | عدد الأصناف المتاحة: {len(po_df)} صنف")
             po_sub.font = font_subtitle
             po_sub.alignment = align_center
 
             # Row 4: Header
             po_headers = [
-                'م', 'اسم الصنف في أمر الشراء', 'اسم الصنف في كتالوج المخزن',
-                'الكمية المطلوبة', 'نسبة الخصم %', 'سعر الجمهور للوحدة',
-                'سعر التوريد الصافي', 'إجمالي القيمة بسعر الجمهور',
-                'إجمالي القيمة الصافية', 'ملاحظات التوريد'
+                'م',
+                'اسم الصنف في فارما',
+                'اسم الصنف في كتالوج المخزن',
+                'نسبة الخصم %',
+                'سعر الجمهور للوحدة',
+                'المخزن صاحب أعلى خصم'
             ]
             for c_i, h in enumerate(po_headers, 1):
                 c = ws_po.cell(row=4, column=c_i)
@@ -404,74 +406,130 @@ class ArabicExcelReportGenerator:
 
             # Row 5+: Data Rows
             current_po_row = 4
-            for r_i, row_data in enumerate(po_df.values, 5):
-                is_even = (r_i % 2 == 0)
-                for c_i, val in enumerate(row_data, 1):
-                    c = ws_po.cell(row=r_i, column=c_i)
-                    c.font = font_cell
-                    c.border = thin_border
-                    
-                    if c_i == 1:
-                        try:
-                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else r_i - 4
-                        except (ValueError, TypeError):
-                            c.value = r_i - 4
-                        c.alignment = align_center
-                    elif c_i in (2, 3):
-                        c.value = clean_excel_str(val)
-                        c.alignment = align_right
-                    elif c_i == 4:
-                        try:
-                            c.value = int(val) if val is not None and not (isinstance(val, float) and val != val) else 1
-                        except (ValueError, TypeError):
-                            c.value = 1
-                        c.alignment = align_center
-                    elif c_i == 5:
-                        try:
-                            if val is not None and not (isinstance(val, float) and val != val):
-                                c.value = float(val)
-                                c.number_format = '0.0%'
-                            else:
-                                c.value = ""
-                        except (ValueError, TypeError):
-                            c.value = clean_excel_str(val)
-                        c.alignment = align_center
-                    elif c_i in (6, 7, 8, 9):
-                        try:
-                            if val is not None and not (isinstance(val, float) and val != val):
-                                c.value = float(val)
-                                c.number_format = '#,##0.00'
-                            else:
-                                c.value = ""
-                        except (ValueError, TypeError):
-                            c.value = clean_excel_str(val)
-                        c.alignment = align_center
+            if po_df is not None and not po_df.empty:
+                for r_idx, (_, r_data) in enumerate(po_df.iterrows(), 5):
+                    is_even = (r_idx % 2 == 0)
+
+                    # Col 1: Serial No
+                    ser_val = r_data.get('م', r_idx - 4)
+                    try:
+                        ser_val = int(ser_val)
+                    except (ValueError, TypeError):
+                        ser_val = r_idx - 4
+
+                    # Col 2: Requested item name in Pharma
+                    pharma_name = (
+                        r_data.get('اسم الصنف في فارما')
+                        or r_data.get('اسم الصنف في أمر الشراء')
+                        or r_data.get('اسم الصنف المطلوب (في طلب الشراء)')
+                        or r_data.get('اسم الصنف')
+                        or ''
+                    )
+
+                    # Col 3: Catalog item name in warehouse
+                    cat_name = (
+                        r_data.get('اسم الصنف في كتالوج المخزن')
+                        or r_data.get('اسم الصنف في كشف المخزن الفائز')
+                        or r_data.get('اسم الصنف في الكتالوج')
+                        or r_data.get('item_name')
+                        or ''
+                    )
+
+                    # Col 4: Discount of this warehouse
+                    disc_val = _parse_discount_value(
+                        r_data.get('نسبة الخصم %')
+                        if 'نسبة الخصم %' in r_data
+                        else r_data.get('أعلى خصم %')
+                    )
+
+                    # Col 5: Unit public price
+                    bp_val = _parse_currency_value(
+                        r_data.get('سعر الجمهور للوحدة')
+                        if 'سعر الجمهور للوحدة' in r_data
+                        else r_data.get('سعر الجمهور')
+                    )
+
+                    # Col 6: Winning Warehouse status and competitive discount
+                    is_winner_flag = r_data.get('_is_winner')
+                    max_disc_val = _parse_discount_value(r_data.get('أعلى خصم متاح %'))
+                    if max_disc_val is None:
+                        max_disc_val = disc_val or 0.0
+
+                    w_disc_val = disc_val or 0.0
+                    if is_winner_flag is not None and not pd.isna(is_winner_flag):
+                        is_winner = bool(is_winner_flag)
                     else:
-                        c.value = clean_excel_str(val)
-                        c.alignment = align_center
+                        is_winner = (w_disc_val >= max_disc_val - 1e-6)
+
+                    win_wh_status = r_data.get('المخزن صاحب أعلى خصم')
+                    if is_winner:
+                        status_text = w_name
+                    else:
+                        if win_wh_status and win_wh_status not in ('-', w_name):
+                            status_text = str(win_wh_status).strip()
+                            if "%" not in status_text and max_disc_val > 0:
+                                status_text = f"{status_text} ({max_disc_val * 100:.1f}%)"
+                        else:
+                            cand_win = str(r_data.get('_winning_wh', '')).strip()
+                            if not cand_win or cand_win in (w_name, clean_excel_str(w_name)):
+                                cand_win = "مخزن منافس"
+                            status_text = f"{cand_win} ({max_disc_val * 100:.1f}%)"
+
+                    c1 = ws_po.cell(row=r_idx, column=1, value=ser_val)
+                    c1.font = font_cell
+                    c1.alignment = align_center
+                    c1.border = thin_border
+
+                    c2 = ws_po.cell(row=r_idx, column=2, value=clean_excel_str(pharma_name))
+                    c2.font = font_cell
+                    c2.alignment = align_right
+                    c2.border = thin_border
+
+                    c3 = ws_po.cell(row=r_idx, column=3, value=clean_excel_str(cat_name))
+                    c3.font = font_cell
+                    c3.alignment = align_right
+                    c3.border = thin_border
+
+                    c4 = ws_po.cell(row=r_idx, column=4)
+                    if disc_val is not None:
+                        c4.value = float(disc_val)
+                        c4.number_format = '0.0%'
+                    else:
+                        c4.value = clean_excel_str(r_data.get('نسبة الخصم %', ''))
+                    c4.font = font_cell
+                    c4.alignment = align_center
+                    c4.border = thin_border
+
+                    c5 = ws_po.cell(row=r_idx, column=5)
+                    if bp_val is not None:
+                        c5.value = float(bp_val)
+                        c5.number_format = '#,##0.00'
+                    else:
+                        c5.value = clean_excel_str(r_data.get('سعر الجمهور للوحدة', ''))
+                    c5.font = font_cell
+                    c5.alignment = align_center
+                    c5.border = thin_border
+
+                    c6 = ws_po.cell(row=r_idx, column=6, value=clean_excel_str(status_text))
+                    c6.alignment = align_center
+                    c6.border = thin_border
+                    if is_winner:
+                        c6.fill = fill_soft_green
+                        c6.font = font_soft_green
+                    else:
+                        c6.fill = fill_soft_yellow
+                        c6.font = font_soft_yellow
 
                     if is_even:
-                        c.fill = fill_zebra
-                current_po_row = r_i
+                        for col_k in (c1, c2, c3, c4, c5):
+                            col_k.fill = fill_zebra
+
+                    current_po_row = r_idx
 
             # Summary Row for Supplier
             po_sum_row = current_po_row + 1
-            ws_po.cell(row=po_sum_row, column=2, value="الإجمالي").font = font_cell_bold
+            ws_po.cell(row=po_sum_row, column=2, value=f"إجمالي الأصناف: {len(po_df)} صنف").font = font_cell_bold
             ws_po.cell(row=po_sum_row, column=2).alignment = align_right
-            
-            c_qty = ws_po.cell(row=po_sum_row, column=4, value=f"=SUM(D5:D{current_po_row})" if current_po_row >= 5 else 0)
-            c_qty.font = font_cell_bold
-            c_qty.alignment = align_center
-            
-            c_pub = ws_po.cell(row=po_sum_row, column=8, value=f"=SUM(H5:H{current_po_row})" if current_po_row >= 5 else 0.0)
-            c_pub.font = font_cell_bold
-            c_pub.number_format = '#,##0.00'
-            c_pub.alignment = align_center
-            
-            c_net = ws_po.cell(row=po_sum_row, column=9, value=f"=SUM(I5:I{current_po_row})" if current_po_row >= 5 else 0.0)
-            c_net.font = font_cell_bold
-            c_net.number_format = '#,##0.00'
-            c_net.alignment = align_center
 
             for c_i in range(1, len(po_headers) + 1):
                 cell = ws_po.cell(row=po_sum_row, column=c_i)
