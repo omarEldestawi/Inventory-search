@@ -350,8 +350,10 @@ def inspect_catalog_counts(catalog_files: list[str]) -> dict[str, int]:
 
 def reread_catalog_with_ocr(catalog_file: str, progress_callback=None) -> tuple[str, int, list[dict]]:
     """
-    On-demand re-reads an individual catalog using RapidOCR and RapidTable.
-    Caches the parsed DataFrame in memory and returns (normalized_path, count, item_records).
+    [ARCHIVED / DEPRECATED - FAILED OCR FEATURE (2026-10-25)]
+    Retained for backward compatibility; delegates to digital vector & coordinate extraction
+    via `PDFCatalogParser.parse_ocr()` while preserving non-degradation cache safety.
+    See `archive/failed_ocr_feature/README_FAILED_OCR.md`.
     """
     if not catalog_file or not isinstance(catalog_file, str):
         raise ValueError("Invalid catalog file path provided.")

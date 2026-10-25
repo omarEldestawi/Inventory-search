@@ -268,96 +268,27 @@ def find_rapid_ocr_assets() -> Tuple[Optional[str], Dict[str, Optional[str]]]:
 
 
 def get_ocr_engine():
-    """Lazy singleton initializer for RapidOCR with frozen asset discovery and graceful degradation."""
-    global _ocr_engine
-    if _ocr_engine is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-        except ImportError as imp_err:
-            logger.warning(
-                f"RapidOCR or ONNX runtime dependency is missing ({imp_err}). "
-                f"Optical character recognition is unavailable; falling back gracefully to digital text extraction."
-            )
-            return None
-        except Exception as imp_exc:
-            logger.warning(
-                f"Failed to import RapidOCR ({imp_exc}). Falling back gracefully to digital text extraction."
-            )
-            return None
-
-        try:
-            config_path, model_paths = find_rapid_ocr_assets()
-            ocr_kwargs = {}
-            if config_path and os.path.isfile(config_path):
-                logger.info(f"RapidOCR using config: {config_path}")
-                ocr_kwargs["config_path"] = config_path
-            for param_name, model_path in model_paths.items():
-                if model_path and os.path.isfile(model_path):
-                    logger.info(f"RapidOCR using {param_name}: {model_path}")
-                    ocr_kwargs[param_name] = model_path
-
-            try:
-                _ocr_engine = RapidOCR(**ocr_kwargs) if ocr_kwargs else RapidOCR()
-            except Exception as init_exc:
-                if ocr_kwargs:
-                    logger.warning(
-                        f"RapidOCR initialization with discovered assets failed ({init_exc}). "
-                        f"Retrying with default configuration..."
-                    )
-                    _ocr_engine = RapidOCR()
-                else:
-                    raise init_exc
-        except Exception as exc:
-            logger.warning(
-                f"RapidOCR engine initialization failed: {exc}. "
-                f"Model weights may be missing or corrupted; falling back gracefully to digital text extraction."
-            )
-            return None
-
-    return _ocr_engine
+    """
+    [ARCHIVED / FAILED FEATURE - 2026-10-25]
+    RapidOCR has been archived and disabled because its bundled Chinese/English
+    PaddleOCR model (`ch_PP-OCRv4_rec_infer.onnx`) does not support Arabic script
+    and always produced 0 valid Arabic items before falling back to digital parsing.
+    See `archive/failed_ocr_feature/README_FAILED_OCR.md`.
+    """
+    logger.info(
+        "OCR feature is ARCHIVED (marked as FAILED for Arabic catalogs). "
+        "Using pure PyMuPDF digital vector & coordinate extraction."
+    )
+    return None
 
 
 def get_table_engine():
-    """Lazy singleton initializer for RapidTable with frozen asset discovery and graceful degradation."""
-    global _table_engine
-    if _table_engine is None:
-        try:
-            from rapid_table import RapidTable, RapidTableInput
-        except ImportError as imp_err:
-            logger.warning(
-                f"RapidTable dependency is missing ({imp_err}). "
-                f"Table structure recognition is unavailable; falling back to line clustering."
-            )
-            return None
-        except Exception as imp_exc:
-            logger.warning(
-                f"Failed to import RapidTable ({imp_exc}). Falling back to line clustering."
-            )
-            return None
-
-        try:
-            model_path = find_rapid_table_model()
-            if model_path and os.path.isfile(model_path):
-                logger.info(f"RapidTable using ONNX model at: {model_path}")
-                try:
-                    cfg = RapidTableInput(model_dir_or_path=model_path)
-                    _table_engine = RapidTable(cfg=cfg)
-                except Exception as cfg_exc:
-                    logger.warning(
-                        f"RapidTable failed with custom model ({cfg_exc}). "
-                        f"Retrying with default configuration..."
-                    )
-                    _table_engine = RapidTable()
-            else:
-                _table_engine = RapidTable()
-        except Exception as exc:
-            logger.warning(
-                f"RapidTable engine initialization failed: {exc}. "
-                f"Table model weights may be missing or corrupted; falling back to line clustering."
-            )
-            return None
-
-    return _table_engine
+    """
+    [ARCHIVED / FAILED FEATURE - 2026-10-25]
+    RapidTable OCR table reconstruction has been archived alongside RapidOCR.
+    See `archive/failed_ocr_feature/README_FAILED_OCR.md`.
+    """
+    return None
 
 
 def html_table_to_rows(html_str: str) -> list[list[str]]:
@@ -658,6 +589,9 @@ class PDFCatalogParser:
                 if 'الدولية الحديثة' in p0_text or 'الدوليه الحديثه' in p0_text:
                     if not re.search(r'[\u0600-\u06ff]', self.warehouse_name) or self.warehouse_name == 'الدولية فارما':
                         self.warehouse_name = 'مخزن الدولية الحديثة'
+                elif 'زهرة فارم' in p0_text or 'زهره فارم' in p0_text:
+                    if not re.search(r'[\u0600-\u06ff]', self.warehouse_name) or 'زهر' in self.warehouse_name:
+                        self.warehouse_name = 'زهرة فارم'
                 self._doc_first_num_is_price = self._detect_page_header_price_first(doc[0])
             
             # Check if this catalog uses whitespace block layout (e.g. Mega Farm)
@@ -730,9 +664,14 @@ class PDFCatalogParser:
                             ('اروى سوفت' in page.get_text("text") or 'أصناف المخزن' in page_top_text)
                         )
 
-                        # Fallback for 2-column borderless pages (e.g. Dar Al-Fouad) or block extraction
+                        # Fallback for 3-column ArwaSoft row-rectangle pages (e.g. Zahra Pharm / تحديث زهره.pdf),
+                        # 2-column borderless pages (e.g. Dar Al-Fouad), or block extraction
                         if len(page_items) < 2 and not is_cure and not is_makramy and not is_sina and not is_page_arwasoft_2col:
-                            if is_dar_fouad or (tables and len(tables.tables) == 0):
+                            if not is_dar_fouad and (not tables or len(tables.tables) == 0):
+                                rect_3col_items = self._extract_arwasoft_3col_rects(page)
+                                if rect_3col_items:
+                                    page_items.extend(rect_3col_items)
+                            if len(page_items) < 2 and (is_dar_fouad or (tables and len(tables.tables) == 0)):
                                 fouad_items = self._extract_dar_fouad_columns(page)
                                 if fouad_items:
                                     page_items.extend(fouad_items)
@@ -1543,6 +1482,202 @@ class PDFCatalogParser:
                                     'discount_rate': discount_val,
                                     'stock_status': True
                                 })
+
+        # Multi-line ArwaSoft block fallback (when item name, price, and discount are split by \n inside each block)
+        if len(items) < 2:
+            for b in blocks:
+                if b[1] < 80 or b[3] > 800:
+                    continue
+                raw_text = b[4].strip()
+                if not raw_text or any(h in raw_text for h in ['الخصم', 'السعر', 'الصنف', 'المخزن', 'أصناف', 'شركة اروى', 'لتجارة وتوزيع']):
+                    continue
+                text = unicodedata.normalize('NFKD', raw_text)
+                text = fix_arwasoft_arabic_numbers(text)
+                text = re.sub(r'([a-zA-Z\u0600-\u06FF])(\d+)', r'\1 \2', text)
+                text = re.sub(r'(\d+)([a-zA-Z\u0600-\u06FF])', r'\1 \2', text)
+                text = text.translate(EASTERN_ARABIC_DIGITS)
+                line = ' '.join(text.split()).strip()
+                m = re.search(r'(\d+(?:\.\d+)?)\s*$', line)
+                if not m:
+                    continue
+                disc_val = parse_discount(m.group(1))
+                prefix = line[:m.start()].strip()
+                m_price = re.search(r'(\d+(?:\.\d+)?)\s*(?:ج|جنيه)?\s*$', prefix)
+                if not m_price:
+                    continue
+                price_val = self._parse_price(m_price.group(1))
+                raw_name = prefix[:m_price.start()].strip()
+                raw_name = re.sub(r'\b(?:ج|جنيه|س\.ج|س\.ق|سعر|جديد|قديم)\b', ' ', raw_name)
+                raw_name = re.sub(r'[\s/]+$', '', raw_name).strip()
+                if len(raw_name) >= 2 and not is_catalog_noise(raw_name) and 0 < disc_val <= 0.85 and 0 < price_val < 10000.0:
+                    raw_name = decode_greek_arwasoft(raw_name)
+                    item_name = fix_arabic_bidi_if_needed(raw_name)
+                    norm_name = normalize_arabic_text(item_name)
+                    dosage, unit_size = parse_dosage_and_pack(item_name)
+                    if len(norm_name) >= 2:
+                        items.append({
+                            'warehouse_name': self.warehouse_name,
+                            'item_name': item_name,
+                            'normalized_name': norm_name,
+                            'dosage': dosage,
+                            'unit_size': unit_size,
+                            'base_price': price_val,
+                            'discount_rate': disc_val,
+                            'stock_status': True
+                        })
+        return items
+
+    def _extract_arwasoft_3col_rects(self, page) -> list:
+        """
+        Extracts items from 3-column ArwaSoft accounting catalogs (e.g. Zahra Pharm / تحديث زهره.pdf)
+        where each item row is enclosed in a drawn vector rectangle (width ~181.6 pt, height ~14.2 pt)
+        without internal vertical cell lines (causing PyMuPDF find_tables() to return 0 tables).
+        """
+        try:
+            drawings = page.get_drawings()
+        except Exception:
+            return []
+        if not drawings:
+            return []
+
+        raw_rects = []
+        for d in drawings:
+            r = d.get("rect")
+            if r is not None:
+                rw = r.x1 - r.x0
+                rh = r.y1 - r.y0
+                if 150.0 <= rw <= 200.0 and 10.0 <= rh <= 30.0 and 85.0 <= r.y0 <= 800.0:
+                    raw_rects.append(r)
+
+        if not raw_rects:
+            return []
+
+        # Deduplicate rectangles by rounded coordinates
+        seen_rects = set()
+        unique_rects = []
+        for r in raw_rects:
+            key = (round(r.x0, 1), round(r.y0, 1), round(r.x1, 1), round(r.y1, 1))
+            if key not in seen_rects:
+                seen_rects.add(key)
+                unique_rects.append(r)
+
+        if len(unique_rects) < 3:
+            return []
+
+        # Sort in natural RTL column reading order: Right column (x0~401), Middle (x0~216), Left (x0~31), then top-to-bottom
+        unique_rects.sort(key=lambda r: (-round(r.x0 / 50.0), round(r.y0, 1)))
+
+        words = page.get_text("words")
+        if not words:
+            return []
+
+        candidate_rows = []
+        batch_records = []
+
+        for r in unique_rects:
+            cell_words = [
+                w for w in words
+                if (r.x0 - 1.0) <= ((w[0] + w[2]) / 2.0) <= (r.x1 + 1.0)
+                and (r.y0 - 0.5) <= ((w[1] + w[3]) / 2.0) <= (r.y1 + 0.5)
+            ]
+            if not cell_words:
+                continue
+
+            # Inside each 181.6pt ArwaSoft row box:
+            # - Discount is at offset [0, 32) from r.x0 (typically ~10pt)
+            # - Public Price is at offset [32, 67) from r.x0 (typically ~36..61pt)
+            # - Item Name starts at offset >= 67 from r.x0 (leftmost word in wide names starts at ~69pt)
+            c0_words = [w for w in cell_words if (w[0] - r.x0) < 32.0 and re.search(r'[\d\u0660-\u0669]', w[4])]
+            c1_words = [w for w in cell_words if 32.0 <= (w[0] - r.x0) < 67.0 and re.search(r'[\d\u0660-\u0669]', w[4])]
+            name_words = [
+                w for w in cell_words
+                if (w[0] - r.x0) >= 67.0
+                or (32.0 <= (w[0] - r.x0) < 67.0 and not re.search(r'[\d\u0660-\u0669]', w[4]))
+            ]
+
+            if not c0_words or not c1_words or not name_words:
+                continue
+
+            c0_str = "".join(w[4] for w in sorted(c0_words, key=lambda x: x[0]))
+            c1_str = "".join(w[4] for w in sorted(c1_words, key=lambda x: x[0]))
+
+            # Group name_words into horizontal lines (supports 2-line wrapped item names inside a row box)
+            y_lines = []
+            for nw in sorted(name_words, key=lambda x: x[1]):
+                placed = False
+                for line_grp in y_lines:
+                    if abs(line_grp[0][1] - nw[1]) <= 5.0:
+                        line_grp.append(nw)
+                        placed = True
+                        break
+                if not placed:
+                    y_lines.append([nw])
+
+            line_strs = []
+            for line_grp in y_lines:
+                rtl_words = sorted(line_grp, key=lambda x: x[0], reverse=True)
+                parts = []
+                for idx, nw in enumerate(rtl_words):
+                    if (
+                        idx > 0
+                        and (rtl_words[idx - 1][0] - nw[2]) <= 1.5
+                        and not re.search(r'[\d\u0660-\u0669]', nw[4])
+                        and not re.search(r'[\d\u0660-\u0669]', rtl_words[idx - 1][4])
+                    ):
+                        parts[-1] += nw[4]
+                    else:
+                        parts.append(nw[4])
+                line_strs.append(" ".join(parts))
+
+            raw_name = unicodedata.normalize('NFKD', " ".join(line_strs).strip())
+            raw_name = decode_custom_catalog_glyphs(raw_name)
+            raw_name = fix_arwasoft_arabic_numbers(raw_name)
+            if is_catalog_noise(raw_name) or len(raw_name) < 2:
+                continue
+
+            item_name = fix_arabic_bidi_if_needed(raw_name)
+            v0 = self._extract_raw_float(c0_str)
+            v1 = self._extract_raw_float(c1_str)
+            candidate_rows.append((c0_str, c1_str, v0, v1, item_name))
+            if v0 > 0.0 and v1 > 0.0:
+                batch_records.append((v0, v1, item_name))
+
+        if not candidate_rows:
+            return []
+
+        first_is_price = self._should_swap_price_and_discount(
+            batch_records,
+            header_first_is_price=self._doc_first_num_is_price
+        )
+
+        items = []
+        for c0_str, c1_str, v0, v1, item_name in candidate_rows:
+            if first_is_price:
+                p_val = self._parse_price(c0_str)
+                disc_val = parse_discount(c1_str)
+                raw_p_num, raw_d_num = v0, v1
+            else:
+                disc_val = parse_discount(c0_str)
+                p_val = self._parse_price(c1_str)
+                raw_d_num, raw_p_num = v0, v1
+
+            p_val, disc_val = self._sanity_check_item_price_and_discount(
+                item_name, p_val, disc_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
+            )
+            if 0 < disc_val <= 0.85 and 0 < p_val < 10000.0:
+                norm_name = normalize_arabic_text(item_name)
+                dosage, unit_size = parse_dosage_and_pack(item_name)
+                if len(norm_name) >= 2:
+                    items.append({
+                        'warehouse_name': self.warehouse_name,
+                        'item_name': item_name,
+                        'normalized_name': norm_name,
+                        'dosage': dosage,
+                        'unit_size': unit_size,
+                        'base_price': p_val,
+                        'discount_rate': disc_val,
+                        'stock_status': True
+                    })
         return items
 
     def _extract_cure_right_column(self, page) -> list:
@@ -1863,6 +1998,14 @@ class PDFCatalogParser:
         words = page.get_text("words")
         if not words:
             return []
+
+        # Guard against 3-column layouts (e.g. ArwaSoft 3-col catalogs where Column 2 spans X=[216..398])
+        if 'دار الفؤاد' not in self.warehouse_name:
+            hdr_words = [wd for wd in words if 50 <= wd[1] <= 110 and any(k in wd[4] for k in ['السعر', 'الخصم', 'الصنف'])]
+            if hdr_words:
+                has_mid_hdr = any(210 <= wd[0] <= 295 for wd in hdr_words)
+                if has_mid_hdr:
+                    return []
         
         w = page.rect.width
         cols = [
@@ -2041,254 +2184,26 @@ class PDFCatalogParser:
 
     def parse_ocr(self, progress_callback=None) -> pd.DataFrame:
         """
-        Extracts catalog items from PDF using RapidOCR (ONNX CPU) and RapidTable with
-        high-performance 150 DPI rasterization and a 4-tier degradation waterfall:
-          Tier 0: Direct digital vector extraction (instantaneous for digital PDFs).
-          Tier 1: RapidTable HTML table reconstruction.
-          Tier 2: RapidOCR vertical line clustering.
-          Tier 3: PyMuPDF digital vector text block extraction.
-        Guarantees non-degradation: valid items are never wiped out or reduced.
+        [ARCHIVED / DEPRECATED - FAILED OCR FEATURE (2026-10-25)]
+        The RapidOCR + RapidTable pipeline has been archived (see `archive/failed_ocr_feature/README_FAILED_OCR.md`)
+        because its Chinese/English ONNX recognition model lacks Arabic character support and never worked on
+        Arabic pharmaceutical catalogs.
+        Delegates directly to the digital vector & coordinate parser (`self.parse()`).
         """
-        items = []
         self.last_error = None
-        doc = None
-        try:
+        if progress_callback:
             try:
-                doc = pymupdf.open(self.pdf_path)
-            except Exception as pdf_err:
-                self.last_error = f"Corrupted or invalid PDF file ({os.path.basename(self.pdf_path)}): {pdf_err}"
-                logger.warning(f"Failed to open PDF for OCR ({self.pdf_path}): {pdf_err}")
-                return pd.DataFrame(columns=[
-                    'warehouse_name', 'item_name', 'normalized_name', 'dosage',
-                    'unit_size', 'base_price', 'discount_rate', 'stock_status'
-                ])
-
-            num_pages = len(doc)
-            if num_pages == 0:
-                self.last_error = f"PDF file contains 0 pages ({os.path.basename(self.pdf_path)})"
-                return pd.DataFrame(columns=[
-                    'warehouse_name', 'item_name', 'normalized_name', 'dosage',
-                    'unit_size', 'base_price', 'discount_rate', 'stock_status'
-                ])
-
-            ocr_engine = None
-            table_engine = None
+                progress_callback(0.1, "جاري قراءة الكتالوج رقمياً...")
+            except Exception:
+                pass
+        df = self.parse()
+        if df.empty and not self.last_error:
+            self.last_error = f"No catalog items found in PDF ({os.path.basename(self.pdf_path or '')})."
+        if progress_callback:
             try:
-                ocr_engine = get_ocr_engine()
-            except Exception as ocr_init_err:
-                self.last_error = f"RapidOCR engine unavailable: {ocr_init_err}"
-                logger.warning(f"RapidOCR engine initialization failed: {ocr_init_err}")
-                ocr_engine = None
-
-            if ocr_engine is not None:
-                try:
-                    table_engine = get_table_engine()
-                except Exception as tbl_init_err:
-                    logger.warning(f"RapidTable unavailable ({tbl_init_err}); falling back to RapidOCR line clustering.")
-                    table_engine = None
-            else:
-                if not self.last_error:
-                    self.last_error = "RapidOCR engine unavailable; falling back to digital parsing."
-                logger.info("RapidOCR engine unavailable; proceeding with digital parsing fallback.")
-
-            if len(doc) > 0:
-                p0_text = unicodedata.normalize('NFKD', doc[0].get_text("text")[:400])
-                if 'الدولية الحديثة' in p0_text or 'الدوليه الحديثه' in p0_text:
-                    if not re.search(r'[\u0600-\u06ff]', self.warehouse_name) or self.warehouse_name == 'الدولية فارما':
-                        self.warehouse_name = 'مخزن الدولية الحديثة'
-                self._doc_first_num_is_price = self._detect_page_header_price_first(doc[0])
-
-            is_cure = 'كيور' in self.warehouse_name
-            is_makramy = 'المكرومي' in self.warehouse_name
-            base_fname = os.path.basename(self.pdf_path)
-            is_arwasoft_2col = (
-                any(k in base_fname for k in ['ادم جمله', 'بيرفكت فارم', 'رواد الدوا', 'الدولية الحديثة', 'الدوليه الحديثه']) or
-                any(k in self.warehouse_name for k in ['ادم', 'بيرفكت فارم', 'رواد الدواء', 'الدولية الحديثة'])
-            )
-
-            for page_idx, page in enumerate(doc):
-                page_hdr_order = self._detect_page_header_price_first(page)
-                if page_hdr_order is not None:
-                    self._doc_first_num_is_price = page_hdr_order
-                pct = page_idx / max(num_pages, 1)
-                if progress_callback:
-                    try:
-                        progress_callback(pct, f"مسح صفحة ({page_idx + 1}/{num_pages}) بـ OCR...")
-                    except Exception:
-                        pass
-
-                page_items = []
-
-                # In parse_ocr: Prioritize OCR when explicitly requested
-                if ocr_engine is not None:
-                    # Step 1: PyMuPDF 150 DPI rasterization (4x faster and lighter than 300 DPI)
-                    try:
-                        pix = page.get_pixmap(dpi=150)
-                        img_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.height, pix.width, pix.n))
-                        if pix.n == 4:
-                            img_np = img_np[:, :, :3]
-                        elif pix.n == 1:
-                            img_np = np.stack([img_np.squeeze(-1)] * 3, axis=-1)
-                        del pix
-                    except Exception as pix_err:
-                        logger.warning(f"Rasterization error on page {page_idx}: {pix_err}")
-                        img_np = None
-
-                    # Step 2: RapidOCR ONNX extraction
-                    if img_np is not None:
-                        ocr_res = None
-                        try:
-                            ocr_res, _ = ocr_engine(img_np)
-                        except Exception as ocr_err:
-                            logger.warning(f"RapidOCR error on page {page_idx}: {ocr_err}")
-
-                        # Tier 1: RapidTable HTML Table Reconstruction
-                        if table_engine is not None and ocr_res and len(ocr_res) > 0:
-                            try:
-                                dt_boxes = np.array([x[0] for x in ocr_res])
-                                rec_res = [str(x[1]) for x in ocr_res]
-                                scores = [float(x[2]) for x in ocr_res]
-                                batch_ocr = [(dt_boxes, rec_res, scores)]
-
-                                table_out = table_engine(img_np, ocr_results=batch_ocr)
-                                html_str = ""
-                                if hasattr(table_out, "pred_htmls") and table_out.pred_htmls:
-                                    html_str = table_out.pred_htmls[0]
-                                elif hasattr(table_out, "pred_html") and table_out.pred_html:
-                                    html_str = table_out.pred_html
-                                elif isinstance(table_out, str):
-                                    html_str = table_out
-
-                                if html_str:
-                                    table_rows = html_table_to_rows(html_str)
-                                    if table_rows and len(table_rows) > 1:
-                                        page_items = self._process_table(table_rows)
-                            except Exception as tbl_err:
-                                logger.debug(f"RapidTable error on page {page_idx}: {tbl_err}")
-
-                        # Tier 2 Fallback: RapidOCR Line Clustering
-                        if not page_items and ocr_res and len(ocr_res) > 0:
-                            try:
-                                page_items = self._process_ocr_lines(ocr_res)
-                            except Exception as line_err:
-                                logger.debug(f"OCR line clustering error on page {page_idx}: {line_err}")
-
-                # If OCR produced no items or engine was unavailable, fall back to digital vector extraction
-                if not page_items:
-                    page_words = page.get_text("words")
-                    if len(page_words) >= 10:
-                        try:
-                            tables = page.find_tables()
-                            if tables and len(tables.tables) > 0:
-                                all_tables = tables.tables
-                                if len(all_tables) > 1:
-                                    filtered_tables = []
-                                    for i, t1 in enumerate(all_tables):
-                                        is_enclosed = False
-                                        for j, t2 in enumerate(all_tables):
-                                            if i != j:
-                                                b1, b2 = t1.bbox, t2.bbox
-                                                # If t2 geometrically encloses t1, t1 is an inner sub-table -> discard t1
-                                                if b2[0] <= b1[0] + 1 and b2[1] <= b1[1] + 1 and b2[2] >= b1[2] - 1 and b2[3] >= b1[3] - 1:
-                                                    if abs(b1[0]-b2[0]) < 2 and abs(b1[1]-b2[1]) < 2 and abs(b1[2]-b2[2]) < 2 and abs(b1[3]-b2[3]) < 2:
-                                                        if i > j:
-                                                            is_enclosed = True
-                                                            break
-                                                    else:
-                                                        is_enclosed = True
-                                                        break
-                                        if not is_enclosed:
-                                            filtered_tables.append(t1)
-                                else:
-                                    filtered_tables = all_tables
-
-                                stitched_tables = self._stitch_contiguous_tables(filtered_tables)
-                                for t_data in stitched_tables:
-                                    if t_data and len(t_data) > 1:
-                                        page_items.extend(self._process_table(t_data))
-                            is_dar_fouad = 'دار الفؤاد' in self.warehouse_name
-                            is_sina = 'سينا' in self.warehouse_name
-                            is_page_arwasoft_2col = is_arwasoft_2col or (
-                                not is_cure and not is_makramy and not is_sina and not is_dar_fouad and
-                                tables is not None and len(tables.tables) > 0 and
-                                all(t.bbox[2] <= 315 for t in tables.tables) and
-                                ('اروى سوفت' in page.get_text("text") or 'أصناف المخزن' in page.get_text("text")[:350])
-                            )
-                            if not page_items:
-                                if is_sina:
-                                    page_items.extend(self._extract_sina_columns(page))
-                                elif is_dar_fouad:
-                                    page_items.extend(self._extract_dar_fouad_columns(page))
-                                if not page_items and not is_page_arwasoft_2col:
-                                    page_items = self._process_page_blocks(page)
-
-                            if is_cure:
-                                right_items = self._extract_cure_right_column(page)
-                                page_items.extend(right_items)
-                            elif is_page_arwasoft_2col:
-                                right_items = self._extract_arwasoft_right_column(page)
-                                page_items.extend(right_items)
-                            elif is_makramy:
-                                extra_cols = self._extract_makramy_columns(page)
-                                page_items.extend(extra_cols)
-                        except Exception as dig_err:
-                            logger.debug(f"Digital fallback error on page {page_idx}: {dig_err}")
-
-                # Tier 3 Fallback: PyMuPDF Digital Parsing if OCR yielded nothing
-                if not page_items:
-                    try:
-                        tables = page.find_tables()
-                        if tables and len(tables.tables) > 0:
-                            for t in tables:
-                                t_data = t.extract()
-                                if t_data and len(t_data) > 1:
-                                    page_items.extend(self._process_table(t_data))
-                        if not page_items:
-                            page_items = self._process_page_blocks(page)
-                    except Exception as dig_err:
-                        logger.debug(f"Digital fallback error on page {page_idx}: {dig_err}")
-
-                items.extend(page_items)
-
-            # Non-degradation guarantee: if OCR yielded zero items, fallback to digital parse
-            if not items:
-                try:
-                    digital_df = self.parse()
-                    if not digital_df.empty:
-                        items = digital_df.to_dict(orient="records")
-                except Exception as dig_merge_err:
-                    logger.debug(f"Non-degradation digital merge check: {dig_merge_err}")
-
-            if progress_callback:
-                try:
-                    progress_callback(1.0, f"اكتمل المسح بـ OCR: تم العثور على {len(items)} صنف.")
-                except Exception:
-                    pass
-
-        except Exception as e:
-            self.last_error = f"Error parsing PDF with OCR: {e}"
-            logger.warning(f"Error parsing PDF with OCR {self.warehouse_name} ({self.pdf_path}): {e}")
-        finally:
-            if doc is not None:
-                try:
-                    doc.close()
-                except Exception:
-                    pass
-
-
-        if not items:
-            if not self.last_error:
-                self.last_error = f"No catalog items found in PDF ({os.path.basename(self.pdf_path)})."
-            return pd.DataFrame(columns=[
-                'warehouse_name', 'item_name', 'normalized_name', 'dosage',
-                'unit_size', 'base_price', 'discount_rate', 'stock_status'
-            ])
-
-        df = pd.DataFrame(items)
-        df = df.sort_values(by='discount_rate', ascending=False).drop_duplicates(
-            subset=['normalized_name', 'dosage', 'unit_size'], keep='first'
-        )
-        df = df[(df['base_price'] > 0.0) & (df['base_price'] < 10000.0)]
+                progress_callback(1.0, f"اكتملت القراءة: تم العثور على {len(df)} صنف.")
+            except Exception:
+                pass
         return df
 
     @classmethod

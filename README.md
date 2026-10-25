@@ -1,18 +1,19 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 2.0 (Production Windows Release)  
+**Version:** 2.1 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
 
 ---
 
-## 🌟 What's New in Version 2.0
+## 🌟 What's New in Version 2.1
 
+- 📄 **3-Column ArwaSoft Row-Rectangle Extractor (`_extract_arwasoft_3col_rects`)**: Automatically detects and extracts 3-column ArwaSoft catalogs with drawn row rectangles lacking vertical cell borders (such as **Zahra Pharm / `تحديث زهره.pdf`**, recovering all **1,167 items** across 9 pages), alongside full RTL glyph stitching on 2-column ArwaSoft layouts and headerless continuation page handling.
+- 🗄️ **Archived Failed OCR Feature**: Archived the legacy `RapidOCR` + `RapidTable` pipeline under `archive/failed_ocr_feature/` (marked as **FAILED** due to lack of Arabic character recognition in `ch_PP-OCRv4_rec_infer.onnx`) in favor of 100% digital PyMuPDF vector, table, coordinate, and drawing-rectangle extraction, slimming down the standalone package by >100 MB.
 - 🛡️ **Automated Price & Discount Sanity Check**: Multi-signal column-level and row-level sanity check in `src/pdf_parser.py` automatically detects and corrects PDF catalogs where **Price (`السعر`)** and **Discount (`الخصم`)** columns are switched (using header coordinates, `>85%` discount bounds, inline public price hints like `سعر 144` / `41.5ج`, and distribution checks).
-- 📄 **Enhanced 2-Column ArwaSoft & Headerless Page Parsing**: Full RTL glyph stitching on right-column ArwaSoft layouts, table-level Arabic reversal consistency, Arabic decimal `٫` preservation, and headerless continuation page handling.
-- 💊 **Expanded Medication Knowledge Base (`data/medications.db`)**: Added `شركة مخزن الدولية الحديثة للادوية` catalog (529 items) and expanded `medications.db` to **6,260 standards** and **108,094 aliases** with automatic user AppData synchronization.
+- 💊 **Expanded Medication Knowledge Base (`data/medications.db`)**: Added `شركة مخزن الدولية الحديثة للادوية` (529 items) and `تحديث زهره` (`زهرة فارم`, 1,167 items) catalogs, expanding `medications.db` to **6,842 standards** and **117,753 aliases** with automatic user AppData synchronization.
 - 📊 **Per-Warehouse Above-Average Discounts Secondary Table**: Injects a secondary table directly into each supplier's purchase order sheet (`طلب شراء - [اسم المخزن]`) listing all products available from that supplier saving `>= 4.00 EGP` per pack compared to the reference weighted average discount.
-- 📦 **Windows Installer v2.0**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v2.0.exe`) with auto-upgrades and shortcuts.
+- 📦 **Windows Installer v2.1**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v2.1.exe`) with auto-upgrades and shortcuts.
 
 ---
 
@@ -21,7 +22,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v2.0.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v2.1.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.

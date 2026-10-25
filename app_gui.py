@@ -311,7 +311,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.0 / Egyptian Pharma Procurement Optimizer v2.0")
+        self.title("نظام المشتريات الصيدلانية v2.1 / Egyptian Pharma Procurement Optimizer v2.1")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -344,7 +344,7 @@ class PharmaProcurementApp(ctk.CTk):
         self._active_ocr_threads: Dict[str, threading.Thread] = {}
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.0"
+        self.app_version = "2.1"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -488,7 +488,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.0 Windows 11 Edition • Engine Ready",
+            text="v2.1 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -868,11 +868,10 @@ class PharmaProcurementApp(ctk.CTk):
         if card and hasattr(card, "_count_badge"):
             if target_f.item_count is not None:
                 if target_f.item_count > 0:
-                    ocr_tag = " [OCR]" if target_f.is_ocr else ""
-                    count_text = f"📦 {target_f.item_count} صنف / items{ocr_tag}"
-                    count_color = COLOR_SUCCESS if target_f.is_ocr else COLOR_CATALOG_BADGE
+                    count_text = f"📦 {target_f.item_count} صنف / items"
+                    count_color = COLOR_CATALOG_BADGE
                 else:
-                    count_text = "⚠️ 0 صنف (يحتاج OCR) / 0 items (needs OCR)"
+                    count_text = "⚠️ 0 صنف / 0 items"
                     count_color = COLOR_WARN_BADGE
             else:
                 count_text = "⏳ جاري فحص الأصناف... / Checking count..."
@@ -1159,7 +1158,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.0 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.1 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -1385,16 +1384,15 @@ class PharmaProcurementApp(ctk.CTk):
             )
             del_btn.grid(row=0, column=4, padx=(5, 10), pady=8, sticky="e")
 
-            # Row 1: Catalog Inspection & OCR Re-read Action
+            # Row 1: Catalog Inspection & Item Viewer Action (OCR feature archived as failed)
             if f_item.category == "Catalog":
                 # Medication Count Badge (Formatted cleanly without duplicate number)
                 if f_item.item_count is not None:
                     if f_item.item_count > 0:
-                        ocr_tag = " [OCR]" if f_item.is_ocr else ""
-                        count_text = f"📦 {f_item.item_count} صنف / items{ocr_tag}"
-                        count_color = COLOR_SUCCESS if f_item.is_ocr else COLOR_CATALOG_BADGE
+                        count_text = f"📦 {f_item.item_count} صنف / items"
+                        count_color = COLOR_CATALOG_BADGE
                     else:
-                        count_text = "⚠️ 0 صنف (يحتاج OCR) / 0 items (needs OCR)"
+                        count_text = "⚠️ 0 صنف / 0 items"
                         count_color = COLOR_WARN_BADGE
                 else:
                     count_text = "⏳ جاري فحص الأصناف... / Checking count..."
@@ -1421,42 +1419,7 @@ class PharmaProcurementApp(ctk.CTk):
                     hover_color="#047857",
                     command=lambda p=f_item.path: self._open_catalog_item_viewer(p)
                 )
-                view_items_btn.grid(row=1, column=2, padx=5, pady=(0, 6), sticky="e")
-
-                # Action button: Re-read with OCR
-                if f_item.ocr_running:
-                    ocr_btn = ctk.CTkButton(
-                        card,
-                        text="⏳ جاري المسح بـ OCR...",
-                        font=get_font(10, "bold"),
-                        width=180,
-                        height=24,
-                        state="disabled",
-                        fg_color=("gray60", "gray30")
-                    )
-                else:
-                    ocr_btn = ctk.CTkButton(
-                        card,
-                        text="🔄 إعادة قراءة بـ OCR / Re-read with OCR",
-                        font=get_font(10, "bold"),
-                        width=180,
-                        height=24,
-                        fg_color=COLOR_CATALOG_BADGE,
-                        hover_color="#0369A1",
-                        command=lambda p=f_item.path: self._start_ocr_reread(p)
-                    )
-                ocr_btn.grid(row=1, column=3, padx=5, pady=(0, 6), sticky="e")
-
-                # Status label
-                ocr_status_lbl = ctk.CTkLabel(
-                    card,
-                    text=f_item.ocr_status_msg or "",
-                    font=get_font(9),
-                    text_color=("gray40", "gray60"),
-                    anchor="e"
-                )
-                ocr_status_lbl.grid(row=1, column=4, padx=(2, 10), pady=(0, 6), sticky="e")
-                card._ocr_status_lbl = ocr_status_lbl
+                view_items_btn.grid(row=1, column=2, columnspan=2, padx=5, pady=(0, 6), sticky="e")
 
             self._file_card_widgets[f_item.path] = card
 

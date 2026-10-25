@@ -110,15 +110,22 @@ flowchart TD
   2. `Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP`.
 - Added visual competitive highlighting on Column 8 (`المخزن صاحب أعلى خصم`): **Soft Green (`#E2EFDA`)** when the current warehouse offers the highest discount market-wide, and **Soft Yellow (`#FFF2CC`)** showing the competing warehouse name and discount when another supplier is higher.
 
-### **v2.0 (October 2026) — Price/Discount Inversion Sanity Checks & Expanded Knowledge Base**
-- **Root Problem Solved**: Some wholesaler ArwaSoft catalogs (such as `شركة مخزن الدولية الحديثة للادوية د/محمود`) invert the positions of **Price (`السعر`)** and **Discount (`الخصم`)** (`[السعر | الخصم | إسم الصنف]` instead of `[الخصم | السعر | إسم الصنف]`), and omit headers on continuation pages 2–6.
+### **v2.0 – v2.1 (October 2026) — Price/Discount Inversion Sanity Checks, 3-Column ArwaSoft Rect Extractor, Failed OCR Archival & Expanded Knowledge Base**
+- **Root Problems Solved**:
+  1. Some wholesaler ArwaSoft catalogs (such as `شركة مخزن الدولية الحديثة للادوية د/محمود`) invert the positions of **Price (`السعر`)** and **Discount (`الخصم`)** (`[السعر | الخصم | إسم الصنف]` instead of `[الخصم | السعر | إسم الصنف]`), and omit headers on continuation pages 2–6.
+  2. 3-column ArwaSoft catalogs (such as **Zahra Pharm / `تحديث زهره.pdf`**) draw a vector bounding rectangle around each item row (`width ≈ 181.6 pt, height ≈ 14.2 pt`) without internal vertical cell borders. PyMuPDF's `page.find_tables()` returned `0` tables, causing the parser to fall back to the 2-column `_extract_dar_fouad_columns()` extractor, which cut across Column 2 names and produced only 5 corrupted items out of 1,167.
+  3. The legacy `RapidOCR` + `RapidTable` feature never worked on Arabic catalogs because `rapidocr_onnxruntime` bundles PaddleOCR's Chinese/English model (`ch_PP-OCRv4_rec_infer.onnx`), which lacks Arabic character support and always returned 0 Arabic items before falling back to digital parsing.
+- **3-Column ArwaSoft Row-Rectangle Extractor (`_extract_arwasoft_3col_rects`)**:
+  - Added vector rectangle inspection via `page.get_drawings()` to detect 3-column ArwaSoft row boxes, partition each box into local horizontal offsets (`Discount: [x0, x0+32)`, `Price: [x0+32, x0+67)`, `Item Name: [x0+67, x1]`), reconstruct multi-line wrapped names, unreverse ArwaSoft Eastern Arabic numerals, and extract all **1,167 items** across all 9 pages of `تحديث زهره.pdf`.
+- **Archival of Failed OCR Feature (`archive/failed_ocr_feature/`)**:
+  - Archived the legacy `RapidOCR` + `RapidTable` implementation and tests into `archive/failed_ocr_feature/` (`README_FAILED_OCR.md`, `legacy_ocr_parser.py`, `test_ocr_parser.py`), marked it as **FAILED / ARCHIVED**, removed the broken OCR button from `app_gui.py`, and stripped unused ONNX model bundling from `build_exe.py`.
 - **4-Signal Sanity Check Architecture (`src/pdf_parser.py`)**:
-  - Implemented batch/column-level (`_should_swap_price_and_discount`) and per-item row-level (`_sanity_check_item_price_and_discount`) sanity checks across merged single-cell tables, standard multi-column tables, and 2-column ArwaSoft right-column layouts.
+  - Implemented batch/column-level (`_should_swap_price_and_discount`) and per-item row-level (`_sanity_check_item_price_and_discount`) sanity checks across merged single-cell tables, standard multi-column tables, and 2-column/3-column ArwaSoft coordinate layouts.
   - Combines header X-coordinate/text order detection, pharmaceutical discount upper bounds (`> 85%`), inline public price hints extracted from drug names (`extract_inline_price_hint`, e.g., `سعر 144`, `41.5ج`), and numeric distribution heuristics.
 - **2-Column ArwaSoft & Arabic Decimal Enhancements**:
   - Reconstructed right-column RTL word order with sub-word glyph stitching (`gap <= 1.5 pt`), expanded Y-bounds (`88 < Y < 795`) to capture top rows, preserved Arabic decimal separators (`٫`, `U+066B`) before word splitting, and added table-level reversal voting (`is_table_reversed`).
 - **Expanded `medications.db`**:
-  - Added `شركة مخزن الدولية الحديثة للادوية.pdf` (529 items) to `input/catalogs/` and ingested all standards and aliases into `data/medications.db` (**6,260 standards**, **108,094 aliases**), with automatic version/size sync to `%LOCALAPPDATA%\EgyptianPharmaOptimizer\data\medications.db`.
+  - Added `شركة مخزن الدولية الحديثة للادوية.pdf` (529 items) and `تحديث زهره.pdf` (`زهرة فارم`, 1,167 items) to `input/catalogs/` and ingested all standards and aliases into `data/medications.db` (**6,842 standards**, **117,753 aliases**), with automatic version/size sync to `%LOCALAPPDATA%\EgyptianPharmaOptimizer\data\medications.db`.
 
 ---
 

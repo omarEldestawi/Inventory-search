@@ -455,6 +455,8 @@ def normalize_vendor_name(filename_or_raw_name: str) -> str:
         return 'عروض مميز'
     if 'اوائل' in name_clean or 'أوائل' in name_clean or 'اوائل' in name_clean:
         return 'الاوائل فارم'
+    if 'زهرة' in name_clean or 'زهره' in name_clean:
+        return 'زهرة فارم'
     
     # Disambiguate جملة vs جمل: strip wholesale indicator before matching Gamal Warehouse
     name_no_gomla = re.sub(r'\b(?:جملة|جمله)\b', '', name_clean).strip()

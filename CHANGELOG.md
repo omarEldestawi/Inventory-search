@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.1] - 2026-10-25
+
+### 🛡️ Fixed, Improved & Archived
+- **3-Column ArwaSoft Row-Rectangle Extractor (`_extract_arwasoft_3col_rects` in `src/pdf_parser.py`)**:
+  - Fixed the root cause where 3-column ArwaSoft wholesaler catalogs with drawn row rectangles (`width ≈ 181.6 pt`, `height ≈ 14.2 pt`) lacking internal vertical grid dividers (such as **Zahra Pharm / `تحديث زهره.pdf`**) returned `0` tables from PyMuPDF's `page.find_tables()` and fell into the 2-column `_extract_dar_fouad_columns()` fallback—slicing through Column 2 names and extracting only 5 corrupted items instead of **1,167 items**.
+  - Added `_extract_arwasoft_3col_rects()` to inspect vector rectangles in `page.get_drawings()`, slice each cell into local horizontal offsets (`Discount: [x0, x0+32)`, `Price: [x0+32, x0+67)`, `Item Name: [x0+67, x1]`), reconstruct 2-line wrapped drug names, unreverse ArwaSoft Eastern Arabic numerals (`fix_arwasoft_arabic_numbers`), and extract all **1,167 items** across all 9 pages of `تحديث زهره.pdf`.
+  - Added a 3-column header guard in `_extract_dar_fouad_columns()` and a multi-line ArwaSoft block fallback in `_process_page_blocks()`.
+- **Archived Failed OCR Feature (`archive/failed_ocr_feature/`)**:
+  - Formally archived the `RapidOCR` + `RapidTable` feature (`archive/failed_ocr_feature/README_FAILED_OCR.md`, `legacy_ocr_parser.py`, `test_ocr_parser.py`) and marked it as **FAILED / ARCHIVED**.
+  - Root cause documented: `rapidocr_onnxruntime` bundles PaddleOCR's Chinese/English recognition model (`ch_PP-OCRv4_rec_infer.onnx`), which has no Arabic character dictionary or RTL shaping support, always yielding 0 valid Arabic items before falling back to digital parsing.
+  - Removed the non-functional `🔄 إعادة قراءة بـ OCR / Re-read with OCR` button from catalog cards in `app_gui.py` and removed `rapidocr_onnxruntime`, `rapid_table`, and `onnxruntime` bundling from `build_exe.py` and `EgyptianPharmaOptimizer.spec`.
+- **Expanded Medication Knowledge Base (`data/medications.db`)**:
+  - Added `تحديث زهره.pdf` (`زهرة فارم`, 1,167 items) to `input/catalogs/` and ingested all standards and reversed/normalized aliases into `data/medications.db` (**6,842 standard references**, **117,753 aliases**), with automatic sync to `%LOCALAPPDATA%\EgyptianPharmaOptimizer\data\medications.db`.
+- **Version Bump to Release 2.1**:
+  - Updated all version strings and identifiers across GUI (`app_gui.py`), installer (`installer.iss`), documentation, and application metadata to `2.1`.
+
+---
+
 ## [2.0] - 2026-10-20
 
 ### 🛡️ Fixed & Improved

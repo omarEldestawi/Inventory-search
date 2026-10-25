@@ -238,14 +238,14 @@ class TestV114VersionConsistency:
         gui_path = os.path.join(PROJECT_ROOT, "app_gui.py")
         with open(gui_path, "r", encoding="utf-8") as f:
             content = f.read()
-        assert any(v in content for v in ["v1.1.4", "v1.1.5", "v1.8", "v1.9", "v2.0"]), "app_gui.py must reference valid release version"
+        assert any(v in content for v in ["v1.1.4", "v1.1.5", "v1.8", "v1.9", "v2.0", "v2.1"]), "app_gui.py must reference valid release version"
 
     def test_installer_version(self):
         iss_path = os.path.join(PROJECT_ROOT, "installer.iss")
         with open(iss_path, "r", encoding="utf-8") as f:
             content = f.read()
-        assert any(v in content for v in ['#define MyAppVersion "1.1.4"', '#define MyAppVersion "1.1.5"', '#define MyAppVersion "1.8"', '#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"']), "installer.iss must define MyAppVersion"
-        assert any(s in content for s in ["EgyptianPharmaOptimizer_Setup_v1.1.4", "EgyptianPharmaOptimizer_Setup_v1.1.5", "EgyptianPharmaOptimizer_Setup_v1.8", "EgyptianPharmaOptimizer_Setup_v1.9", "EgyptianPharmaOptimizer_Setup_v2.0"]), "installer.iss must output Setup"
+        assert any(v in content for v in ['#define MyAppVersion "1.1.4"', '#define MyAppVersion "1.1.5"', '#define MyAppVersion "1.8"', '#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"']), "installer.iss must define MyAppVersion"
+        assert any(s in content for s in ["EgyptianPharmaOptimizer_Setup_v1.1.4", "EgyptianPharmaOptimizer_Setup_v1.1.5", "EgyptianPharmaOptimizer_Setup_v1.8", "EgyptianPharmaOptimizer_Setup_v1.9", "EgyptianPharmaOptimizer_Setup_v2.0", "EgyptianPharmaOptimizer_Setup_v2.1"]), "installer.iss must output Setup"
 
     def test_changelog_has_v114(self):
         cl_path = os.path.join(PROJECT_ROOT, "CHANGELOG.md")
@@ -257,5 +257,5 @@ class TestV114VersionConsistency:
         rm_path = os.path.join(PROJECT_ROOT, "README.md")
         with open(rm_path, "r", encoding="utf-8") as f:
             content = f.read()
-        assert any(v in content for v in ["**Version:** 1.1.4", "**Version:** 1.1.5", "**Version:** 1.8", "**Version:** 1.9", "**Version:** 2.0"]), "README.md must have Version"
+        assert any(v in content for v in ["**Version:** 1.1.4", "**Version:** 1.1.5", "**Version:** 1.8", "**Version:** 1.9", "**Version:** 2.0", "**Version:** 2.1"]), "README.md must have Version"
 

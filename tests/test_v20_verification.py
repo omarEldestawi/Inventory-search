@@ -14,12 +14,19 @@ import os
 import pytest
 import pandas as pd
 
-from src.pdf_parser import PDFCatalogParser, extract_inline_price_hint, fix_arabic_bidi_if_needed
+from src.pdf_parser import (
+    PDFCatalogParser,
+    extract_inline_price_hint,
+    fix_arabic_bidi_if_needed,
+    get_ocr_engine,
+    get_table_engine,
+)
 from src.medication_db import MedicationDB
 from src.normalizer import normalize_vendor_name, unreverse_arabic_text
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NEW_CATALOG_PATH = os.path.join(PROJECT_ROOT, "input", "catalogs", "شركة مخزن الدولية الحديثة للادوية.pdf")
+ZAHRA_CATALOG_PATH = os.path.join(PROJECT_ROOT, "input", "catalogs", "تحديث زهره.pdf")
 
 
 class TestV20PriceDiscountSanityChecks:
@@ -161,21 +168,87 @@ class TestV20PriceDiscountSanityChecks:
         assert db.resolve("كلنسو دش") is not None
 
     def test_version_20_consistency(self):
-        """Verifies version 2.0 across app_gui.py, installer.iss, README.md, and CHANGELOG.md."""
+        """Verifies version 2.0 / 2.1 across app_gui.py, installer.iss, README.md, and CHANGELOG.md."""
         with open(os.path.join(PROJECT_ROOT, "app_gui.py"), "r", encoding="utf-8") as f:
             gui_content = f.read()
-        assert 'self.app_version = "2.0"' in gui_content
-        assert "v2.0" in gui_content
+        assert 'self.app_version = "2.1"' in gui_content
+        assert "v2.1" in gui_content
 
         with open(os.path.join(PROJECT_ROOT, "installer.iss"), "r", encoding="utf-8") as f:
             iss_content = f.read()
-        assert '#define MyAppVersion "2.0"' in iss_content
-        assert "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.0" in iss_content
+        assert '#define MyAppVersion "2.1"' in iss_content
+        assert "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.1" in iss_content
 
         with open(os.path.join(PROJECT_ROOT, "README.md"), "r", encoding="utf-8") as f:
             readme_content = f.read()
-        assert "**Version:** 2.0" in readme_content
+        assert "**Version:** 2.1" in readme_content
 
         with open(os.path.join(PROJECT_ROOT, "CHANGELOG.md"), "r", encoding="utf-8") as f:
             changelog_content = f.read()
+        assert "## [2.1]" in changelog_content
         assert "## [2.0]" in changelog_content
+
+    def test_zahra_pharm_3col_arwasoft_extraction_and_db_registration(self):
+        """
+        Verifies that `input/catalogs/تحديث زهره.pdf` (3-column ArwaSoft row-rectangle layout)
+        extracts all 1,167 items across all 9 pages (fixing the 5-item bug) and is registered in MedicationDB.
+        """
+        assert os.path.exists(ZAHRA_CATALOG_PATH), f"Expected Zahra catalog at {ZAHRA_CATALOG_PATH}"
+        assert normalize_vendor_name("تحديث زهره.pdf") == "زهرة فارم"
+
+        parser = PDFCatalogParser(ZAHRA_CATALOG_PATH)
+        df = parser.parse()
+
+        assert parser.warehouse_name == "زهرة فارم"
+        assert len(df) == 1167, f"Expected 1,167 items from تحديث زهره.pdf, got {len(df)}"
+
+        # Spot-check items across all 3 columns and multi-line wrapped rows
+        panadol = df[df["item_name"] == "بانادول ادفانس قرص"]
+        assert not panadol.empty
+        assert float(panadol.iloc[0]["base_price"]) == 92.0
+        assert float(panadol.iloc[0]["discount_rate"]) == 0.365
+
+        augram = df[df["item_name"] == "اوجرام 457 مجم شراب 80 مل"]
+        assert not augram.empty
+        assert float(augram.iloc[0]["base_price"]) == 81.0
+        assert float(augram.iloc[0]["discount_rate"]) == 0.37
+
+        centrum_wrap = df[df["item_name"].str.contains("سنترم سيدات عرض")]
+        assert not centrum_wrap.empty
+        assert float(centrum_wrap.iloc[0]["base_price"]) == 560.0
+        assert float(centrum_wrap.iloc[0]["discount_rate"]) == 0.23
+
+        militofix = df[df["item_name"].str.contains("ميليتوفكس تريو 1000 / 5 / 25")]
+        assert not militofix.empty
+        assert float(militofix.iloc[0]["base_price"]) == 486.0
+        assert float(militofix.iloc[0]["discount_rate"]) == 0.26
+
+        # Verify MedicationDB contains Zahra Pharm items
+        db = MedicationDB()
+        assert db.count_standards() >= 6800
+        assert db.count_aliases() >= 117000
+        assert db.resolve("ميليتوفكس تريو 1000 / 5 / 25 مجم قرص") is not None
+        assert db.resolve("ليمتلس اوسوفورتين 5000 وحده قرص") is not None
+
+    def test_failed_ocr_feature_archived(self):
+        """
+        Verifies that the failed RapidOCR/RapidTable feature is archived under
+        `archive/failed_ocr_feature/`, engines return None, and the active GUI
+        no longer renders the broken OCR button.
+        """
+        readme_path = os.path.join(PROJECT_ROOT, "archive", "failed_ocr_feature", "README_FAILED_OCR.md")
+        legacy_code_path = os.path.join(PROJECT_ROOT, "archive", "failed_ocr_feature", "legacy_ocr_parser.py")
+        archived_test_path = os.path.join(PROJECT_ROOT, "archive", "failed_ocr_feature", "test_ocr_parser.py")
+
+        assert os.path.isfile(readme_path), "Expected README_FAILED_OCR.md in archive/failed_ocr_feature/"
+        assert os.path.isfile(legacy_code_path), "Expected legacy_ocr_parser.py in archive/failed_ocr_feature/"
+        assert os.path.isfile(archived_test_path), "Expected test_ocr_parser.py moved to archive/failed_ocr_feature/"
+        assert not os.path.exists(os.path.join(PROJECT_ROOT, "tests", "test_ocr_parser.py"))
+
+        with open(readme_path, "r", encoding="utf-8") as f:
+            readme_text = f.read()
+        assert "FAILED" in readme_text
+        assert "ARCHIVED" in readme_text
+
+        assert get_ocr_engine() is None
+        assert get_table_engine() is None

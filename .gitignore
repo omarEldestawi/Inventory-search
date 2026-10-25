@@ -38,7 +38,9 @@ Thumbs.db
 # Agent execution files, scratch, and archives
 .agents/
 scratch/
-archive/
+archive/*
+!archive/failed_ocr_feature/
+!archive/failed_ocr_feature/**
 test1/
 test_out/
 train/
