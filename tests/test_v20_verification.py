@@ -168,23 +168,24 @@ class TestV20PriceDiscountSanityChecks:
         assert db.resolve("كلنسو دش") is not None
 
     def test_version_20_consistency(self):
-        """Verifies version 2.0 / 2.1 across app_gui.py, installer.iss, README.md, and CHANGELOG.md."""
+        """Verifies version 2.2 across app_gui.py, installer.iss, README.md, and CHANGELOG.md."""
         with open(os.path.join(PROJECT_ROOT, "app_gui.py"), "r", encoding="utf-8") as f:
             gui_content = f.read()
-        assert 'self.app_version = "2.1"' in gui_content
-        assert "v2.1" in gui_content
+        assert 'self.app_version = "2.2"' in gui_content
+        assert "v2.2" in gui_content
 
         with open(os.path.join(PROJECT_ROOT, "installer.iss"), "r", encoding="utf-8") as f:
             iss_content = f.read()
-        assert '#define MyAppVersion "2.1"' in iss_content
-        assert "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.1" in iss_content
+        assert '#define MyAppVersion "2.2"' in iss_content
+        assert "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2" in iss_content
 
         with open(os.path.join(PROJECT_ROOT, "README.md"), "r", encoding="utf-8") as f:
             readme_content = f.read()
-        assert "**Version:** 2.1" in readme_content
+        assert "**Version:** 2.2" in readme_content
 
         with open(os.path.join(PROJECT_ROOT, "CHANGELOG.md"), "r", encoding="utf-8") as f:
             changelog_content = f.read()
+        assert "## [2.2]" in changelog_content
         assert "## [2.1]" in changelog_content
         assert "## [2.0]" in changelog_content
 
@@ -251,4 +252,27 @@ class TestV20PriceDiscountSanityChecks:
         assert "ARCHIVED" in readme_text
 
         assert get_ocr_engine() is None
+
+    def test_v22_updater_relaunch_and_verification(self):
+        """
+        Verifies v2.2 updater fixes:
+        1. installer.iss has NO 'skipifsilent' on MyAppExeName run entry, ensuring silent update relaunch.
+        2. installer.iss defines MyAppVersion '2.2' and OutputBaseFilename Setup_v2.2.
+        3. updater.py contains supervisor batch generator with /SILENT and download integrity check.
+        """
+        iss_path = os.path.join(PROJECT_ROOT, "installer.iss")
+        with open(iss_path, "r", encoding="utf-8") as f:
+            iss_text = f.read()
+
+        assert "skipifsilent" not in iss_text, "installer.iss must NOT contain skipifsilent so silent update relaunches"
+        assert '#define MyAppVersion "2.2"' in iss_text
+        assert "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2" in iss_text
+
+        updater_path = os.path.join(PROJECT_ROOT, "src", "updater.py")
+        with open(updater_path, "r", encoding="utf-8") as f:
+            updater_text = f.read()
+
+        assert "run_pharma_update.bat" in updater_text
+        assert "/SILENT" in updater_text
+        assert "Incomplete download" in updater_text
         assert get_table_engine() is None

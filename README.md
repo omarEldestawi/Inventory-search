@@ -1,8 +1,17 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 2.1 (Production Windows Release)  
+**Version:** 2.2 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
+
+---
+
+## 🌟 What's New in Version 2.2
+
+- 🔄 **Overhauled Auto-Updater & Seamless Relaunch**: Completely resolved update issues faced by users where the app previously failed to re-launch or disappeared upon updating. The updater now utilizes a detached supervisor runner that waits for lingering processes to exit cleanly, runs Inno Setup with `/SILENT` progress display to prevent locked file conflicts, and automatically re-launches the application upon completion.
+- 🛡️ **Download Verification Gate**: Added byte-level verification in `src/updater.py` to ensure downloaded installers are 100% complete and uncorrupted before attempting installation.
+- 📊 **Streamlined 6-Column PO Table with All-Available Items Comparison**: Retains the streamlined 6-column purchase order format with soft green/yellow competitive discount indicators and full side-by-side comparison across all catalog items.
+- 📦 **Windows Installer v2.2**: Pre-compiled standalone setup package (`EgyptianPharmaOptimizer_Setup_v2.2.exe`) with auto-upgrades and shortcuts.
 
 ---
 
@@ -22,7 +31,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v2.1.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v2.2.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.

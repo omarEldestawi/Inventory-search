@@ -1,7 +1,7 @@
 ; Inno Setup 6 Script for Egyptian Pharma Procurement Optimizer
 #define MyAppName "Egyptian Pharma Procurement Optimizer"
 #define MyAppArabicName "نظام المشتريات الصيدلانية"
-#define MyAppVersion "2.1"
+#define MyAppVersion "2.2"
 #define MyAppPublisher "Pharma Tech Solutions"
 #define MyAppExeName "EgyptianPharmaOptimizer.exe"
 
@@ -15,7 +15,7 @@ DefaultDirName={autopf}\EgyptianPharmaOptimizer
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist_installer
-OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.1
+OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2
 SetupIconFile=assets\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -45,4 +45,4 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\assets\app.ico"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall

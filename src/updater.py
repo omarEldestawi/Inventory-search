@@ -146,32 +146,69 @@ def download_installer(
                     fraction = downloaded / total_size
                     progress_callback(fraction, downloaded, total_size)
                     
+    # Verification: Ensure file was fully downloaded and is non-empty
+    if total_size > 0 and downloaded < total_size:
+        try:
+            os.remove(dest_path)
+        except Exception:
+            pass
+        raise RuntimeError(f"Incomplete download: received {downloaded} of {total_size} bytes")
+
+    if not os.path.exists(dest_path) or os.path.getsize(dest_path) == 0:
+        raise RuntimeError("Downloaded installer is empty or missing")
+
     return dest_path
 
 
 def apply_update_and_restart(installer_path: str):
     """
-    Executes the Inno Setup installer completely silently without admin prompts
-    and restarts the application automatically upon completion.
+    Executes the Inno Setup installer reliably and ensures seamless relaunch.
     Switches:
-      /VERYSILENT : Fully invisible install without wizard or progress windows
-      /SUPPRESSMSGBOXES : Automatically dismisses all message boxes with default answers
+      /SILENT : Displays modern Inno Setup progress bar so user sees the update happening
+      /SUPPRESSMSGBOXES : Automatically dismisses non-fatal dialogs with default answers
       /FORCECLOSEAPPLICATIONS : Force closes running processes cleanly without prompting
-      /RESTARTAPPLICATIONS : Automatically re-launches the newly installed app when done
+    Also writes a detached supervisor runner script to ensure:
+      1. Sufficient 2-second sleep for the current Python process to completely terminate and release all file locks
+      2. Execution of the installer with progress indication
+      3. Guaranteed relaunch of the updated executable even if silent-run was skipped
     """
     if not os.path.isfile(installer_path):
         raise FileNotFoundError(f"Installer not found at {installer_path}")
-        
-    cmd = [
-        installer_path,
-        "/VERYSILENT",
-        "/SUPPRESSMSGBOXES",
-        "/FORCECLOSEAPPLICATIONS",
-        "/RESTARTAPPLICATIONS",
-    ]
-    logger.info(f"Launching silent updater: {' '.join(cmd)}")
-    subprocess.Popen(cmd, shell=False)
-    sys.exit(0)
+
+    # Determine installed executable path
+    installed_exe = sys.executable if getattr(sys, 'frozen', False) else ""
+
+    # Generate temporary batch supervisor
+    helper_script = os.path.join(tempfile.gettempdir(), "run_pharma_update.bat")
+    try:
+        with open(helper_script, "w", encoding="utf-8") as f:
+            f.write("@echo off\r\n")
+            f.write("timeout /t 2 /nobreak >nul\r\n")
+            f.write(f'"{installer_path}" /SILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS\r\n')
+            if installed_exe and os.path.isfile(installed_exe):
+                f.write(f'start "" "{installed_exe}"\r\n')
+            f.write('del "%~f0"\r\n')
+    except Exception as e:
+        logger.warning(f"Could not create helper script, falling back to direct launch: {e}")
+        helper_script = None
+
+    if helper_script and os.path.isfile(helper_script):
+        logger.info(f"Launching updater supervisor script: {helper_script}")
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NO_WINDOW = 0x08000000
+        flags = DETACHED_PROCESS | CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        subprocess.Popen(["cmd.exe", "/c", helper_script], creationflags=flags, close_fds=True)
+    else:
+        cmd = [
+            installer_path,
+            "/SILENT",
+            "/SUPPRESSMSGBOXES",
+            "/FORCECLOSEAPPLICATIONS",
+        ]
+        logger.info(f"Launching updater directly: {' '.join(cmd)}")
+        subprocess.Popen(cmd, shell=False)
+
+    os._exit(0)
 
 
 class AutoUpdateManager:

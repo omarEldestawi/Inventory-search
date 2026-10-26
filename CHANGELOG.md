@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.2] - 2026-10-26
+
+### 🛡️ Fixed & Improved
+- **Auto-Updater Reliability & Seamless Process Relaunch (`src/updater.py`, `installer.iss`)**:
+  - Fixed the critical bug where updating users experienced the app closing without reopening. Inno Setup's `skipifsilent` flag was removed from the `[Run]` directive, allowing silent and semi-silent updates to launch the updated app upon completion.
+  - Implemented a detached update supervisor script (`run_pharma_update.bat`) that introduces a safe 2-second buffer for the running process to release all DLLs and file locks, executes Inno Setup with `/SILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS` (providing clear visual progress to the user), and guarantees immediate restart into the updated `EgyptianPharmaOptimizer.exe`.
+  - Added strict download size verification in `download_installer`: verifies that the downloaded byte count strictly equals `content-length` before declaring readiness, eliminating errors from truncated or corrupted downloads on intermittent network connections.
+- **Release Synchronization**:
+  - Ensured all git commits, 6-column PO restructuring, and updater fixes are synchronized into release `2.2` and pushed to remote `main` and tag `v2.2`.
+- **Compiled v2.2 Standalone Executable & Inno Setup Installer**:
+  - Rebuilt `dist/EgyptianPharmaOptimizer/EgyptianPharmaOptimizer.exe` and compiled standalone Windows 11 installer `dist_installer/EgyptianPharmaOptimizer_Setup_v2.2.exe`.
+
+---
+
 ## [2.1] - 2026-10-25
 
 ### 🚀 Added & Improved

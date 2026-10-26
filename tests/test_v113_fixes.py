@@ -124,8 +124,8 @@ class TestV113CatalogReadingAndClassification:
         iss_path = os.path.join(PROJECT_ROOT, "installer.iss")
         with open(iss_path, "r", encoding="utf-8", errors="ignore") as f:
             iss_text = f.read()
-        assert any(v in iss_text for v in ['#define MyAppVersion "1.1.3"', '#define MyAppVersion "1.1.4"', '#define MyAppVersion "1.1.5"', '#define MyAppVersion "1.8"', '#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"'])
-        assert any(s in iss_text for s in ["EgyptianPharmaOptimizer_Setup_v1.1.3", "EgyptianPharmaOptimizer_Setup_v1.1.4", "EgyptianPharmaOptimizer_Setup_v1.1.5", "EgyptianPharmaOptimizer_Setup_v1.8", "EgyptianPharmaOptimizer_Setup_v1.9", "EgyptianPharmaOptimizer_Setup_v2.0", "EgyptianPharmaOptimizer_Setup_v2.1"])
+        assert any(v in iss_text for v in ['#define MyAppVersion "1.1.3"', '#define MyAppVersion "1.1.4"', '#define MyAppVersion "1.1.5"', '#define MyAppVersion "1.8"', '#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"', '#define MyAppVersion "2.2"'])
+        assert any(s in iss_text for s in ["EgyptianPharmaOptimizer_Setup_v1.1.3", "EgyptianPharmaOptimizer_Setup_v1.1.4", "EgyptianPharmaOptimizer_Setup_v1.1.5", "EgyptianPharmaOptimizer_Setup_v1.8", "EgyptianPharmaOptimizer_Setup_v1.9", "EgyptianPharmaOptimizer_Setup_v2.0", "EgyptianPharmaOptimizer_Setup_v2.1", "EgyptianPharmaOptimizer_Setup_v2.2"])
 
         # 2. GUI Title & Label
         gui_path = os.path.join(PROJECT_ROOT, "app_gui.py")

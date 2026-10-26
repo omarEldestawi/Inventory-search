@@ -110,6 +110,18 @@ flowchart TD
   2. `Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP`.
 - Added visual competitive highlighting on Column 8 (`المخزن صاحب أعلى خصم`): **Soft Green (`#E2EFDA`)** when the current warehouse offers the highest discount market-wide, and **Soft Yellow (`#FFF2CC`)** showing the competing warehouse name and discount when another supplier is higher.
 
+### **v2.2 (October 2026) — Updater Relaunch Overhaul, Download Verification & Release 2.2**
+- **Overhauled Auto-Updater Process Lifecycle**:
+  - Identified and fixed the root cause of update failures where updating users reported the app disappeared or failed to relaunch.
+  - Removed Inno Setup's `skipifsilent` flag from `installer.iss`, allowing both `/SILENT` and `/VERYSILENT` modes to execute the application on completion.
+  - Introduced a detached supervisor runner script (`run_pharma_update.bat`) with a 2-second timeout to allow the previous Python process and DLL handles to fully terminate, preventing file locking conflicts during overwrite.
+  - Switched background installation to `/SILENT` mode so users receive clear visual feedback from the Inno Setup progress bar.
+  - Added direct relaunch fallback via `start "" "{installed_exe}"` upon setup completion and immediate process exit via `os._exit(0)`.
+- **Download Integrity Verification**:
+  - Implemented exact byte size validation in `download_installer` to verify `downloaded == total_size` before proceeding, preventing corrupted execution on unstable network connections.
+- **Compiled Release 2.2 Setup Installer**:
+  - Built standalone executable via PyInstaller and compiled standalone installer `dist_installer/EgyptianPharmaOptimizer_Setup_v2.2.exe`.
+
 ### **v2.1 (October 2026) — Streamlined 6-Column PO Table, All-Item Wholesaler Comparison & Installer Build**
 - **Restructured Primary Purchase Order Table**:
   - Replaced the legacy 10-column purchase order table with 6 focused columns:

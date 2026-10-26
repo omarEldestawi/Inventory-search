@@ -344,7 +344,7 @@ class PharmaProcurementApp(ctk.CTk):
         self._active_ocr_threads: Dict[str, threading.Thread] = {}
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.1"
+        self.app_version = "2.2"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -560,7 +560,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.1)",
+            text="🔄 التحديثات / Updates (v2.2)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -1158,7 +1158,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.1 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.2 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
