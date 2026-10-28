@@ -166,9 +166,9 @@ class TestAdversarialDeepCatalogAudit(unittest.TestCase):
         runic_chars = set(AL_HADABA_FONT_MAP.keys())
         corrupt_items = []
         for fname, df in self.catalog_dfs.items():
-            for _, row in df.iterrows():
-                name = row['item_name']
-                norm = row['normalized_name']
+            # iterrows builds Series that deep-copy the catalog's diagnostic
+            # attrs for every offer. Iterate the two value columns directly.
+            for name, norm in zip(df['item_name'], df['normalized_name']):
                 for ch in runic_chars:
                     if ch in name or ch in norm:
                         corrupt_items.append((fname, ch, name, norm))
@@ -184,13 +184,12 @@ class TestAdversarialDeepCatalogAudit(unittest.TestCase):
         reversed_tokens = list(REVERSED_TOKEN_MAP.keys())
         leakage = []
         for fname, df in self.catalog_dfs.items():
-            for _, row in df.iterrows():
-                norm = row['normalized_name']
+            for name, norm in zip(df['item_name'], df['normalized_name']):
                 tokens = set(norm.split())
                 for rev_tok in reversed_tokens:
                     # check if rev_tok is a distinct token in normalized_name
                     if rev_tok in tokens and rev_tok not in ['لم']:  # 'لم' could rarely be a valid negative particle
-                        leakage.append((fname, rev_tok, row['item_name'], norm))
+                        leakage.append((fname, rev_tok, name, norm))
 
         self.assertEqual(
             len(leakage),

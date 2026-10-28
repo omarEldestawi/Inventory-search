@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.5] - 2026-10-28
+
+### 🚀 Added & Improved
+- **Shared Diagnostics & Unified Correction Service (`src/catalog_diagnostics.py`, `src/catalog_service.py`)**:
+  - Extended diagnostics with `SourceIdentity` and `ReviewIssue` retaining page, table/group, row or region coordinates, raw text/cells, rejection reasons, recovery attempts, and final provenance (`original_extraction`, `automatic_recovery`, `manual_correction`).
+  - Added `CatalogCorrectionService` shared identically between GUI inspection and direct procurement while preserving the 8-column DataFrame contract.
+- **Accountable Extraction & 3-Stage Deterministic Automatic Recovery (`src/pdf_parser.py`, `src/catalog_recovery.py`, `src/catalog_reader.py`)**:
+  - Records reviewable failures across structural, legacy, and coordinate paths, capturing bounding boxes before early validation returns and recording region-level issues for unmappable tables without hallucinating candidate counts.
+  - Runs idempotent bounded automatic recovery in strict order: (1) cell/row coordinate re-extraction, (2) intra-row wrapped Arabic/Latin text reconstruction, and (3) unambiguous column role resolution.
+  - Unified validation pipeline (`validate_catalog_item`) enforcing pharmaceutical safeguards, `0 < price < 10000`, and explicit `0 <= discount <= 85%` (blank distinct from zero).
+- **Interactive Visual Review & Column Mapping GUI (`app_gui.py`)**:
+  - Added **Review and fix** to catalog cards and viewer, and replaced warning-only dialogs with `ConsolidatedImportSummaryDialog` (**Review and fix**, **Continue with available items**, **Cancel**).
+  - Implemented `CatalogReviewWindow` with 150-DPI PyMuPDF visual page preview and highlighted bounding boxes, inline field editing, `ColumnMappingPreviewModal` (previewing all affected accepted and rejected rows before atomic confirmation), and background worker sequence guards.
+- **Atomic Fingerprinted Persistence (`src/catalog_corrections.py`, `src/pipeline.py`, `src/controller.py`)**:
+  - Persists versioned corrections under `%LOCALAPPDATA%/EgyptianPharmaOptimizer/data/catalog_corrections` keyed by canonical path and SHA-256 digest using atomic writes.
+  - Integrates correction revision into cache freshness checks, invalidates stale cached results and acknowledgment tokens upon edit or reset, and blocks procurement when zero valid items exist.
+
+---
+
 ## [2.4] - 2026-10-28
 
 ### 🚀 Added & Improved

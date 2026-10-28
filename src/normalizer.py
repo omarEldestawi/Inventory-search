@@ -679,10 +679,10 @@ def unreverse_arabic_text(text: str, force_reverse: Optional[bool] = None) -> st
     text = text.translate(EASTERN_ARABIC_DIGITS)
     
     # Decouple punctuation attached to letters
-    text = re.sub(r'([)\]}>(])([a-zA-Z\u0600-\u06ff])', r'\1 \2', text)
-    text = re.sub(r'([a-zA-Z\u0600-\u06ff])([)\]}>(])', r'\1 \2', text)
-    text = re.sub(r'([a-zA-Z\u0600-\u06ff])([/\-])', r'\1 \2', text)
-    text = re.sub(r'([/\-])([a-zA-Z\u0600-\u06ff])', r'\1 \2', text)
+    text = re.sub(r'([)\]}>(])([a-zA-Z\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff])', r'\1 \2', text)
+    text = re.sub(r'([a-zA-Z\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff])([)\]}>(])', r'\1 \2', text)
+    text = re.sub(r'([a-zA-Z\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff])([/\-])', r'\1 \2', text)
+    text = re.sub(r'([/\-])([a-zA-Z\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff])', r'\1 \2', text)
 
     # Protect numbers from being reversed with attached words (e.g. 100مجم -> 100 مجم)
     text = re.sub(r'([a-zA-Z\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff])(\d+)', r'\g<1> \g<2>', text)
@@ -2147,6 +2147,11 @@ def normalize_arabic_text(text: str) -> str:
 
     # Clean whitespace & lowercase
     text = re.sub(r'[^\w\s]', ' ', text)
+    words = text.split()
+    if any(w in REVERSED_TOKEN_MAP and w != 'لم' for w in words):
+        words = [REVERSED_TOKEN_MAP[w] if (w in REVERSED_TOKEN_MAP and w != 'لم') else w for w in words]
+        text = ' '.join(words)
+        text = re.sub(r'\b(?:خاص|نقدي|مميز|جدا|جديد|قديم|باكو|علبة|شريط|شرايط|قرص|اقراص|اقرص|لرص|صارقا|صرق|كبسول|كبسولة|امبول|فيال|نقط|قطرة|شراب|شرب|مرهم|كريم|جل|جيل)\b', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip().lower()
     return text
 

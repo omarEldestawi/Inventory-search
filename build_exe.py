@@ -72,6 +72,9 @@ def build():
         "--hidden-import", "src.updater",
         "--hidden-import", "src.catalog_diagnostics",
         "--hidden-import", "src.catalog_reader",
+        "--hidden-import", "src.catalog_recovery",
+        "--hidden-import", "src.catalog_corrections",
+        "--hidden-import", "src.catalog_service",
     ]
 
     for d in datas:

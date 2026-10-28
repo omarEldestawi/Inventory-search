@@ -1,8 +1,18 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 2.4 (Production Windows Release)  
+**Version:** 2.5 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
+
+---
+
+## 🌟 What's New in Version 2.5
+
+- 🛠️ **PDF Recovery & Interactive Correction Workflow (`src/catalog_recovery.py`, `src/catalog_service.py`, `src/catalog_corrections.py`, `app_gui.py`)**: Resolves PDF catalog extraction problems instead of merely reporting them through a unified service shared between GUI inspection and direct procurement.
+- 🔎 **Source-Traceable Diagnostics (`SourceIdentity`, `ReviewIssue`, `src/catalog_diagnostics.py`)**: Tracks page, table/group, row or region bounding boxes, raw extracted text, rejection reasons, attempted recovery strategies, and provenance (`original_extraction`, `automatic_recovery`, `manual_correction`).
+- ⚡ **3-Stage Deterministic Automatic Recovery (`src/catalog_recovery.py`)**: Bounded, idempotent recovery running (1) cell/row coordinate re-extraction, (2) intra-row wrapped Arabic/Latin text reconstruction, and (3) unambiguous geometric/header column role resolution.
+- 🖼️ **Interactive Visual Review & Column Mapping (`app_gui.py`)**: Adds **Review and fix** to catalog cards and viewer, a consolidated import summary modal, 150-DPI PDF page preview with highlighted issue bounding boxes, inline field editing, and atomic table column mapping previews across both accepted and rejected rows.
+- 💾 **Atomic Fingerprinted Persistence (`%LOCALAPPDATA%/EgyptianPharmaOptimizer/data/catalog_corrections`)**: Saves versioned corrections keyed by canonical path and SHA-256 digest with atomic writes, cache revision invalidation, acknowledgment token regeneration, and one-click reset to pristine extracted state.
 
 ---
 
@@ -51,7 +61,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v2.4.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v2.5.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.

@@ -49,6 +49,15 @@ except ImportError:
         PARSER_REVISION,
     )
 
+try:
+    from .catalog_corrections import get_corrections_revision
+except ImportError:
+    try:
+        from catalog_corrections import get_corrections_revision
+    except ImportError:
+        def get_corrections_revision(path: str, corrections_dir: Optional[str] = None) -> int:
+            return 0
+
 logger = logging.getLogger("ProcurementPipeline")
 
 
@@ -382,6 +391,27 @@ def validate_cached_catalog(
     except Exception:
         return None
 
+    # Verify corrections revision freshness
+    try:
+        disk_rev = get_corrections_revision(norm_expected)
+        cached_rev = getattr(fp, "corrections_revision", None)
+        if cached_rev is None:
+            meta = getattr(cached_res.dataframe, "attrs", {}).get(METADATA_KEY, {})
+            if isinstance(meta, dict):
+                cached_rev = meta.get("corrections_revision", 0)
+            elif hasattr(meta, "get"):
+                cached_rev = meta.get("corrections_revision", 0)
+            else:
+                cached_rev = getattr(meta, "corrections_revision", 0)
+        if cached_rev != disk_rev:
+            logger.debug(
+                f"Cached catalog '{norm_expected}' has stale corrections revision: "
+                f"disk={disk_rev}, cached={cached_rev}. Cache invalidated."
+            )
+            return None
+    except Exception as rev_err:
+        logger.debug(f"Error checking corrections revision for '{norm_expected}': {rev_err}")
+
     if not hasattr(cached_res, "diagnostics") or cached_res.diagnostics is None:
         return None
 
@@ -606,7 +636,22 @@ def run_procurement_pipeline(
                     logger.info(
                         f"Cached catalog '{base_name}' is unverified, malformed, or stale on disk; re-parsing fresh copy."
                     )
-                    df_cat = pd.DataFrame()
+            if df_cat.empty:
+                # Consult CatalogCorrectionService so persisted corrections enter procurement automatically
+                try:
+                    try:
+                        from .catalog_service import CatalogCorrectionService
+                    except ImportError:
+                        from catalog_service import CatalogCorrectionService
+                    service = CatalogCorrectionService(cat_file)
+                    service_res = service.get_refreshed_catalog_result()
+                    if service_res is not None and service_res.dataframe is not None and not service_res.dataframe.empty:
+                        df_cat = service_res.to_dataframe()
+                        logger.info(
+                            f"Loaded {len(df_cat)} catalog items with corrections via CatalogCorrectionService for '{base_name}'."
+                        )
+                except Exception as cat_svc_err:
+                    logger.debug(f"CatalogCorrectionService consultation fallback for '{base_name}': {cat_svc_err}")
 
             if df_cat.empty and cat_file.lower().endswith('.pdf'):
                 try:

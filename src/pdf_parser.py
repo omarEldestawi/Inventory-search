@@ -725,7 +725,7 @@ class PDFCatalogParser:
                                     t_extract = t.extract()
                                     geom = analyze_table_geometry(t, established_layout=self._established_geometry)
                                     groups = detect_product_groups(geom, t_extract, established_groups=self._established_groups) if geom else []
-                                    has_multi_groups = bool(groups and len(groups) >= 2 and any(g.is_valid for g in groups))
+                                    has_multi_groups = bool(groups and sum(1 for g in groups if g.is_valid) >= 2)
                                     t_num_cols = len(t_extract[0]) if (t_extract and t_extract[0]) else (len(t.rows[0].cells) if t.rows else 0)
                                     t_headers = [str(c).strip() if c is not None else "" for c in t_extract[0]] if t_extract else None
                                     sample_rows = t_extract[1:10] if (t_extract and len(t_extract) > 1) else t_extract
@@ -741,14 +741,19 @@ class PDFCatalogParser:
                                         self._established_groups and len(self._established_groups) >= 2
                                         and geom and is_layout_compat
                                     )
-                                    is_single_row_structural = bool(len(t.rows) == 1 and groups and any(g.is_valid for g in groups))
+                                    is_single_row_structural = bool(
+                                        len(t.rows) == 1
+                                        and len(filtered_tables) == 1
+                                        and groups
+                                        and any(g.is_valid for g in groups)
+                                    )
 
                                     if has_multi_groups or has_est_multi_groups or is_single_row_structural:
                                         est_geom_to_pass = self._established_geometry if is_layout_compat else None
                                         est_groups_to_pass = self._established_groups if (est_geom_to_pass is not None) else None
 
                                         p_items, new_geom, new_groups, t_diag = parse_structural_table(
-                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self
+                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self, table_idx=t_idx
                                         )
 
                                         if has_multi_groups or (new_groups and any(g.is_valid for g in new_groups)):
@@ -768,6 +773,9 @@ class PDFCatalogParser:
                                             g_diag.strategy = f"structural_table_t{t_idx}"
                                             for r_diag in g_diag.rows:
                                                 r_diag.group = grp_idx_on_page
+                                                r_diag.table = t_idx
+                                                if not r_diag.source_id or r_diag.source_id.startswith("p"):
+                                                    r_diag.source_id = f"p{page_idx + 1}_t{t_idx}_r{r_diag.row}" if r_diag.row is not None else f"p{page_idx + 1}_t{t_idx}_region"
                                             table_groups.append(g_diag)
 
                                         if not t_diag.expected_count_known:
@@ -783,8 +791,40 @@ class PDFCatalogParser:
                                     if table_data and len(table_data) >= 1:
                                         t_items = self._process_table(table_data)
                                         # Skip non-product banner/footer tables that yield no items and lack product catalog indicators
-                                        if not t_items and not self._is_likely_catalog_table(table_data):
+                                        if not t_items:
+                                            if not self._is_likely_catalog_table(table_data):
+                                                continue
+                                            # Candidate catalog table that cannot be mapped: emit region-level issue without hallucinating row counts (R2)
+                                            table_expected_known = False
+                                            grp_idx_on_page = len(table_groups)
+                                            rem_bbox = None
+                                            if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], 'bbox') and remaining_tables[rem_idx].bbox:
+                                                rem_bbox = list(remaining_tables[rem_idx].bbox)
+                                            region_diag = RowDiagnostic(
+                                                page=page_idx + 1,
+                                                table=rem_idx,
+                                                group=grp_idx_on_page,
+                                                row=None,
+                                                outcome="rejected",
+                                                reason="unmapped_table_layout",
+                                                bbox=rem_bbox,
+                                                raw_cells=table_data[:5],
+                                                is_region_issue=True,
+                                                source_id=f"p{page_idx + 1}_t{rem_idx}_region",
+                                            )
+                                            legacy_grp = GroupDiagnostics(
+                                                group=grp_idx_on_page,
+                                                strategy=f"unmapped_table_t{rem_idx}",
+                                                candidate_rows=0,
+                                                accepted_rows=0,
+                                                rejected_rows=0,
+                                                unprocessed_rows=0,
+                                                bbox=rem_bbox,
+                                                rows=[region_diag],
+                                            )
+                                            table_groups.append(legacy_grp)
                                             continue
+
                                         table_items.extend(t_items)
                                         raw_accepted_count += len(t_items)
 
@@ -795,8 +835,68 @@ class PDFCatalogParser:
                                         legacy_rejected = max(0, legacy_candidates - legacy_accepted)
 
                                         rem_bbox = None
-                                        if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], 'bbox'):
+                                        if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], 'bbox') and remaining_tables[rem_idx].bbox:
                                             rem_bbox = list(remaining_tables[rem_idx].bbox)
+
+                                        legacy_rows: List[RowDiagnostic] = []
+                                        used_item_indices = set()
+                                        num_data_rows = len(table_data) - header_offset
+                                        for r_i in range(header_offset, len(table_data)):
+                                            row_cells = table_data[r_i]
+                                            r_bbox = None
+                                            if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], "rows"):
+                                                t_rem = remaining_tables[rem_idx]
+                                                if r_i < len(t_rem.rows) and hasattr(t_rem.rows[r_i], "cells"):
+                                                    c_boxes = [c for c in t_rem.rows[r_i].cells if c is not None]
+                                                    if c_boxes:
+                                                        r_bbox = [min(b[0] for b in c_boxes), min(b[1] for b in c_boxes), max(b[2] for b in c_boxes), max(b[3] for b in c_boxes)]
+                                            if not r_bbox and rem_bbox:
+                                                r_bbox = list(rem_bbox)
+
+                                            row_str = " ".join(str(c) for c in row_cells if c)
+                                            clean_row = re.sub(r'[\s\W_]+', '', row_str).lower()
+                                            clean_row_rev = clean_row[::-1]
+
+                                            matched_item = None
+                                            if len(t_items) == num_data_rows:
+                                                idx_in_items = r_i - header_offset
+                                                if 0 <= idx_in_items < len(t_items):
+                                                    matched_item = t_items[idx_in_items]
+                                            else:
+                                                for it_idx, it in enumerate(t_items):
+                                                    if it_idx in used_item_indices:
+                                                        continue
+                                                    clean_it_name = re.sub(r'[\s\W_]+', '', it.get("item_name", "")).lower()
+                                                    if clean_it_name and (clean_it_name in clean_row or clean_row in clean_it_name or clean_it_name in clean_row_rev or clean_row_rev in clean_it_name):
+                                                        matched_item = it
+                                                        used_item_indices.add(it_idx)
+                                                        break
+
+                                            if matched_item:
+                                                legacy_rows.append(RowDiagnostic(
+                                                    page=page_idx + 1,
+                                                    table=rem_idx,
+                                                    group=grp_idx_on_page,
+                                                    row=r_i,
+                                                    outcome="accepted",
+                                                    bbox=r_bbox,
+                                                    raw_cells=row_cells,
+                                                    item_name=matched_item["item_name"],
+                                                    source_id=f"p{page_idx + 1}_t{rem_idx}_r{r_i}",
+                                                ))
+                                            else:
+                                                legacy_rows.append(RowDiagnostic(
+                                                    page=page_idx + 1,
+                                                    table=rem_idx,
+                                                    group=grp_idx_on_page,
+                                                    row=r_i,
+                                                    outcome="rejected",
+                                                    reason="legacy_parsing_rejection",
+                                                    bbox=r_bbox,
+                                                    raw_cells=row_cells,
+                                                    item_name="",
+                                                    source_id=f"p{page_idx + 1}_t{rem_idx}_r{r_i}",
+                                                ))
 
                                         legacy_grp = GroupDiagnostics(
                                             group=grp_idx_on_page,
@@ -806,6 +906,7 @@ class PDFCatalogParser:
                                             rejected_rows=legacy_rejected,
                                             unprocessed_rows=0,
                                             bbox=rem_bbox,
+                                            rows=legacy_rows,
                                         )
                                         table_groups.append(legacy_grp)
 
@@ -854,12 +955,39 @@ class PDFCatalogParser:
                             page_items.extend(fb_items)
                             raw_accepted_count += len(fb_items)
                             if len(self._page_diagnostics) <= page_idx:
+                                expected_known = bool(len(fb_items) > 0)
+                                fallback_grp = GroupDiagnostics(
+                                    group=0,
+                                    strategy="fallback",
+                                    candidate_rows=len(fb_items),
+                                    accepted_rows=len(fb_items),
+                                    rejected_rows=0,
+                                    unprocessed_rows=0,
+                                )
+                                if len(fb_items) == 0:
+                                    page_text = page.get_text("text").strip()
+                                    if len(page_text) > 50 and not is_catalog_noise(page_text):
+                                        expected_known = False
+                                        region_diag = RowDiagnostic(
+                                            page=page_idx + 1,
+                                            table=0,
+                                            group=0,
+                                            row=None,
+                                            outcome="rejected",
+                                            reason="unmapped_page_content",
+                                            bbox=list(page.rect),
+                                            raw_cells=[page_text[:200]],
+                                            is_region_issue=True,
+                                            source_id=f"p{page_idx + 1}_t0_region",
+                                        )
+                                        fallback_grp.rows = [region_diag]
                                 self._page_diagnostics.append(
                                     PageDiagnostics(
                                         page=page_idx + 1,
                                         strategy="fallback",
+                                        expected_count_known=expected_known,
                                         accepted_rows=len(fb_items),
-                                        groups=[GroupDiagnostics(group=0, strategy="fallback", candidate_rows=len(fb_items), accepted_rows=len(fb_items))]
+                                        groups=[fallback_grp],
                                     )
                                 )
                             
@@ -992,6 +1120,11 @@ class PDFCatalogParser:
                     pass
 
 
+        unresolved_regions = sum(
+            1 for p in self._page_diagnostics for g in p.groups for r in g.rows
+            if getattr(r, "is_region_issue", False) and getattr(r, "outcome", "") not in ("accepted", "recovered", "corrected")
+        )
+
         if not items:
             df = pd.DataFrame(columns=[
                 'warehouse_name', 'item_name', 'normalized_name', 'dosage',
@@ -1003,17 +1136,33 @@ class PDFCatalogParser:
                 unique_records=0,
                 duplicate_records=0,
                 errors=[self.last_error] if self.last_error else [],
+                unresolved_region_count=unresolved_regions,
             )
             self._import_diagnostics = import_diag
             fp = FileFingerprint.from_path(self.pdf_path) if self.pdf_path and os.path.exists(self.pdf_path) else None
             res = CatalogResult(dataframe=df, diagnostics=import_diag, fingerprint=fp)
-            df.attrs[METADATA_KEY] = CatalogImportMetadata(
-                diagnostics=import_diag,
-                fingerprint=fp,
+            if res.review_issues and any(not iss.resolved for iss in res.review_issues):
+                try:
+                    from .catalog_recovery import run_automatic_recovery
+                except ImportError:
+                    from catalog_recovery import run_automatic_recovery
+                res = run_automatic_recovery(res, pdf_path=self.pdf_path)
+                df = res.dataframe
+
+            meta = CatalogImportMetadata(
+                diagnostics=res.diagnostics,
+                fingerprint=res.fingerprint,
                 acknowledgment_token=res.acknowledgment_token
             )
-            df.diagnostics = import_diag
-            df.fingerprint = fp
+            if res.review_issues:
+                meta["review_issues"] = [iss.to_dict() for iss in res.review_issues]
+                try:
+                    meta.review_issues = [iss.to_dict() for iss in res.review_issues]
+                except Exception:
+                    pass
+            df.attrs[METADATA_KEY] = meta
+            df.diagnostics = res.diagnostics
+            df.fingerprint = res.fingerprint
             df.acknowledgment_token = res.acknowledgment_token
             return df
             
@@ -1037,17 +1186,35 @@ class PDFCatalogParser:
             unique_records=unique_records,
             duplicate_records=duplicate_records,
             errors=[self.last_error] if self.last_error else [],
+            unresolved_region_count=unresolved_regions,
         )
         self._import_diagnostics = import_diag
         fp = FileFingerprint.from_path(self.pdf_path) if self.pdf_path and os.path.exists(self.pdf_path) else None
         res = CatalogResult(dataframe=df, diagnostics=import_diag, fingerprint=fp)
-        df.attrs[METADATA_KEY] = CatalogImportMetadata(
-            diagnostics=import_diag,
-            fingerprint=fp,
+
+        # Run deterministic automatic recovery on reviewable issues (R3)
+        if res.review_issues and any(not iss.resolved for iss in res.review_issues):
+            try:
+                from .catalog_recovery import run_automatic_recovery
+            except ImportError:
+                from catalog_recovery import run_automatic_recovery
+            res = run_automatic_recovery(res, pdf_path=self.pdf_path)
+            df = res.dataframe
+
+        meta = CatalogImportMetadata(
+            diagnostics=res.diagnostics,
+            fingerprint=res.fingerprint,
             acknowledgment_token=res.acknowledgment_token
         )
-        df.diagnostics = import_diag
-        df.fingerprint = fp
+        if res.review_issues:
+            meta["review_issues"] = [iss.to_dict() for iss in res.review_issues]
+            try:
+                meta.review_issues = [iss.to_dict() for iss in res.review_issues]
+            except Exception:
+                pass
+        df.attrs[METADATA_KEY] = meta
+        df.diagnostics = res.diagnostics
+        df.fingerprint = res.fingerprint
         df.acknowledgment_token = res.acknowledgment_token
         return df
 

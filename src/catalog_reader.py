@@ -7,6 +7,7 @@ geometric cell retention, page layout persistence, and group-level Arabic direct
 from __future__ import annotations
 
 import logging
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -64,7 +65,7 @@ def is_genuine_header_cell(val: Any) -> bool:
     # If it contains dosage units or strength numbers, it is product data, not header
     if re.search(r'\b\d+(?:\.\d+)?\s*(?:mg|gm|g|ml|mcg|iu|%)\b', s, re.IGNORECASE):
         return False
-    if re.search(r'(?:مجم|جم|مل|وحدة|أقراص|كبسول|شراب|مرهم|كريم|حقن)', s):
+    if re.search(r'(?<![\u0600-\u06ff])(?:مجم|جم|مل|وحدة|أقراص|كبسول|شراب|مرهم|كريم|حقن)(?![\u0600-\u06ff])', s):
         return False
 
     # If it's a pure number or formatted float/currency, it is price/discount, not header
@@ -80,13 +81,14 @@ def is_genuine_header_cell(val: Any) -> bool:
         "خصم", "الخصم", "نسبة", "نسبة الخصم", "disc", "disc%", "disc %", "discount",
         "رصيد", "كمية", "الكمية", "حالة", "توفر", "متاح", "stock", "qty", "status", "avail",
         "كود", "code", "item code", "باركود", "barcode", "مسلسل", "م", "ت", "no", "sn", "#",
-        "فنصلا", "فنصلا مسا", "رعسلا", "رعس", "مصخلا", "مصخ", "مص", "منسصالا", "فنصلفا"
+        "فنصلا", "فنصلا مسا", "رعسلا", "رعس", "مصخلا", "مصخ", "مص", "منسصالا", "فنصلفا",
+        "ملاحظات", "ملاحظة", "ملاحظه", "تاظحلام", "تاظحلا", "هظحلام", "ةظحلام", "notes", "note", "remark", "remarks"
     }
     if norm in header_exact or norm.strip(".:/\\- #") in header_exact:
         return True
 
     tokens = set(re.findall(r'[\w%]+', norm))
-    if tokens & {"disc", "discount", "price", "item", "product", "description", "stock", "qty", "barcode", "sn"}:
+    if tokens & {"disc", "discount", "price", "item", "product", "description", "stock", "qty", "barcode", "sn", "note", "notes", "remark", "remarks"}:
         return True
     arabic_header_kws = ["اسم الصنف", "سعر الجمهور", "نسبة الخصم", "رقم الصنف", "كود الصنف", "فنصلا مسا", "روهمجلا رعس", "مصخلا ةبسن"]
     if any(k in norm for k in arabic_header_kws):
@@ -178,6 +180,10 @@ class TableGeometry:
                         if cells:
                             cur_role = classify_column_role("", cells)
                             if cur_role != "unknown" and cur_role != est_role:
+                                if est_role == "discount" and cur_role == "price":
+                                    vals = [extract_raw_float_value(c) for c in cells if str(c).strip()]
+                                    if vals and all(0.0 <= v <= 85.0 for v in vals):
+                                        continue
                                 return False
         return True
 
@@ -424,7 +430,7 @@ def classify_column_role(header_text: str, sample_cells: Optional[Sequence[Any]]
             "كود", "code", "باركود", "barcode", "مسلسل", "لسلسلم", "لسلم",
             "تسلسل", "لسلست", "الرقم", "رقم", "مقرلا", "مقر"
         ]
-        notes_kws = ["ملاحظ", "note", "remark"]
+        notes_kws = ["ملاحظ", "تاظحلا", "هظحلام", "ةظحلام", "note", "remark"]
 
         tokens = set(re.findall(r'[\w%]+', h_norm))
         if any(k in h_norm for k in name_kws) or (tokens & {"name", "item", "product", "description"}):
@@ -551,8 +557,19 @@ def detect_product_groups(
                     ("code", g.code_col),
                 ]:
                     if col_idx is not None and col_idx in retained:
-                        cur_role = roles[retained.index(col_idx)]
+                        r_idx = retained.index(col_idx)
+                        cur_role = roles[r_idx]
                         if cur_role != "unknown" and cur_role != col_name:
+                            if (
+                                not has_explicit_header[r_idx]
+                                and col_name == "discount"
+                                and cur_role == "price"
+                                and sample_rows
+                            ):
+                                cells = [r[col_idx] for r in sample_rows if col_idx < len(r) and r[col_idx] is not None]
+                                vals = [extract_raw_float_value(c) for c in cells if str(c).strip()]
+                                if vals and all(0.0 <= v <= 85.0 for v in vals):
+                                    continue
                             role_conflict = True
                             break
                 if role_conflict:
@@ -938,23 +955,7 @@ def extract_item_from_group_row(
     decimal strengths, and multi-part ratios.
     Returns (item_dict_or_None, outcome_reason, item_bbox).
     """
-    if not group.is_valid:
-        return None, "invalid_group", None
-
-    # 1. Extract raw name cell
-    name_idx = group.name_col
-    if name_idx is None or name_idx >= len(row) or row[name_idx] is None:
-        return None, "empty_name_cell", None
-
-    raw_name_cell = str(row[name_idx]).strip()
-    if not raw_name_cell:
-        return None, "blank_name", None
-
-    # Check for header repetition inside body rows
-    if any(h in raw_name_cell for h in ["اسم الصنف", "الصنف", "Item Name", "Product", "البيان", "فنصلا", "مسإ", "مساف", "منسصالا"]):
-        return None, "header_repetition", None
-
-    # Compute bounding box for this row from cell bboxes
+    # Compute bounding box for this row from cell bboxes before early validation exits (R2)
     item_bbox = None
     if row_bboxes:
         relevant_bboxes = [row_bboxes[c] for c in group.raw_cols if c < len(row_bboxes) and row_bboxes[c] is not None]
@@ -965,6 +966,22 @@ def extract_item_from_group_row(
                 max(b[2] for b in relevant_bboxes),
                 max(b[3] for b in relevant_bboxes),
             ]
+
+    if not group.is_valid:
+        return None, "invalid_group", item_bbox
+
+    # 1. Extract raw name cell
+    name_idx = group.name_col
+    if name_idx is None or name_idx >= len(row) or row[name_idx] is None:
+        return None, "empty_name_cell", item_bbox
+
+    raw_name_cell = str(row[name_idx]).strip()
+    if not raw_name_cell:
+        return None, "blank_name", item_bbox
+
+    # Check for header repetition inside body rows
+    if any(h in raw_name_cell for h in ["اسم الصنف", "الصنف", "Item Name", "Product", "البيان", "فنصلا", "مسإ", "مساف", "منسصالا"]):
+        return None, "header_repetition", item_bbox
 
     # 2. Extract price and discount without shifting adjacent columns
     raw_price_cell = str(row[group.price_col]).strip() if group.price_col is not None and group.price_col < len(row) and row[group.price_col] is not None else ""
@@ -1098,6 +1115,7 @@ def parse_structural_table(
     established_layout: Optional[TableGeometry] = None,
     established_groups: Optional[List[ProductGroup]] = None,
     sanity_checker: Optional[Any] = None,
+    table_idx: int = 0,
 ) -> Tuple[List[Dict[str, Any]], Optional[TableGeometry], Optional[List[ProductGroup]], Any]:
     """
     Extracts catalog items from a structural PDF table object, retaining cell bounding boxes,
@@ -1168,6 +1186,8 @@ def parse_structural_table(
                         bbox=item_bbox,
                         raw_cells=raw_cells_data,
                         item_name=item["item_name"],
+                        table=table_idx,
+                        source_id=f"p{page_idx + 1}_t{table_idx}_r{r_idx}",
                     )
                 )
                 page_items.append(item)
@@ -1183,6 +1203,8 @@ def parse_structural_table(
                         bbox=item_bbox,
                         raw_cells=raw_cells_data,
                         item_name=raw_item_name,
+                        table=table_idx,
+                        source_id=f"p{page_idx + 1}_t{table_idx}_r{r_idx}",
                     )
                 )
 
@@ -1198,4 +1220,138 @@ def parse_structural_table(
     )
 
     return page_items, geometry, groups, page_diag
+
+
+def validate_catalog_item(item_data: dict[str, Any]) -> tuple[bool, Optional[str]]:
+    """
+    Canonical pharmaceutical and numeric validation pipeline shared across initial extraction,
+    deterministic automatic recovery, and manual user correction.
+
+    Enforces:
+    - Medication name: non-empty, stripped, no header tokens, not catalog noise, len >= 2.
+    - Price: float, 0.0 < price < 10000.0.
+    - Discount: Optional[float], 0.0 <= discount <= 0.85 (blank discount as None, distinct from 0.0).
+    - Stock: valid boolean, integer, or recognized status string.
+
+    Returns:
+        tuple[bool, Optional[str]]: (True, None) if valid, (False, error_reason) if invalid.
+    """
+    if not isinstance(item_data, dict):
+        return False, "invalid_item_data_type"
+
+    # 1. Medication Name Validation
+    raw_name = (
+        item_data.get("item_name")
+        if item_data.get("item_name") is not None
+        else item_data.get("name", item_data.get("normalized_name"))
+    )
+    if raw_name is None:
+        return False, "missing_item_name"
+
+    name_str = str(raw_name).strip()
+    if not name_str:
+        return False, "empty_item_name"
+    if len(name_str) < 2:
+        return False, "name_too_short"
+
+    if is_genuine_header_cell(name_str):
+        return False, f"header_token_in_name: {name_str}"
+
+    if is_catalog_noise(name_str):
+        return False, f"catalog_noise_in_name: {name_str}"
+
+    norm_lower = unicodedata.normalize("NFKD", name_str).lower().strip()
+    header_exact_tokens = {
+        "اسم", "صنف", "اسم الصنف", "الصنف", "البيان", "دواء", "اسم الدواء",
+        "name", "item", "item name", "product", "product name", "description",
+        "سعر", "السعر", "سعر الجمهور", "جمهور", "رسمي", "price", "public", "base", "base price",
+        "خصم", "الخصم", "نسبة", "نسبة الخصم", "disc", "disc%", "disc %", "discount",
+        "رصيد", "كمية", "الكمية", "حالة", "توفر", "متاح", "stock", "qty", "status", "avail",
+        "كود", "code", "item code", "باركود", "barcode", "مسلسل", "م", "ت", "no", "sn", "#",
+        "فنصلا", "فنصلا مسا", "رعسلا", "رعس", "مصخلا", "مصخ", "منسصالا", "فنصلفا"
+    }
+    if norm_lower in header_exact_tokens or norm_lower.strip(".:/\\- #") in header_exact_tokens:
+        return False, f"header_token_in_name: {name_str}"
+
+    # 2. Price Validation
+    raw_price = (
+        item_data.get("base_price")
+        if "base_price" in item_data
+        else item_data.get("price", item_data.get("Price"))
+    )
+    if raw_price is None:
+        return False, "missing_price"
+    if isinstance(raw_price, bool):
+        return False, "invalid_price_boolean"
+
+    try:
+        if isinstance(raw_price, str):
+            clean_p = raw_price.translate(ALL_EASTERN_DIGITS).replace(",", ".").strip()
+            price_val = float(clean_p)
+        else:
+            price_val = float(raw_price)
+    except (ValueError, TypeError):
+        return False, f"invalid_price_format: {raw_price}"
+
+    if math.isnan(price_val) or math.isinf(price_val):
+        return False, "invalid_price_nan_or_inf"
+
+    if price_val <= 0.0:
+        return False, f"invalid_price_zero_or_negative: {price_val}"
+    if price_val >= 10000.0:
+        return False, f"invalid_price_out_of_bounds: {price_val}"
+
+    # 3. Discount Validation
+    raw_discount = None
+    has_discount_key = False
+    for k in ("discount_rate", "discount", "Discount", "disc"):
+        if k in item_data:
+            raw_discount = item_data[k]
+            has_discount_key = True
+            break
+
+    if has_discount_key and raw_discount is not None:
+        if isinstance(raw_discount, bool):
+            return False, "invalid_discount_boolean"
+        if isinstance(raw_discount, str) and not raw_discount.strip():
+            # Blank discount represented as empty string -> treated as None (blank discount)
+            discount_val = None
+        else:
+            try:
+                if isinstance(raw_discount, str):
+                    s_disc = raw_discount.strip()
+                    if is_explicit_zero_discount(s_disc):
+                        discount_val = 0.0
+                    else:
+                        is_pct = "%" in s_disc
+                        clean_disc = s_disc.replace("%", "").replace(",", ".").translate(ALL_EASTERN_DIGITS).strip()
+                        raw_num = float(clean_disc)
+                        if is_pct or raw_num > 1.0:
+                            discount_val = raw_num / 100.0
+                        else:
+                            discount_val = raw_num
+                else:
+                    discount_val = float(raw_discount)
+            except (ValueError, TypeError):
+                return False, f"invalid_discount_format: {raw_discount}"
+
+            if discount_val is not None:
+                if math.isnan(discount_val) or math.isinf(discount_val):
+                    return False, "invalid_discount_nan_or_inf"
+                if discount_val < 0.0:
+                    return False, f"invalid_discount_negative: {discount_val}"
+                if discount_val > 0.85:
+                    return False, f"invalid_discount_out_of_bounds: {discount_val}"
+
+    # 4. Stock Validation (optional field)
+    raw_stock = (
+        item_data.get("stock_status")
+        if "stock_status" in item_data
+        else item_data.get("stock", item_data.get("Stock"))
+    )
+    if raw_stock is not None:
+        if not isinstance(raw_stock, (bool, int, str)):
+            return False, f"invalid_stock_type: {type(raw_stock).__name__}"
+
+    return True, None
 

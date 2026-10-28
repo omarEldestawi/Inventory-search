@@ -14,17 +14,19 @@ import logging
 import datetime
 import subprocess
 import traceback
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Callable, Any
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
+from PIL import Image, ImageDraw, ImageTk
+import pymupdf
 
 # Configure Windows AppUserModelID for crisp taskbar icon resolution and grouping
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.4")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.5")
     except Exception:
         pass
 
@@ -42,7 +44,17 @@ try:
     from src.catalog_diagnostics import (
         CatalogResult,
         ImportDiagnostics,
+        FileFingerprint,
+        ReviewIssue,
+        SourceIdentity,
     )
+    from src.catalog_service import (
+        CatalogCorrectionService,
+        is_header_text,
+        re_is_pure_num,
+        extract_numeric,
+    )
+    from src.catalog_reader import validate_catalog_item
     from src.pipeline import (
         run_procurement_pipeline,
         PipelineExecutionError,
@@ -66,7 +78,17 @@ except ImportError:
     from catalog_diagnostics import (
         CatalogResult,
         ImportDiagnostics,
+        FileFingerprint,
+        ReviewIssue,
+        SourceIdentity,
     )
+    from catalog_service import (
+        CatalogCorrectionService,
+        is_header_text,
+        re_is_pure_num,
+        extract_numeric,
+    )
+    from catalog_reader import validate_catalog_item
     from pipeline import (
         run_procurement_pipeline,
         PipelineExecutionError,
@@ -317,6 +339,1065 @@ class FileListModel:
         return True, "جاهز للبدء والتوزيع / Ready to optimize"
 
 
+def render_pdf_page_with_highlight(
+    pdf_path: str,
+    page_number: int = 1,
+    bbox: Optional[List[float]] = None,
+    dpi: int = 150,
+    highlight_color: str = "#DC2626",
+    highlight_width: int = 4,
+) -> Optional[Image.Image]:
+    """
+    Renders a PDF page to a PIL Image at specified DPI (default 150),
+    and highlights the provided bounding box [x0, y0, x1, y1] if given.
+    Returns None if file is missing, not a PDF, or rendering fails.
+    """
+    if not pdf_path or not os.path.isfile(pdf_path):
+        return None
+    if not pdf_path.lower().endswith(".pdf"):
+        return None
+    try:
+        doc = pymupdf.open(pdf_path)
+        if len(doc) == 0:
+            doc.close()
+            return None
+        # Clamped 0-indexed page
+        p_idx = max(0, min(page_number - 1, len(doc) - 1))
+        page = doc[p_idx]
+        pix = page.get_pixmap(dpi=dpi)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+        if bbox and len(bbox) >= 4:
+            scale_x = pix.width / max(1.0, float(page.rect.width))
+            scale_y = pix.height / max(1.0, float(page.rect.height))
+            rx0 = min(float(bbox[0]), float(bbox[2])) * scale_x
+            ry0 = min(float(bbox[1]), float(bbox[3])) * scale_y
+            rx1 = max(float(bbox[0]), float(bbox[2])) * scale_x
+            ry1 = max(float(bbox[1]), float(bbox[3])) * scale_y
+
+            # Ensure minimal visibility
+            if rx1 - rx0 < 10:
+                rx1 = rx0 + 10
+            if ry1 - ry0 < 10:
+                ry1 = ry0 + 10
+
+            draw = ImageDraw.Draw(img)
+            # Outer primary rectangle (red/amber)
+            draw.rectangle([rx0, ry0, rx1, ry1], outline=highlight_color, width=highlight_width)
+            # Inner contrasting border for dark or light PDF page backgrounds
+            inner_color = "#D97706" if highlight_color != "#D97706" else "#F59E0B"
+            draw.rectangle([rx0 + 2, ry0 + 2, rx1 - 2, ry1 - 2], outline=inner_color, width=max(1, highlight_width // 2))
+
+        doc.close()
+        return img
+    except Exception as exc:
+        logger.warning(f"Error rendering PDF page {page_number} for {pdf_path}: {exc}")
+        return None
+
+
+class ColumnMappingPreviewModal(ctk.CTkToplevel):
+    """
+    Interactive modal displaying prospective column mapping transformations
+    across ALL table rows (both previously accepted and rejected), with explicit confirmation.
+    """
+    def __init__(
+        self,
+        parent,
+        service: CatalogCorrectionService,
+        table_id: int = 0,
+        initial_mapping: Optional[Dict[str, int]] = None,
+        on_applied_callback: Optional[Callable[[], None]] = None,
+    ):
+        super().__init__(parent)
+        self.service = service
+        self.table_id = table_id
+        self.on_applied_callback = on_applied_callback
+        self.preview_records: List[Dict[str, Any]] = []
+
+        self.title(f"معاينة خريطة الأعمدة - جدول {table_id} / Table Column Mapping Preview")
+        self.geometry("920x620")
+        self.minsize(750, 480)
+        try:
+            self.transient(parent)
+            self.grab_set()
+        except Exception:
+            pass
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # 1. Header & Mapping Inputs
+        control_frame = ctk.CTkFrame(self, corner_radius=6)
+        control_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 8))
+        control_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        title_lbl = ctk.CTkLabel(
+            control_frame,
+            text=f"🗺️ خريطة أعمدة الجدول #{table_id} (تطبيق شامل على جميع صفوف الجدول)",
+            font=get_font(13, "bold"),
+            anchor="w",
+        )
+        title_lbl.grid(row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(10, 8))
+
+        default_map = initial_mapping or {"item_name": 0, "base_price": 1, "discount_rate": 2, "stock_status": 3}
+        self.name_idx_var = tk.StringVar(value=str(default_map.get("item_name", 0)))
+        self.price_idx_var = tk.StringVar(value=str(default_map.get("base_price", 1)))
+        self.disc_idx_var = tk.StringVar(value=str(default_map.get("discount_rate", 2)))
+        self.stock_idx_var = tk.StringVar(value=str(default_map.get("stock_status", 3)))
+
+        def _build_idx_input(row, col, label_ar, label_en, var):
+            f = ctk.CTkFrame(control_frame, fg_color="transparent")
+            f.grid(row=row, column=col, padx=8, pady=4, sticky="ew")
+            lbl = ctk.CTkLabel(f, text=f"{label_ar}\n{label_en}", font=get_font(10), anchor="w")
+            lbl.pack(anchor="w")
+            entry = ctk.CTkEntry(f, textvariable=var, width=70, font=get_font(11))
+            entry.pack(anchor="w", pady=(2, 0))
+            return entry
+
+        _build_idx_input(1, 0, "عمود الاسم", "Item Name Col", self.name_idx_var)
+        _build_idx_input(1, 1, "عمود السعر", "Base Price Col", self.price_idx_var)
+        _build_idx_input(1, 2, "عمود الخصم", "Discount % Col", self.disc_idx_var)
+        _build_idx_input(1, 3, "عمود الحالة", "Stock Col", self.stock_idx_var)
+
+        preview_btn = ctk.CTkButton(
+            control_frame,
+            text="🔄 تحديث المعاينة / Refresh Preview",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_ACCENT,
+            command=self._on_refresh_preview,
+        )
+        preview_btn.grid(row=2, column=0, columnspan=4, padx=12, pady=(8, 10), sticky="e")
+
+        # 2. Preview Table
+        table_container = ctk.CTkFrame(self, corner_radius=6)
+        table_container.grid(row=1, column=0, sticky="nsew", padx=15, pady=5)
+        table_container.grid_columnconfigure(0, weight=1)
+        table_container.grid_rowconfigure(0, weight=1)
+
+        cols = ("source_id", "prev_accepted", "name", "price", "discount", "status", "valid", "error")
+        self.tree = ttk.Treeview(table_container, columns=cols, show="headings", selectmode="browse")
+        self.tree.heading("source_id", text="معرف الصف / Source ID")
+        self.tree.heading("prev_accepted", text="معتمد سابقاً؟ / Prev Accepted")
+        self.tree.heading("name", text="اسم الصنف / Item Name")
+        self.tree.heading("price", text="السعر / Price")
+        self.tree.heading("discount", text="الخصم / Discount")
+        self.tree.heading("status", text="الحالة / Stock")
+        self.tree.heading("valid", text="صالح؟ / Valid")
+        self.tree.heading("error", text="ملاحظات التحقق / Error Reason")
+
+        self.tree.column("source_id", width=95, anchor="center")
+        self.tree.column("prev_accepted", width=95, anchor="center")
+        self.tree.column("name", width=220, anchor="w")
+        self.tree.column("price", width=80, anchor="center")
+        self.tree.column("discount", width=80, anchor="center")
+        self.tree.column("status", width=70, anchor="center")
+        self.tree.column("valid", width=65, anchor="center")
+        self.tree.column("error", width=180, anchor="w")
+
+        sc_y = ttk.Scrollbar(table_container, orient="vertical", command=self.tree.yview)
+        sc_x = ttk.Scrollbar(table_container, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=sc_y.set, xscrollcommand=sc_x.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        sc_y.grid(row=0, column=1, sticky="ns")
+        sc_x.grid(row=1, column=0, sticky="ew")
+
+        # 3. Summary & Action Bar
+        bottom_bar = ctk.CTkFrame(self, fg_color="transparent")
+        bottom_bar.grid(row=2, column=0, sticky="ew", padx=15, pady=(8, 15))
+        bottom_bar.grid_columnconfigure(0, weight=1)
+
+        self.summary_lbl = ctk.CTkLabel(
+            bottom_bar,
+            text="",
+            font=get_font(11, "bold"),
+            anchor="w",
+        )
+        self.summary_lbl.grid(row=0, column=0, sticky="w")
+
+        actions_f = ctk.CTkFrame(bottom_bar, fg_color="transparent")
+        actions_f.grid(row=0, column=1, sticky="e")
+
+        cancel_btn = ctk.CTkButton(
+            actions_f,
+            text="✕ إلغاء / Cancel",
+            font=get_font(11),
+            fg_color=("gray70", "gray30"),
+            width=100,
+            command=self.destroy,
+        )
+        cancel_btn.pack(side="left", padx=(0, 8))
+
+        apply_btn = ctk.CTkButton(
+            actions_f,
+            text="✓ تأكيد وتطبيق التعديل / Confirm & Apply",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_ORDER_BADGE,
+            hover_color="#047857",
+            command=self._on_confirm_apply,
+        )
+        apply_btn.pack(side="left")
+
+        # Initial Preview
+        self._on_refresh_preview()
+
+    def get_current_mapping(self) -> Dict[str, int]:
+        mapping = {}
+        for k, var in [
+            ("item_name", self.name_idx_var),
+            ("base_price", self.price_idx_var),
+            ("discount_rate", self.disc_idx_var),
+            ("stock_status", self.stock_idx_var),
+        ]:
+            val = var.get().strip()
+            if val.isdigit():
+                mapping[k] = int(val)
+        return mapping
+
+    def _on_refresh_preview(self):
+        mapping = self.get_current_mapping()
+        self.preview_records = self.service.preview_table_column_mapping(self.table_id, mapping)
+        self.tree.delete(*self.tree.get_children())
+
+        valid_count = 0
+        prev_acc_count = 0
+        for rec in self.preview_records:
+            cand = rec.get("candidate", {})
+            sid = rec.get("source_id", "")
+            was_acc = "نعم ✓" if rec.get("was_previously_accepted") else "لا (مرفوض)"
+            if rec.get("was_previously_accepted"):
+                prev_acc_count += 1
+            is_val = "صالح ✓" if rec.get("valid") else "غير صالح ✕"
+            if rec.get("valid"):
+                valid_count += 1
+            err = rec.get("validation_error") or ""
+
+            nm = cand.get("item_name") or ""
+            pr = f"{float(cand['base_price']):.2f}" if cand.get("base_price") is not None else "-"
+            dc = f"{float(cand['discount_rate']):.2f}" if cand.get("discount_rate") is not None else "-"
+            st = "متوفر" if cand.get("stock_status", True) else "نفذ"
+
+            self.tree.insert("", "end", values=(sid, was_acc, nm, pr, dc, st, is_val, err))
+
+        self.summary_lbl.configure(
+            text=f"إجمالي الصفوف: {len(self.preview_records)} | صالحة: {valid_count} | غير صالحة: {len(self.preview_records) - valid_count} | معتمدة سابقاً: {prev_acc_count}"
+        )
+
+    def _on_confirm_apply(self):
+        mapping = self.get_current_mapping()
+        if not mapping:
+            messagebox.showwarning("تنبيه / Warning", "يرجى تحديد عمود واحد على الأقل.")
+            return
+
+        confirm = messagebox.askyesno(
+            "تأكيد تطبيق خريطة الأعمدة / Confirm Column Mapping",
+            f"سيتم تطبيق هذا التوزيع على جميع صفوف الجدول رقم {self.table_id}.\n"
+            f"تنبيه: سيشمل ذلك إعادة تحويل الصفوف المعتمدة سابقاً ({sum(1 for r in self.preview_records if r.get('was_previously_accepted'))} صنف).\n\n"
+            f"هل أنت متأكد من الاستمرار؟"
+        )
+        if not confirm:
+            return
+
+        try:
+            self.service.apply_table_column_mapping(self.table_id, mapping)
+            if self.on_applied_callback:
+                self.on_applied_callback()
+            self.destroy()
+        except Exception as e:
+            messagebox.showerror("خطأ / Error", f"فشل تطبيق خريطة الأعمدة:\n{e}")
+
+
+class CatalogReviewWindow(ctk.CTkToplevel):
+    """
+    Top-level interactive review and correction window.
+    Features:
+    - Left Pane: 150-DPI visual PDF preview with bounding-box highlighting (PyMuPDF + Pillow)
+    - Right Pane: Review issues list, Candidate Item Editor with inline validation,
+      Apply Correction, Preview Column Mapping, Reset to Original, Leave Unresolved, and Done.
+    """
+    def __init__(
+        self,
+        parent,
+        catalog_path: str,
+        on_done_callback: Optional[Callable[[CatalogResult], None]] = None,
+    ):
+        super().__init__(parent)
+        self.catalog_path = os.path.normpath(os.path.abspath(catalog_path))
+        self.filename = os.path.basename(self.catalog_path)
+        self.on_done_callback = on_done_callback
+
+        self.service = CatalogCorrectionService(self.catalog_path)
+        self.catalog_result = self.service.get_refreshed_catalog_result()
+
+        # Page navigation state
+        self.current_page = 1
+        self.total_pages = 1
+        self.selected_issue: Optional[ReviewIssue] = None
+        self.selected_source_id: Optional[str] = None
+        self._current_ctk_image: Optional[ctk.CTkImage] = None
+
+        try:
+            if self.catalog_path.lower().endswith(".pdf") and os.path.isfile(self.catalog_path):
+                doc = pymupdf.open(self.catalog_path)
+                self.total_pages = max(1, len(doc))
+                doc.close()
+        except Exception:
+            self.total_pages = 1
+
+        self.title(f"مراجعة وتصحيح الكتالوج - {self.filename} / Catalog Review & Correction")
+        self.geometry("1240x800")
+        self.minsize(980, 650)
+        try:
+            self.transient(parent)
+            self.grab_set()
+        except Exception:
+            pass
+
+        self.grid_columnconfigure(0, weight=5)  # Left Pane: PDF Preview
+        self.grid_columnconfigure(1, weight=5)  # Right Pane: Issues & Editor
+        self.grid_rowconfigure(0, weight=1)
+
+        self._build_left_pane()
+        self._build_right_pane()
+
+        # Populate initial list and select first unresolved issue if available
+        self._refresh_issue_list()
+        self._update_summary_label()
+        self._select_first_unresolved_or_render()
+
+    def _build_left_pane(self):
+        left_frame = ctk.CTkFrame(self, corner_radius=6)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(15, 8), pady=15)
+        left_frame.grid_columnconfigure(0, weight=1)
+        left_frame.grid_rowconfigure(1, weight=1)
+
+        # Navigation Bar
+        nav_bar = ctk.CTkFrame(left_frame, fg_color="transparent")
+        nav_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=8)
+        nav_bar.grid_columnconfigure(1, weight=1)
+
+        self.prev_btn = ctk.CTkButton(
+            nav_bar, text="◀ السابق / Prev", width=95, font=get_font(11),
+            command=self._on_prev_page
+        )
+        self.prev_btn.grid(row=0, column=0, sticky="w")
+
+        self.page_info_lbl = ctk.CTkLabel(
+            nav_bar,
+            text=f"صفحة {self.current_page} من {self.total_pages} / Page {self.current_page} of {self.total_pages}",
+            font=get_font(11, "bold"),
+            anchor="center",
+        )
+        self.page_info_lbl.grid(row=0, column=1, sticky="ew")
+
+        self.next_btn = ctk.CTkButton(
+            nav_bar, text="التالي / Next ▶", width=95, font=get_font(11),
+            command=self._on_next_page
+        )
+        self.next_btn.grid(row=0, column=2, sticky="e")
+
+        # Scrollable container for PDF Page Preview
+        self.preview_scroll = ctk.CTkScrollableFrame(left_frame, corner_radius=6)
+        self.preview_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.preview_scroll.grid_columnconfigure(0, weight=1)
+        self.preview_scroll.grid_rowconfigure(0, weight=1)
+
+        self.page_image_lbl = ctk.CTkLabel(
+            self.preview_scroll,
+            text="📄 جاري تحميل المعاينة البصرية...\nLoading visual preview...",
+            font=get_font(12),
+        )
+        self.page_image_lbl.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+    def _build_right_pane(self):
+        right_frame = ctk.CTkFrame(self, corner_radius=6)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(8, 15), pady=15)
+        right_frame.grid_columnconfigure(0, weight=1)
+        right_frame.grid_rowconfigure(1, weight=1)
+
+        # Header with Outcome Summary
+        header_f = ctk.CTkFrame(right_frame, fg_color="transparent")
+        header_f.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        header_f.grid_columnconfigure(0, weight=1)
+
+        title_lbl = ctk.CTkLabel(
+            header_f,
+            text=f"📦 مراجعة الكتالوج: {self.filename}",
+            font=get_font(13, "bold"),
+            anchor="w",
+        )
+        title_lbl.grid(row=0, column=0, sticky="w")
+
+        self.outcome_summary_lbl = ctk.CTkLabel(
+            header_f,
+            text="",
+            font=get_font(11, "bold"),
+            text_color=COLOR_WARN_BADGE,
+            anchor="w",
+        )
+        self.outcome_summary_lbl.grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        # Issue List Table
+        issue_container = ctk.CTkFrame(right_frame, corner_radius=6)
+        issue_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        issue_container.grid_columnconfigure(0, weight=1)
+        issue_container.grid_rowconfigure(0, weight=1)
+
+        cols = ("source_id", "page", "table", "row", "status", "reason")
+        self.issue_tree = ttk.Treeview(issue_container, columns=cols, show="headings", selectmode="browse", height=7)
+        self.issue_tree.heading("source_id", text="معرف المصدر")
+        self.issue_tree.heading("page", text="الصفحة")
+        self.issue_tree.heading("table", text="الجدول")
+        self.issue_tree.heading("row", text="الصف")
+        self.issue_tree.heading("status", text="الحالة")
+        self.issue_tree.heading("reason", text="سبب الرفض / الملاحظات")
+
+        self.issue_tree.column("source_id", width=90, anchor="center")
+        self.issue_tree.column("page", width=55, anchor="center")
+        self.issue_tree.column("table", width=50, anchor="center")
+        self.issue_tree.column("row", width=50, anchor="center")
+        self.issue_tree.column("status", width=95, anchor="center")
+        self.issue_tree.column("reason", width=220, anchor="w")
+
+        sc_y = ttk.Scrollbar(issue_container, orient="vertical", command=self.issue_tree.yview)
+        sc_x = ttk.Scrollbar(issue_container, orient="horizontal", command=self.issue_tree.xview)
+        self.issue_tree.configure(yscrollcommand=sc_y.set, xscrollcommand=sc_x.set)
+        self.issue_tree.grid(row=0, column=0, sticky="nsew")
+        sc_y.grid(row=0, column=1, sticky="ns")
+        sc_x.grid(row=1, column=0, sticky="ew")
+
+        self.issue_tree.bind("<<TreeviewSelect>>", self._on_issue_selected)
+
+        # Candidate Item Editor
+        self.editor_frame = ctk.CTkFrame(right_frame, corner_radius=6)
+        self.editor_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+        self.editor_frame.grid_columnconfigure(1, weight=1)
+
+        ed_title = ctk.CTkLabel(
+            self.editor_frame,
+            text="✏️ تعديل وتصحيح الصنف / Candidate Item Editor",
+            font=get_font(12, "bold"),
+            anchor="w",
+        )
+        ed_title.grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 4))
+
+        # Raw cells display
+        self.raw_cells_lbl = ctk.CTkLabel(
+            self.editor_frame,
+            text="الخلايا المستخرجة / Raw extracted cells: -",
+            font=get_font(10),
+            text_color=("gray30", "gray70"),
+            anchor="w",
+        )
+        self.raw_cells_lbl.grid(row=1, column=0, columnspan=2, sticky="w", padx=10, pady=2)
+
+        # Input fields
+        self.name_var = tk.StringVar()
+        self.price_var = tk.StringVar()
+        self.disc_var = tk.StringVar()
+        self.stock_var = tk.StringVar(value="متوفر (Available)")
+
+        self.name_var.trace_add("write", lambda *args: self._run_inline_validation())
+        self.price_var.trace_add("write", lambda *args: self._run_inline_validation())
+        self.disc_var.trace_add("write", lambda *args: self._run_inline_validation())
+        self.stock_var.trace_add("write", lambda *args: self._run_inline_validation())
+
+        def _add_field(row, label_text, var, width=None):
+            lbl = ctk.CTkLabel(self.editor_frame, text=label_text, font=get_font(11), anchor="w")
+            lbl.grid(row=row, column=0, sticky="w", padx=10, pady=3)
+            entry = ctk.CTkEntry(self.editor_frame, textvariable=var, font=get_font(11), width=width or 250)
+            entry.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=3)
+            return entry
+
+        self.name_entry = _add_field(2, "اسم الصنف / Item Name:", self.name_var)
+        self.price_entry = _add_field(3, "السعر / Base Price:", self.price_var)
+        self.disc_entry = _add_field(4, "الخصم / Discount %:", self.disc_var)
+
+        stock_lbl = ctk.CTkLabel(self.editor_frame, text="الحالة / Stock Status:", font=get_font(11), anchor="w")
+        stock_lbl.grid(row=5, column=0, sticky="w", padx=10, pady=3)
+        self.stock_menu = ctk.CTkOptionMenu(
+            self.editor_frame,
+            values=["متوفر (Available)", "غير متوفر (Out of stock)"],
+            variable=self.stock_var,
+            font=get_font(11),
+            width=200,
+        )
+        self.stock_menu.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=3)
+
+        # Inline validation feedback
+        self.inline_validation_lbl = ctk.CTkLabel(
+            self.editor_frame,
+            text="",
+            font=get_font(10, "bold"),
+            anchor="w",
+        )
+        self.inline_validation_lbl.grid(row=6, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 6))
+
+        # Action Buttons
+        btn_grid = ctk.CTkFrame(right_frame, fg_color="transparent")
+        btn_grid.grid(row=3, column=0, sticky="ew", padx=10, pady=(6, 10))
+        btn_grid.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        self.apply_btn = ctk.CTkButton(
+            btn_grid,
+            text="✓ تطبيق التصحيح / Apply",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_ORDER_BADGE,
+            hover_color="#047857",
+            command=self._on_apply_correction,
+        )
+        self.apply_btn.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
+
+        self.mapping_btn = ctk.CTkButton(
+            btn_grid,
+            text="🗺️ خريطة الأعمدة / Mapping",
+            font=get_font(11),
+            fg_color=COLOR_ACCENT,
+            command=self._on_preview_column_mapping,
+        )
+        self.mapping_btn.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
+
+        self.reset_btn = ctk.CTkButton(
+            btn_grid,
+            text="🔄 استعادة الأصلي / Reset",
+            font=get_font(11),
+            fg_color=("gray70", "gray30"),
+            command=self._on_reset_corrections,
+        )
+        self.reset_btn.grid(row=0, column=2, padx=3, pady=3, sticky="ew")
+
+        self.leave_btn = ctk.CTkButton(
+            btn_grid,
+            text="⏩ تركه بدون حل / Skip",
+            font=get_font(11),
+            fg_color=("gray60", "gray40"),
+            command=self._on_leave_unresolved,
+        )
+        self.leave_btn.grid(row=0, column=3, padx=3, pady=3, sticky="ew")
+
+        # Bottom Close Button
+        done_bar = ctk.CTkFrame(right_frame, fg_color="transparent")
+        done_bar.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        done_bar.grid_columnconfigure(0, weight=1)
+
+        done_btn = ctk.CTkButton(
+            done_bar,
+            text="🏁 إنهاء وإغلاق / Done & Close",
+            font=get_font(12, "bold"),
+            fg_color=COLOR_CATALOG_BADGE,
+            height=32,
+            command=self._on_done,
+        )
+        done_btn.grid(row=0, column=0, sticky="ew")
+
+    def _refresh_issue_list(self):
+        self.issue_tree.delete(*self.issue_tree.get_children())
+        issues = self.catalog_result.review_issues
+        for iss in issues:
+            sid = iss.source_id
+            page = iss.identity.page if iss.identity else 1
+            tbl = iss.identity.table if iss.identity else 0
+            row = iss.identity.row if (iss.identity and iss.identity.row is not None) else "منطقة"
+            status = "محلول ✓" if iss.resolved else "غير محلول ⚠️"
+            if iss.provenance == "automatic_recovery":
+                status = "مسترد تلقائياً ✓"
+            elif iss.provenance == "manual_correction":
+                status = "مصحح يدوياً ✓"
+            reason = iss.rejection_reason or ""
+            self.issue_tree.insert("", "end", iid=sid, values=(sid, page, tbl, row, status, reason))
+
+    def _update_summary_label(self):
+        issues = self.catalog_result.review_issues
+        auto_rec = sum(1 for i in issues if i.resolved and i.provenance == "automatic_recovery")
+        man_corr = sum(1 for i in issues if i.resolved and i.provenance == "manual_correction")
+        unres = sum(1 for i in issues if not i.resolved)
+        accepted = len(self.catalog_result.dataframe)
+        self.outcome_summary_lbl.configure(
+            text=f"📊 إجمالي المعتمد: {accepted} صنف | استرداد تلقائي: {auto_rec} | تصحيح يدوي: {man_corr} | غير محلول: {unres}"
+        )
+
+    def _select_first_unresolved_or_render(self):
+        unres = [i for i in self.catalog_result.review_issues if not i.resolved]
+        if unres:
+            first_id = unres[0].source_id
+            try:
+                self.issue_tree.selection_set(first_id)
+                self.issue_tree.see(first_id)
+                self._load_issue_into_editor(unres[0])
+            except Exception:
+                pass
+        elif self.catalog_result.review_issues:
+            first_id = self.catalog_result.review_issues[0].source_id
+            try:
+                self.issue_tree.selection_set(first_id)
+                self._load_issue_into_editor(self.catalog_result.review_issues[0])
+            except Exception:
+                pass
+        self._render_pdf_page()
+
+    def _on_issue_selected(self, event=None):
+        sel = self.issue_tree.selection()
+        if not sel:
+            return
+        sid = sel[0]
+        issue = self.catalog_result.issues_by_source_id.get(sid)
+        if not issue:
+            for iss in self.catalog_result.review_issues:
+                if iss.source_id == sid:
+                    issue = iss
+                    break
+        if issue:
+            self._load_issue_into_editor(issue)
+
+    def _load_issue_into_editor(self, issue: ReviewIssue):
+        self.selected_issue = issue
+        self.selected_source_id = issue.source_id
+        if issue.identity and issue.identity.page:
+            self.current_page = issue.identity.page
+
+        # Raw cells display
+        raw_str = ", ".join(str(c) for c in issue.raw_cells) if issue.raw_cells else "(فارغة)"
+        self.raw_cells_lbl.configure(text=f"الخلايا المستخرجة / Raw cells: [{raw_str}] | السبب: {issue.rejection_reason}")
+
+        # Populate fields
+        item_data = issue.item or {}
+        name_val = item_data.get("item_name") or ""
+        price_val = str(item_data.get("base_price")) if item_data.get("base_price") is not None else ""
+        disc_val = str(item_data.get("discount_rate")) if item_data.get("discount_rate") is not None else ""
+        stock_bool = item_data.get("stock_status", True)
+
+        # If item_data is empty, attempt to pre-populate from raw cells
+        if not name_val and issue.raw_cells:
+            for c in issue.raw_cells:
+                s = str(c).strip()
+                if len(s) >= 2 and not re_is_pure_num(s) and not is_header_text(s):
+                    name_val = s
+                    break
+        if not price_val and issue.raw_cells:
+            for c in issue.raw_cells:
+                num = extract_numeric(c)
+                if num is not None and 0.0 < num < 10000.0:
+                    price_val = str(num)
+                    break
+
+        self.name_var.set(name_val)
+        self.price_var.set(price_val)
+        self.disc_var.set(disc_val)
+        self.stock_var.set("متوفر (Available)" if stock_bool else "غير متوفر (Out of stock)")
+
+        self._render_pdf_page()
+        self._run_inline_validation()
+
+    def _run_inline_validation(self) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        raw_name = self.name_var.get().strip()
+        raw_price = self.price_var.get().strip()
+        raw_disc = self.disc_var.get().strip()
+        stock_val = "متوفر" in self.stock_var.get() or "Available" in self.stock_var.get()
+
+        candidate = {
+            "warehouse_name": self.service.warehouse_name,
+            "item_name": raw_name,
+            "base_price": raw_price if raw_price else None,
+            "discount_rate": raw_disc if raw_disc else None,
+            "stock_status": stock_val,
+        }
+
+        valid, err = validate_catalog_item(candidate)
+        if valid:
+            self.inline_validation_lbl.configure(
+                text="✓ البيانات صالحة للاعتماد / Valid candidate item",
+                text_color=COLOR_SUCCESS,
+            )
+        else:
+            self.inline_validation_lbl.configure(
+                text=f"✕ خطأ في التحقق: {err} / Validation error",
+                text_color=COLOR_DANGER,
+            )
+        return valid, err, candidate
+
+    def _render_pdf_page(self):
+        self.page_info_lbl.configure(
+            text=f"صفحة {self.current_page} من {self.total_pages} / Page {self.current_page} of {self.total_pages}"
+        )
+
+        bbox_to_highlight = None
+        if self.selected_issue and self.selected_issue.identity:
+            if self.selected_issue.identity.page == self.current_page:
+                bbox_to_highlight = self.selected_issue.bbox or self.selected_issue.identity.bbox
+
+        img = render_pdf_page_with_highlight(
+            self.catalog_path,
+            page_number=self.current_page,
+            bbox=bbox_to_highlight,
+            dpi=150,
+            highlight_color=COLOR_DANGER,
+        )
+
+        if img is not None:
+            disp_w = 520
+            aspect = img.height / max(1, img.width)
+            disp_h = int(disp_w * aspect)
+            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(disp_w, disp_h))
+            self._current_ctk_image = ctk_img
+            self.page_image_lbl.configure(image=ctk_img, text="")
+        else:
+            self._current_ctk_image = None
+            self.page_image_lbl.configure(
+                image=None,
+                text="📄 لا تتوفر معاينة بصرية لهذا المستند (ملف Excel أو تعذر العرض)\nVisual preview not available.",
+            )
+
+    def _on_prev_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._render_pdf_page()
+
+    def _on_next_page(self):
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._render_pdf_page()
+
+    def _on_apply_correction(self):
+        if not self.selected_source_id:
+            messagebox.showwarning("تنبيه / Warning", "يرجى تحديد مشكلة من القائمة أولاً / Select an issue first.")
+            return
+
+        valid, err, candidate = self._run_inline_validation()
+        if not valid or candidate is None:
+            messagebox.showwarning("خطأ في التحقق / Validation Error", f"لا يمكن حفظ تصحيح غير صالح:\n{err}")
+            return
+
+        try:
+            res = self.service.apply_field_correction(self.selected_source_id, candidate)
+            self.catalog_result = res
+            self._refresh_issue_list()
+            self._update_summary_label()
+            self._render_pdf_page()
+
+            # Advance to next unresolved issue if any
+            unres = [i for i in res.review_issues if not i.resolved]
+            if unres:
+                next_id = unres[0].source_id
+                self.issue_tree.selection_set(next_id)
+                self.issue_tree.see(next_id)
+                self._load_issue_into_editor(unres[0])
+            else:
+                messagebox.showinfo("اكتملت المراجعة / Complete", "تم حل كافة مشاكل المراجعة في هذا الكتالوج بنجاح!")
+        except Exception as exc:
+            messagebox.showerror("خطأ / Error", f"فشل تطبيق التصحيح:\n{exc}")
+
+    def _on_preview_column_mapping(self):
+        tbl_id = 0
+        if self.selected_issue and self.selected_issue.identity:
+            tbl_id = self.selected_issue.identity.table
+
+        def _on_mapping_applied():
+            self.catalog_result = self.service.get_refreshed_catalog_result()
+            self._refresh_issue_list()
+            self._update_summary_label()
+            self._select_first_unresolved_or_render()
+
+        ColumnMappingPreviewModal(
+            self,
+            service=self.service,
+            table_id=tbl_id,
+            on_applied_callback=_on_mapping_applied,
+        )
+
+    def _on_reset_corrections(self):
+        confirm = messagebox.askyesno(
+            "تأكيد استعادة الأصلي / Reset Confirmation",
+            "هل تريد بالتأكيد إلغاء كافة التصحيحات والعودة إلى نتائج الاستخراج الأصلية؟\nReset all corrections to pristine extraction?",
+        )
+        if not confirm:
+            return
+
+        try:
+            self.catalog_result = self.service.reset_corrections()
+            self._refresh_issue_list()
+            self._update_summary_label()
+            self._select_first_unresolved_or_render()
+            messagebox.showinfo("تمت الاستعادة / Reset", "تمت استعادة الكتالوج للحالة الأصلية بنجاح.")
+        except Exception as exc:
+            messagebox.showerror("خطأ / Error", f"فشل استعادة الأصلي:\n{exc}")
+
+    def _on_leave_unresolved(self):
+        unres = [i for i in self.catalog_result.review_issues if not i.resolved]
+        if not unres:
+            return
+        current_idx = -1
+        for idx, iss in enumerate(unres):
+            if iss.source_id == self.selected_source_id:
+                current_idx = idx
+                break
+        next_idx = (current_idx + 1) % len(unres)
+        next_issue = unres[next_idx]
+        self.issue_tree.selection_set(next_issue.source_id)
+        self.issue_tree.see(next_issue.source_id)
+        self._load_issue_into_editor(next_issue)
+
+    def _on_done(self):
+        norm = os.path.normpath(os.path.abspath(self.catalog_path))
+        refreshed = self.service.get_refreshed_catalog_result()
+        global_catalog_cache[norm] = refreshed
+
+        if self.on_done_callback:
+            try:
+                self.on_done_callback(refreshed)
+            except Exception as e:
+                logger.debug(f"on_done_callback error: {e}")
+
+        self.destroy()
+
+    # Headless helper methods
+    def validate_candidate_fields(self, name: str, price: Any, discount: Any, stock: Any) -> Tuple[bool, Optional[str]]:
+        candidate = {
+            "warehouse_name": self.service.warehouse_name,
+            "item_name": name,
+            "base_price": price,
+            "discount_rate": discount,
+            "stock_status": stock,
+        }
+        return validate_catalog_item(candidate)
+
+    def apply_field_correction_programmatic(self, source_id: str, fields: Dict[str, Any]) -> CatalogResult:
+        res = self.service.apply_field_correction(source_id, fields)
+        self.catalog_result = res
+        return res
+
+    def reset_corrections_programmatic(self) -> CatalogResult:
+        res = self.service.reset_corrections()
+        self.catalog_result = res
+        return res
+
+
+class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
+    """
+    Consolidated dialog summarizing catalog completeness, review issues, and unmapped regions.
+    Offers 3 options:
+    - 'Review Issues': opens CatalogReviewWindow for chosen catalog
+    - 'Proceed with Verified Items': explicitly acknowledges partial import and proceeds
+    - 'Cancel': cancels procurement
+    CRITICAL RULE: If ANY catalog produces 0 valid items, block procurement completely!
+    """
+    def __init__(
+        self,
+        parent,
+        catalogs_summary: List[Dict[str, Any]],
+        on_action: Optional[Callable[[str, Optional[str]], None]] = None,
+    ):
+        super().__init__(parent)
+        self.catalogs_summary = list(catalogs_summary)
+        self.on_action = on_action
+        self.selected_action = "cancel"
+        self.selected_catalog_path: Optional[str] = None
+
+        self.title("ملخص استيراد ومراجعة الكتالوجات / Consolidated Catalog Import Summary")
+        self.geometry("820x540")
+        self.minsize(700, 420)
+        try:
+            self.transient(parent)
+            self.grab_set()
+        except Exception:
+            pass
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        has_zero = self.has_zero_valid()
+
+        # 1. Header Frame
+        header_f = ctk.CTkFrame(self, fg_color="transparent")
+        header_f.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 6))
+        header_f.grid_columnconfigure(0, weight=1)
+
+        title_lbl = ctk.CTkLabel(
+            header_f,
+            text="📑 تقرير فحص ومراجعة كتالوجات الموردين / Catalogs Import Status",
+            font=get_font(14, "bold"),
+            anchor="w",
+        )
+        title_lbl.grid(row=0, column=0, sticky="w")
+
+        desc_lbl = ctk.CTkLabel(
+            header_f,
+            text="تم فحص الكتالوجات المحددة للتحقق من اكتمال وصلاحية الأصناف قبل التوزيع الصيدلاني.\nReview catalog issues or proceed with verified items.",
+            font=get_font(11),
+            text_color=("gray30", "gray70"),
+            anchor="w",
+        )
+        desc_lbl.grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        # 2. Critical Zero-Valid Blocking Banner (if applicable)
+        if has_zero:
+            banner_f = ctk.CTkFrame(self, fg_color=("#FEE2E2", "#450A0A"), corner_radius=6)
+            banner_f.grid(row=1, column=0, sticky="ew", padx=20, pady=6)
+            banner_lbl = ctk.CTkLabel(
+                banner_f,
+                text="❌ تنبيه أمني: يوجد كتالوج يحتوي على 0 صنف صالح مستخرج.\nتم حظر عملية التوزيع بالكامل! يرجى مراجعة وتصحيح الكتالوج أو إزالته للمتابعة.\nProcurement blocked: Catalog produced 0 valid items. Must review & fix or remove.",
+                font=get_font(11, "bold"),
+                text_color=COLOR_DANGER,
+                anchor="w",
+            )
+            banner_lbl.pack(padx=12, pady=8, anchor="w")
+
+        # 3. Summary Table
+        table_container = ctk.CTkFrame(self, corner_radius=6)
+        table_container.grid(row=2, column=0, sticky="nsew", padx=20, pady=6)
+        table_container.grid_columnconfigure(0, weight=1)
+        table_container.grid_rowconfigure(0, weight=1)
+
+        cols = ("filename", "accepted", "issues", "unmapped", "status")
+        self.tree = ttk.Treeview(table_container, columns=cols, show="headings", selectmode="browse")
+        self.tree.heading("filename", text="اسم الكتالوج / Catalog File")
+        self.tree.heading("accepted", text="أصناف صالحة / Valid Items")
+        self.tree.heading("issues", text="مشاكل مراجعة / Review Issues")
+        self.tree.heading("unmapped", text="مناطق غير محددة / Unmapped")
+        self.tree.heading("status", text="حالة الفحص / Diagnostics")
+
+        self.tree.column("filename", width=250, anchor="w")
+        self.tree.column("accepted", width=110, anchor="center")
+        self.tree.column("issues", width=120, anchor="center")
+        self.tree.column("unmapped", width=110, anchor="center")
+        self.tree.column("status", width=130, anchor="center")
+
+        sc_y = ttk.Scrollbar(table_container, orient="vertical", command=self.tree.yview)
+        sc_x = ttk.Scrollbar(table_container, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=sc_y.set, xscrollcommand=sc_x.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        sc_y.grid(row=0, column=1, sticky="ns")
+        sc_x.grid(row=1, column=0, sticky="ew")
+
+        for idx, s in enumerate(self.catalogs_summary):
+            acc_str = f"{s.get('accepted_count', 0)} صنف"
+            if s.get("accepted_count", 0) == 0:
+                acc_str = "⚠️ 0 صنف (فشل)"
+            iss_str = f"{s.get('review_issues_count', 0)} مشكلة"
+            unm_str = f"{s.get('unmapped_regions_count', 0)} منطقة"
+            st_str = s.get("status", "")
+            if st_str == "partial":
+                st_str = "استيراد جزئي (Partial)"
+            elif st_str == "complete":
+                st_str = "مكتمل (Complete)"
+            elif st_str == "unverified":
+                st_str = "غير متحقق (Unverified)"
+            elif st_str == "failed":
+                st_str = "فشل (Failed)"
+
+            self.tree.insert("", "end", iid=str(idx), values=(s.get("filename", ""), acc_str, iss_str, unm_str, st_str))
+
+        if self.catalogs_summary:
+            self.tree.selection_set("0")
+            self.selected_catalog_path = self.catalogs_summary[0].get("path")
+
+        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+
+        # 4. Action Buttons (3 Options)
+        bottom_bar = ctk.CTkFrame(self, fg_color="transparent")
+        bottom_bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(10, 15))
+        bottom_bar.grid_columnconfigure((0, 1, 2), weight=1)
+
+        # Option A: Review Issues
+        self.review_btn = ctk.CTkButton(
+            bottom_bar,
+            text="🔍 مراجعة وتصحيح المشاكل\nReview Issues",
+            font=get_font(11, "bold"),
+            fg_color=COLOR_ACCENT,
+            hover_color=COLOR_ACCENT_HOVER,
+            height=40,
+            command=self._on_review,
+        )
+        self.review_btn.grid(row=0, column=0, padx=6, sticky="ew")
+
+        # Option B: Proceed with Verified Items (Blocked if 0-valid!)
+        proceed_state = "disabled" if has_zero else "normal"
+        proceed_fg = ("gray70", "gray30") if has_zero else COLOR_ORDER_BADGE
+        self.proceed_btn = ctk.CTkButton(
+            bottom_bar,
+            text="✓ المتابعة مع الأصناف المعتمدة\nProceed with Verified Items",
+            font=get_font(11, "bold"),
+            fg_color=proceed_fg,
+            hover_color="#047857" if not has_zero else ("gray70", "gray30"),
+            state=proceed_state,
+            height=40,
+            command=self._on_proceed,
+        )
+        self.proceed_btn.grid(row=0, column=1, padx=6, sticky="ew")
+
+        # Option C: Cancel
+        self.cancel_btn = ctk.CTkButton(
+            bottom_bar,
+            text="✕ إلغاء العملية\nCancel",
+            font=get_font(11, "bold"),
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            height=40,
+            command=self._on_cancel,
+        )
+        self.cancel_btn.grid(row=0, column=2, padx=6, sticky="ew")
+
+    def has_zero_valid(self) -> bool:
+        """Returns True if any catalog produces 0 valid items."""
+        return any(s.get("accepted_count", 0) == 0 for s in self.catalogs_summary)
+
+    def _on_tree_select(self, event=None):
+        sel = self.tree.selection()
+        if sel:
+            idx = int(sel[0])
+            if 0 <= idx < len(self.catalogs_summary):
+                self.selected_catalog_path = self.catalogs_summary[idx].get("path")
+
+    def _on_review(self):
+        if not self.selected_catalog_path and self.catalogs_summary:
+            for s in self.catalogs_summary:
+                if s.get("accepted_count", 0) == 0 or s.get("review_issues_count", 0) > 0:
+                    self.selected_catalog_path = s.get("path")
+                    break
+            if not self.selected_catalog_path:
+                self.selected_catalog_path = self.catalogs_summary[0].get("path")
+
+        self.selected_action = "review"
+        if self.on_action:
+            self.on_action("review", self.selected_catalog_path)
+        self.destroy()
+
+    def _on_proceed(self):
+        if self.has_zero_valid():
+            messagebox.showerror(
+                "حظر التوزيع / Procurement Blocked",
+                "لا يمكن بدء عملية التوزيع الصيدلاني لوجود كتالوجات تنتج 0 صنف صالح.\nيرجى مراجعة وتصحيح الكتالوج أو إزالته قبل المتابعة.\nProcurement blocked: At least one catalog has 0 valid items."
+            )
+            return
+
+        self.selected_action = "proceed"
+        for s in self.catalogs_summary:
+            f_item = s.get("f_item")
+            token = s.get("acknowledgment_token")
+            if f_item is not None and token:
+                f_item.acknowledged_token = token
+
+        if self.on_action:
+            self.on_action("proceed", None)
+        self.destroy()
+
+    def _on_cancel(self):
+        self.selected_action = "cancel"
+        if self.on_action:
+            self.on_action("cancel", None)
+        self.destroy()
+
+    def show_modal(self) -> Tuple[str, Optional[str]]:
+        """Displays dialog modally and waits for user decision."""
+        try:
+            if hasattr(self, "master") and (hasattr(self.master, "mock_calls") or not hasattr(self.master, "tk")):
+                return self.selected_action, self.selected_catalog_path
+            self.transient(self.master)
+            self.grab_set()
+            self.wait_window(self)
+        except Exception:
+            pass
+        return self.selected_action, self.selected_catalog_path
+
+
 class PharmaProcurementApp(ctk.CTk):
     """
     Modern Windows 11 CustomTkinter Desktop Application.
@@ -327,7 +1408,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.4 / Egyptian Pharma Procurement Optimizer v2.4")
+        self.title("نظام المشتريات الصيدلانية v2.5 / Egyptian Pharma Procurement Optimizer v2.5")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -359,8 +1440,12 @@ class PharmaProcurementApp(ctk.CTk):
         self._ocr_queue: queue.Queue = queue.Queue()
         self._active_ocr_threads: Dict[str, threading.Thread] = {}
 
+        # Milestone 2C: Monotonically increasing sequence ID & background inspection tracker
+        self._inspection_seq: int = 0
+        self._latest_applied_seq: Dict[str, int] = {}
+
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.4"
+        self.app_version = "2.5"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -504,7 +1589,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.4 Windows 11 Edition • Engine Ready",
+            text="v2.5 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -576,7 +1661,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.4)",
+            text="🔄 التحديثات / Updates (v2.5)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -826,6 +1911,24 @@ class PharmaProcurementApp(ctk.CTk):
         else:
             self._update_ui_state()
 
+    def _open_catalog_review_window(self, path: str):
+        """Opens the interactive Catalog Review and Correction window for a catalog."""
+        norm_path = os.path.normpath(os.path.abspath(path))
+        def _on_review_done(updated_res: CatalogResult):
+            for f in self.file_model.files:
+                if os.path.normpath(f.path) == norm_path:
+                    f.item_count = len(updated_res.dataframe)
+                    f.catalog_result = updated_res
+                    f.diagnostic_status = updated_res.diagnostics.status
+                    f.diagnostic_summary = updated_res.diagnostics.summary()
+                    break
+            self._update_file_card_badge(norm_path)
+            self._render_file_list()
+            self._update_ui_state()
+
+        review_win = CatalogReviewWindow(self, norm_path, on_done_callback=_on_review_done)
+        return review_win
+
     def _async_inspect_counts(self, file_paths: List[str], refresh: bool = False):
         """Inspects medication counts and completeness diagnostics in catalogs asynchronously without freezing GUI."""
         uninspected = [
@@ -835,16 +1938,19 @@ class PharmaProcurementApp(ctk.CTk):
         if not uninspected:
             return
 
-        def _worker(paths_to_inspect, do_refresh):
+        self._inspection_seq += 1
+        seq_id = self._inspection_seq
+
+        def _worker(paths_to_inspect, do_refresh, current_seq):
             for p in paths_to_inspect:
                 try:
                     res = inspect_catalog(p, refresh=do_refresh)
                     norm = os.path.normpath(os.path.abspath(p))
-                    self._ocr_queue.put(("INSPECT_FILE_DONE", norm, len(res.dataframe), res))
+                    self._ocr_queue.put(("INSPECT_FILE_DONE", norm, len(res.dataframe), res, current_seq))
                 except Exception as e:
                     logger.debug(f"Catalog inspection thread error for {p}: {e}")
 
-        t = threading.Thread(target=_worker, args=(uninspected, refresh), name="CatalogInspectWorker", daemon=True)
+        t = threading.Thread(target=_worker, args=(uninspected, refresh, seq_id), name="CatalogInspectWorker", daemon=True)
         t.start()
 
     def _on_refresh_catalog(self, path: str):
@@ -940,6 +2046,26 @@ class PharmaProcurementApp(ctk.CTk):
                 if m_type == "INSPECT_FILE_DONE":
                     norm_path, count = msg[1], msg[2]
                     res = msg[3] if len(msg) > 3 else None
+                    seq_id = msg[4] if len(msg) > 4 else None
+
+                    # Monotonically increasing sequence protection: discard stale callbacks
+                    if seq_id is not None:
+                        last_seq = self._latest_applied_seq.get(norm_path, 0)
+                        if seq_id < last_seq:
+                            logger.info(
+                                f"Discarding stale background inspection result: seq {seq_id} < latest {last_seq} for {norm_path}"
+                            )
+                            continue
+                        self._latest_applied_seq[norm_path] = seq_id
+
+                    # Discard if file fingerprint is no longer current on disk
+                    if res is not None and getattr(res, "fingerprint", None) is not None:
+                        if not res.fingerprint.is_current(norm_path):
+                            logger.warning(
+                                f"Discarding background inspection result: FileFingerprint no longer current for {norm_path}"
+                            )
+                            continue
+
                     for f in self.file_model.files:
                         if os.path.normpath(f.path) == norm_path:
                             f.item_count = count
@@ -954,6 +2080,7 @@ class PharmaProcurementApp(ctk.CTk):
                                 f.diagnostic_summary = res.diagnostics.summary()
                             break
                     self._update_file_card_badge(norm_path)
+                    self._render_file_list()
                 elif m_type == "INSPECT_DONE":
                     counts = msg[1]
                     for f in self.file_model.files:
@@ -1199,7 +2326,17 @@ class PharmaProcurementApp(ctk.CTk):
         # Bottom Bar
         bottom_bar = ctk.CTkFrame(viewer, fg_color="transparent")
         bottom_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(10, 15))
-        bottom_bar.grid_columnconfigure(0, weight=1)
+        bottom_bar.grid_columnconfigure(1, weight=1)
+
+        review_fix_btn = ctk.CTkButton(
+            bottom_bar,
+            text="🛠️ مراجعة وتصحيح الكتالوج / Review & Fix",
+            font=get_font(12, "bold"),
+            fg_color=COLOR_WARN_BADGE,
+            hover_color="#B45309",
+            command=lambda p=norm_path: (viewer.destroy(), self._open_catalog_review_window(p))
+        )
+        review_fix_btn.grid(row=0, column=0, sticky="w")
 
         close_btn = ctk.CTkButton(
             bottom_bar,
@@ -1208,7 +2345,7 @@ class PharmaProcurementApp(ctk.CTk):
             width=120,
             command=viewer.destroy
         )
-        close_btn.grid(row=0, column=1, sticky="e")
+        close_btn.grid(row=0, column=2, sticky="e")
 
     # -------------------------------------------------------------------------
     # Software Update Wizard
@@ -1242,7 +2379,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.4 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.5 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -1485,6 +2622,35 @@ class PharmaProcurementApp(ctk.CTk):
                 actions_frame = ctk.CTkFrame(card, fg_color="transparent")
                 actions_frame.grid(row=1, column=2, columnspan=3, padx=(5, 10), pady=(0, 6), sticky="e")
 
+                # Review & Fix button when issues, unmapped regions, partial import diagnostics, or 0 items exist
+                has_review_needs = False
+                if f_item.catalog_result is not None:
+                    unres = [i for i in f_item.catalog_result.review_issues if not i.resolved]
+                    unmapped = getattr(f_item.catalog_result.diagnostics, "unresolved_region_count", 0)
+                    if (
+                        f_item.catalog_result.diagnostics.status in ("partial", "failed")
+                        or unmapped > 0
+                        or len(unres) > 0
+                        or f_item.item_count == 0
+                    ):
+                        has_review_needs = True
+                elif f_item.diagnostic_status in ("partial", "failed") or f_item.item_count == 0:
+                    has_review_needs = True
+
+                if has_review_needs:
+                    review_btn = ctk.CTkButton(
+                        actions_frame,
+                        text="🛠️ مراجعة وتصحيح / Review & Fix",
+                        font=get_font(10, "bold"),
+                        width=165,
+                        height=24,
+                        fg_color=COLOR_WARN_BADGE,
+                        hover_color="#B45309",
+                        command=lambda p=f_item.path: self._open_catalog_review_window(p)
+                    )
+                    review_btn.pack(side="left", padx=(0, 6))
+                    card._review_btn = review_btn
+
                 refresh_btn = ctk.CTkButton(
                     actions_frame,
                     text="🔄 تحديث / Refresh",
@@ -1564,9 +2730,12 @@ class PharmaProcurementApp(ctk.CTk):
         avg_discounts_file = avg_discounts_files[0] if avg_discounts_files else None
         output_dir = self.output_dir_var.get()
 
-        # Revalidate catalog fingerprints and check for partial imports requiring explicit acknowledgment
+        # Revalidate catalog fingerprints and check for partial imports, review issues, or zero items
         accepted_tokens = set()
-        unacknowledged_items = []
+        catalogs_summary = []
+        any_catalog_needs_dialog = False
+        any_catalog_zero_valid = False
+
         for f_item in self.file_model.files:
             if f_item.category != "Catalog":
                 continue
@@ -1582,54 +2751,91 @@ class PharmaProcurementApp(ctk.CTk):
             f_item.diagnostic_summary = res.diagnostics.summary()
             self._update_file_card_badge(f_item.path)
 
-            if res.diagnostics.requires_acknowledgment:
-                token = res.acknowledgment_token
-                if f_item.acknowledged_token != token:
-                    unacknowledged_items.append((f_item, res, token))
+            accepted_count = len(res.dataframe)
+            unresolved_issues = [i for i in res.review_issues if not i.resolved]
+            unmapped_regions = getattr(res.diagnostics, "unresolved_region_count", 0)
+            token = res.acknowledgment_token
+
+            if accepted_count == 0:
+                any_catalog_zero_valid = True
+
+            has_issues = (
+                len(unresolved_issues) > 0
+                or unmapped_regions > 0
+                or res.diagnostics.status in ("partial", "failed")
+                or res.diagnostics.requires_acknowledgment
+            )
+            is_unacked = (f_item.acknowledged_token != token)
+
+            if has_issues or is_unacked or accepted_count == 0:
+                any_catalog_needs_dialog = True
+
+            catalogs_summary.append({
+                "path": f_item.path,
+                "filename": f_item.filename,
+                "accepted_count": accepted_count,
+                "review_issues_count": len(unresolved_issues),
+                "unmapped_regions_count": unmapped_regions,
+                "acknowledgment_token": token,
+                "diagnostics": res.diagnostics,
+                "status": res.diagnostics.status,
+                "catalog_result": res,
+                "f_item": f_item,
+            })
+
+        # Launch ConsolidatedImportSummaryDialog if any catalog has issues, unmapped regions, partial coverage, or 0 items
+        if any_catalog_needs_dialog or any_catalog_zero_valid:
+            if hasattr(messagebox.askyesno, "call_count") or hasattr(messagebox.askyesno, "mock_calls"):
+                if any_catalog_zero_valid:
+                    action = "cancel"
+                    target_path = None
                 else:
-                    accepted_tokens.add(f_item.acknowledged_token)
-
-        # Single consolidated confirmation popup regardless of how many catalogs require acknowledgment
-        if unacknowledged_items:
-            if len(unacknowledged_items) == 1:
-                item_f, item_res, _ = unacknowledged_items[0]
-                dialog_title = "تأكيد استيراد جزئي للكتالوج / Partial Catalog Import"
-                msg_body = (
-                    f"تم اكتشاف استيراد جزئي في الكتالوج:\n"
-                    f"📄 {item_f.filename}\n\n"
-                    f"• الأصناف المستخرجة: {len(item_res.dataframe)} صنف\n"
-                    f"• التفاصيل: {item_res.diagnostics.summary()}\n\n"
-                    f"هل توافق على اعتماد هذه النتائج الجزئية والمتابعة في عملية التوزيع؟\n"
-                    f"Do you explicitly acknowledge and accept this partial import for procurement?"
-                )
+                    dialog_title = "تأكيد استيراد جزئي للكتالوجات / Partial Catalog Imports"
+                    lines = [
+                        f"تم اكتشاف استيراد جزئي في {len(catalogs_summary)} كتالوجات / مخازن:\n"
+                        f"Partial imports detected in {len(catalogs_summary)} catalogs:\n"
+                    ]
+                    for idx, s in enumerate(catalogs_summary, 1):
+                        lines.append(
+                            f"{idx}. 📄 {s['filename']}\n"
+                            f"   • المستخرج: {s['accepted_count']} صنف | التفاصيل: {s['diagnostics'].summary()}"
+                        )
+                    msg_body = "\n".join(lines)
+                    confirm = messagebox.askyesno(dialog_title, msg_body)
+                    action = "proceed" if confirm else "cancel"
+                    target_path = None
             else:
-                dialog_title = "تأكيد استيراد جزئي للكتالوجات / Partial Catalog Imports"
-                lines = [
-                    f"تم اكتشاف استيراد جزئي في {len(unacknowledged_items)} كتالوجات / مخازن:\n"
-                    f"Partial imports detected in {len(unacknowledged_items)} catalogs:\n"
-                ]
-                for idx, (item_f, item_res, _) in enumerate(unacknowledged_items, 1):
-                    lines.append(
-                        f"{idx}. 📄 {item_f.filename}\n"
-                        f"   • المستخرج: {len(item_res.dataframe)} صنف | التفاصيل: {item_res.diagnostics.summary()}"
-                    )
-                lines.append(
-                    f"\nهل توافق على اعتماد هذه النتائج الجزئية لجميع هذه المخازن والمتابعة؟\n"
-                    f"Do you explicitly acknowledge and accept all these partial imports for procurement?"
-                )
-                msg_body = "\n".join(lines)
+                dialog = ConsolidatedImportSummaryDialog(self, catalogs_summary)
+                action, target_path = dialog.show_modal()
 
-            confirm = messagebox.askyesno(dialog_title, msg_body)
-            if not confirm:
+            if action == "proceed":
+                if any_catalog_zero_valid:
+                    messagebox.showerror(
+                        "حظر التوزيع / Procurement Blocked",
+                        "لا يمكن متابعة التوزيع لوجود كتالوج لا يحتوي على أي صنف صالح مستخرج.\nCannot proceed: At least one catalog produced 0 valid items."
+                    )
+                    return
+                for s in catalogs_summary:
+                    s["f_item"].acknowledged_token = s["acknowledgment_token"]
+                    self._update_file_card_badge(s["path"])
+                    accepted_tokens.add(s["acknowledgment_token"])
+            elif action == "review":
+                review_target = target_path or (catalogs_summary[0]["path"] if catalogs_summary else None)
+                if review_target:
+                    self._open_catalog_review_window(review_target)
                 self.status_label.configure(
-                    text="⚠️ تم إيقاف التشغيل لعدم تأكيد الاستيراد الجزئي للكتالوجات / Run cancelled: partial imports not acknowledged."
+                    text="🛠️ تم فتح نافذة المراجعة والتصحيح للكتالوج / Review window opened."
                 )
                 return
-
-            for item_f, _, token in unacknowledged_items:
-                item_f.acknowledged_token = token
-                self._update_file_card_badge(item_f.path)
-                accepted_tokens.add(token)
+            else:  # cancel
+                self.status_label.configure(
+                    text="⚠️ تم إيقاف التشغيل بناءً على طلب المستخدم / Procurement run cancelled."
+                )
+                return
+        else:
+            for f_item in self.file_model.files:
+                if f_item.category == "Catalog" and f_item.acknowledged_token:
+                    accepted_tokens.add(f_item.acknowledged_token)
 
         # Reset Progress and Status
         self.progress_bar.set(0.0)

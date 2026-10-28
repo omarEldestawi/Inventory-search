@@ -168,24 +168,24 @@ class TestV20PriceDiscountSanityChecks:
         assert db.resolve("كلنسو دش") is not None
 
     def test_version_20_consistency(self):
-        """Verifies version 2.4 across app_gui.py, installer.iss, README.md, and CHANGELOG.md."""
+        """Verifies version 2.4/2.5 across app_gui.py, installer.iss, README.md, and CHANGELOG.md."""
         with open(os.path.join(PROJECT_ROOT, "app_gui.py"), "r", encoding="utf-8") as f:
             gui_content = f.read()
-        assert any(v in gui_content for v in ('self.app_version = "2.3"', 'self.app_version = "2.4"'))
-        assert any(v in gui_content for v in ("v2.3", "v2.4"))
+        assert any(v in gui_content for v in ('self.app_version = "2.3"', 'self.app_version = "2.4"', 'self.app_version = "2.5"'))
+        assert any(v in gui_content for v in ("v2.3", "v2.4", "v2.5"))
 
         with open(os.path.join(PROJECT_ROOT, "installer.iss"), "r", encoding="utf-8") as f:
             iss_content = f.read()
-        assert any(v in iss_content for v in ('#define MyAppVersion "2.3"', '#define MyAppVersion "2.4"'))
-        assert any(v in iss_content for v in ("OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.3", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.4"))
+        assert any(v in iss_content for v in ('#define MyAppVersion "2.3"', '#define MyAppVersion "2.4"', '#define MyAppVersion "2.5"'))
+        assert any(v in iss_content for v in ("OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.3", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.4", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.5"))
 
         with open(os.path.join(PROJECT_ROOT, "README.md"), "r", encoding="utf-8") as f:
             readme_content = f.read()
-        assert any(v in readme_content for v in ("**Version:** 2.3", "**Version:** 2.4"))
+        assert any(v in readme_content for v in ("**Version:** 2.3", "**Version:** 2.4", "**Version:** 2.5"))
 
         with open(os.path.join(PROJECT_ROOT, "CHANGELOG.md"), "r", encoding="utf-8") as f:
             changelog_content = f.read()
-        assert any(v in changelog_content for v in ("## [2.4]", "## [2.3]"))
+        assert any(v in changelog_content for v in ("## [2.5]", "## [2.4]", "## [2.3]"))
         assert "## [2.2]" in changelog_content
         assert "## [2.1]" in changelog_content
         assert "## [2.0]" in changelog_content
@@ -266,8 +266,8 @@ class TestV20PriceDiscountSanityChecks:
             iss_text = f.read()
 
         assert "skipifsilent" not in iss_text, "installer.iss must NOT contain skipifsilent so silent update relaunches"
-        assert any(v in iss_text for v in ('#define MyAppVersion "2.2"', '#define MyAppVersion "2.3"', '#define MyAppVersion "2.4"'))
-        assert any(v in iss_text for v in ("OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.3", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.4"))
+        assert any(v in iss_text for v in ('#define MyAppVersion "2.2"', '#define MyAppVersion "2.3"', '#define MyAppVersion "2.4"', '#define MyAppVersion "2.5"'))
+        assert any(v in iss_text for v in ("OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.3", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.4", "OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.5"))
 
         updater_path = os.path.join(PROJECT_ROOT, "src", "updater.py")
         with open(updater_path, "r", encoding="utf-8") as f:

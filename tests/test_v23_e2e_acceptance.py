@@ -229,8 +229,8 @@ class TestF23VersionPackagingTroubleshooting(unittest.TestCase):
         with open(iss_path, "r", encoding="utf-8") as f:
             iss_content = f.read()
         self.assertTrue(
-            any(v in iss_content for v in ('MyAppVersion "2.3"', 'MyAppVersion "2.4"')),
-            "installer.iss must define MyAppVersion as '2.3' or '2.4'"
+            any(v in iss_content for v in ('MyAppVersion "2.3"', 'MyAppVersion "2.4"', 'MyAppVersion "2.5"')),
+            "installer.iss must define MyAppVersion as '2.3', '2.4', or '2.5'"
         )
 
     def test_f23_02_gui_headless_self_test(self):

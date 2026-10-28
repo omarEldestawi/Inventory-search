@@ -36,7 +36,41 @@ except ImportError:
         PARSER_REVISION,
     )
 
+try:
+    from .catalog_corrections import (
+        get_corrections_revision,
+        has_persisted_corrections,
+        load_corrections,
+        save_corrections,
+        reset_corrections as reset_persisted_corrections,
+        wire_catalog_correction_service,
+    )
+except ImportError:
+    try:
+        from catalog_corrections import (
+            get_corrections_revision,
+            has_persisted_corrections,
+            load_corrections,
+            save_corrections,
+            reset_corrections as reset_persisted_corrections,
+            wire_catalog_correction_service,
+        )
+    except ImportError:
+        def get_corrections_revision(path: str, corrections_dir: Optional[str] = None) -> int:
+            return 0
+        def has_persisted_corrections(path: str, corrections_dir: Optional[str] = None) -> bool:
+            return False
+        def load_corrections(*args, **kwargs):
+            return None
+        def save_corrections(*args, **kwargs):
+            return {}
+        def reset_persisted_corrections(*args, **kwargs):
+            return False
+        def wire_catalog_correction_service(*args, **kwargs):
+            pass
+
 logger = logging.getLogger("ProcurementController")
+_inspect_in_progress = threading.local()
 
 
 class ClassifiedDict(dict):
@@ -409,6 +443,26 @@ def inspect_catalog(catalog_file: str, refresh: bool = False) -> CatalogResult:
                 # Absent, malformed, relative-path, or unverified cache:
                 # treat as cache miss, evict stale entry and trigger full parse
                 global_catalog_cache.remove(norm)
+
+    is_nested = getattr(_inspect_in_progress, "active", False)
+    if not is_nested:
+        try:
+            if has_persisted_corrections(norm):
+                _inspect_in_progress.active = True
+                try:
+                    try:
+                        from .catalog_service import CatalogCorrectionService
+                    except ImportError:
+                        from catalog_service import CatalogCorrectionService
+                    service = CatalogCorrectionService(norm)
+                    corr_res = service.get_refreshed_catalog_result(refresh=refresh)
+                    if corr_res is not None and corr_res.dataframe is not None:
+                        global_catalog_cache.set(norm, corr_res.to_dataframe())
+                        return corr_res
+                finally:
+                    _inspect_in_progress.active = False
+        except Exception as corr_exc:
+            logger.debug(f"Persistence inspection bypass for {norm}: {corr_exc}")
 
     try:
         fp = FileFingerprint.from_path(norm)
