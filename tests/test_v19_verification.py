@@ -331,8 +331,8 @@ class TestRelease19Verification:
         app = PharmaProcurementApp()
         app.withdraw()
         try:
-            assert app.app_version in ("1.9", "2.0", "2.1", "2.2")
-            assert any(v in app.title() for v in ("v1.9", "v2.0", "v2.1", "v2.2"))
+            assert app.app_version in ("1.9", "2.0", "2.1", "2.2", "2.3")
+            assert any(v in app.title() for v in ("v1.9", "v2.0", "v2.1", "v2.2", "v2.3"))
         finally:
             app.destroy()
 
@@ -340,8 +340,8 @@ class TestRelease19Verification:
         iss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "installer.iss")
         with open(iss_path, "r", encoding="utf-8") as f:
             iss_content = f.read()
-        assert any(v in iss_content for v in ('#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"', '#define MyAppVersion "2.2"'))
-        assert any(v in iss_content for v in ('OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.9', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.0', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.1', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2'))
+        assert any(v in iss_content for v in ('#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"', '#define MyAppVersion "2.2"', '#define MyAppVersion "2.3"'))
+        assert any(v in iss_content for v in ('OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v1.9', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.0', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.1', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.2', 'OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.3'))
 
     def test_variant_catalog_entries_selects_optimal_saving(self):
         """

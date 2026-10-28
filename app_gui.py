@@ -24,7 +24,7 @@ from tkinter import filedialog, messagebox
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.1")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.4")
     except Exception:
         pass
 
@@ -34,8 +34,14 @@ try:
         ProcurementEngineBridge,
         inspect_catalog_counts,
         inspect_single_catalog,
+        inspect_catalog,
+        refresh_catalog,
         reread_catalog_with_ocr,
         global_catalog_cache,
+    )
+    from src.catalog_diagnostics import (
+        CatalogResult,
+        ImportDiagnostics,
     )
     from src.pipeline import (
         run_procurement_pipeline,
@@ -52,8 +58,14 @@ except ImportError:
         ProcurementEngineBridge,
         inspect_catalog_counts,
         inspect_single_catalog,
+        inspect_catalog,
+        refresh_catalog,
         reread_catalog_with_ocr,
         global_catalog_cache,
+    )
+    from catalog_diagnostics import (
+        CatalogResult,
+        ImportDiagnostics,
     )
     from pipeline import (
         run_procurement_pipeline,
@@ -175,8 +187,12 @@ class FileItem:
         except OSError:
             self.size_bytes = 0
         self.size_str = format_file_size(self.size_bytes)
-        # Milestone 1: Catalog Inspection & OCR State
+        # Milestone 1: Catalog Inspection & Diagnostics State
         self.item_count: Optional[int] = None
+        self.catalog_result: Optional[CatalogResult] = None
+        self.diagnostic_status: str = ""
+        self.diagnostic_summary: str = ""
+        self.acknowledged_token: Optional[str] = None
         self.is_ocr: bool = False
         self.ocr_running: bool = False
         self.ocr_status_msg: str = ""
@@ -311,7 +327,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.1 / Egyptian Pharma Procurement Optimizer v2.1")
+        self.title("نظام المشتريات الصيدلانية v2.4 / Egyptian Pharma Procurement Optimizer v2.4")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -344,7 +360,7 @@ class PharmaProcurementApp(ctk.CTk):
         self._active_ocr_threads: Dict[str, threading.Thread] = {}
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.2"
+        self.app_version = "2.4"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -488,7 +504,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.1 Windows 11 Edition • Engine Ready",
+            text="v2.4 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -560,7 +576,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.2)",
+            text="🔄 التحديثات / Updates (v2.4)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -810,25 +826,41 @@ class PharmaProcurementApp(ctk.CTk):
         else:
             self._update_ui_state()
 
-    def _async_inspect_counts(self, file_paths: List[str]):
-        """Inspects medication counts in catalogs asynchronously in parallel without freezing GUI."""
+    def _async_inspect_counts(self, file_paths: List[str], refresh: bool = False):
+        """Inspects medication counts and completeness diagnostics in catalogs asynchronously without freezing GUI."""
         uninspected = [
             f.path for f in self.file_model.files
-            if f.category == "Catalog" and f.item_count is None and f.path in file_paths
+            if f.category == "Catalog" and (refresh or f.item_count is None) and f.path in file_paths
         ]
         if not uninspected:
             return
 
-        def _worker(paths_to_inspect):
+        def _worker(paths_to_inspect, do_refresh):
             for p in paths_to_inspect:
                 try:
-                    norm, count, _ = inspect_single_catalog(p)
-                    self._ocr_queue.put(("INSPECT_FILE_DONE", norm, count))
+                    res = inspect_catalog(p, refresh=do_refresh)
+                    norm = os.path.normpath(os.path.abspath(p))
+                    self._ocr_queue.put(("INSPECT_FILE_DONE", norm, len(res.dataframe), res))
                 except Exception as e:
                     logger.debug(f"Catalog inspection thread error for {p}: {e}")
 
-        t = threading.Thread(target=_worker, args=(uninspected,), name="CatalogInspectWorker", daemon=True)
+        t = threading.Thread(target=_worker, args=(uninspected, refresh), name="CatalogInspectWorker", daemon=True)
         t.start()
+
+    def _on_refresh_catalog(self, path: str):
+        """Forces cache invalidation and re-inspection of a catalog file."""
+        norm_path = os.path.normpath(os.path.abspath(path))
+        global_catalog_cache.remove(norm_path)
+        for f in self.file_model.files:
+            if os.path.normpath(f.path) == norm_path:
+                f.item_count = None
+                f.catalog_result = None
+                f.diagnostic_status = ""
+                f.diagnostic_summary = ""
+                f.acknowledged_token = None
+                break
+        self._update_file_card_badge(norm_path)
+        self._async_inspect_counts([norm_path], refresh=True)
 
     def _start_ocr_reread(self, path: str):
         """Triggers on-demand Arabic OCR re-read for a specific catalog in background thread."""
@@ -853,6 +885,31 @@ class PharmaProcurementApp(ctk.CTk):
         self._active_ocr_threads[path] = t
         t.start()
 
+    def _format_catalog_badge(self, f_item: FileItem) -> Tuple[str, object]:
+        """Formats the catalog badge text and color based on completeness diagnostics."""
+        if f_item.item_count is None:
+            return "⏳ جاري فحص الأصناف... / Checking count...", ("gray50", "gray60")
+
+        status = f_item.diagnostic_status
+        if not status and f_item.catalog_result is not None:
+            status = f_item.catalog_result.diagnostics.status
+
+        if status == "complete" and f_item.item_count > 0:
+            return f"📦 {f_item.item_count} صنف ✓ / Complete ({f_item.item_count} items)", COLOR_SUCCESS
+        elif status == "partial":
+            is_acked = (
+                f_item.catalog_result is not None
+                and f_item.acknowledged_token == f_item.catalog_result.acknowledgment_token
+            )
+            ack_tag = " [معتمد / Ack]" if is_acked else " [يتطلب تأكيد / Needs Ack]"
+            return f"⚠️ استيراد جزئي: {f_item.item_count} صنف{ack_tag}", COLOR_WARN_BADGE
+        elif status == "unverified" and f_item.item_count > 0:
+            return f"📦 {f_item.item_count} صنف (اكتمال غير متحقق / Completeness not verified)", COLOR_CATALOG_BADGE
+        elif status == "failed" or f_item.item_count == 0:
+            return "⚠️ 0 صنف / 0 items (Failed)", COLOR_WARN_BADGE
+        else:
+            return f"📦 {f_item.item_count} صنف / items", COLOR_CATALOG_BADGE
+
     def _update_file_card_badge(self, path: str):
         """Updates the item count badge label on an existing card widget directly without re-rendering."""
         norm_path = os.path.normpath(os.path.abspath(path))
@@ -866,16 +923,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         card = self._file_card_widgets.get(target_f.path)
         if card and hasattr(card, "_count_badge"):
-            if target_f.item_count is not None:
-                if target_f.item_count > 0:
-                    count_text = f"📦 {target_f.item_count} صنف / items"
-                    count_color = COLOR_CATALOG_BADGE
-                else:
-                    count_text = "⚠️ 0 صنف / 0 items"
-                    count_color = COLOR_WARN_BADGE
-            else:
-                count_text = "⏳ جاري فحص الأصناف... / Checking count..."
-                count_color = ("gray50", "gray60")
+            count_text, count_color = self._format_catalog_badge(target_f)
             try:
                 card._count_badge.configure(text=count_text, text_color=count_color)
             except Exception:
@@ -891,9 +939,19 @@ class PharmaProcurementApp(ctk.CTk):
                 m_type = msg[0]
                 if m_type == "INSPECT_FILE_DONE":
                     norm_path, count = msg[1], msg[2]
+                    res = msg[3] if len(msg) > 3 else None
                     for f in self.file_model.files:
                         if os.path.normpath(f.path) == norm_path:
                             f.item_count = count
+                            if res is not None:
+                                if (
+                                    f.catalog_result is not None
+                                    and f.catalog_result.acknowledgment_token != res.acknowledgment_token
+                                ):
+                                    f.acknowledged_token = None
+                                f.catalog_result = res
+                                f.diagnostic_status = res.diagnostics.status
+                                f.diagnostic_summary = res.diagnostics.summary()
                             break
                     self._update_file_card_badge(norm_path)
                 elif m_type == "INSPECT_DONE":
@@ -949,13 +1007,15 @@ class PharmaProcurementApp(ctk.CTk):
             self.after(100, self._poll_ocr_queue)
 
     def _on_clear_all(self):
-        """Clears all files from model and GUI."""
+        """Clears all files from model, cache, and GUI."""
+        global_catalog_cache.clear()
         self.file_model.clear()
         self._render_file_list()
         self._update_ui_state()
 
     def _on_remove_file(self, path: str):
-        """Removes an individual file by path."""
+        """Removes an individual file by path and invalidates its cached result."""
+        global_catalog_cache.remove(path)
         self.file_model.remove_path(path)
         self._render_file_list()
         self._update_ui_state()
@@ -977,19 +1037,30 @@ class PharmaProcurementApp(ctk.CTk):
     # File List Rendering & Item Viewer Modal
     # -------------------------------------------------------------------------
     def _open_catalog_item_viewer(self, path: str):
-        """Opens a modern searchable modal showing extracted catalog items and discounts."""
+        """Opens a modern searchable modal showing extracted catalog items, discounts, and completeness diagnostics."""
         norm_path = os.path.normpath(os.path.abspath(path))
         fname = os.path.basename(norm_path)
         w_raw = os.path.splitext(fname)[0]
 
-        # Retrieve or inspect dataframe
-        cached_df = global_catalog_cache.get(norm_path)
-        if cached_df is None or cached_df.empty:
-            _, _, cached_df = inspect_single_catalog(norm_path)
+        # Retrieve or inspect CatalogResult so badge, viewer, and pipeline share the exact same extraction
+        cat_res = inspect_catalog(norm_path, refresh=False)
+        cached_df = cat_res.dataframe
+        diag_summary = cat_res.diagnostics.summary()
+
+        for f in self.file_model.files:
+            if os.path.normpath(f.path) == norm_path:
+                f.item_count = len(cached_df)
+                if f.catalog_result is not None and f.catalog_result.acknowledgment_token != cat_res.acknowledgment_token:
+                    f.acknowledged_token = None
+                f.catalog_result = cat_res
+                f.diagnostic_status = cat_res.diagnostics.status
+                f.diagnostic_summary = diag_summary
+                break
+        self._update_file_card_badge(norm_path)
 
         viewer = ctk.CTkToplevel(self)
         viewer.title(f"عرض الأصناف والخصومات - {fname} / Items & Discounts Viewer")
-        viewer.geometry("880x600")
+        viewer.geometry("880x620")
         viewer.minsize(700, 450)
         viewer.transient(self)
         viewer.grab_set()
@@ -1008,11 +1079,24 @@ class PharmaProcurementApp(ctk.CTk):
             font=get_font(14, "bold"),
             anchor="w"
         )
-        title_lbl.grid(row=0, column=0, sticky="w", pady=(0, 6))
+        title_lbl.grid(row=0, column=0, sticky="w", pady=(0, 4))
+
+        diag_color = (
+            COLOR_SUCCESS if cat_res.diagnostics.status == "complete"
+            else (COLOR_WARN_BADGE if cat_res.diagnostics.status == "partial" else COLOR_CATALOG_BADGE)
+        )
+        diag_lbl = ctk.CTkLabel(
+            header_frame,
+            text=f"🔍 حالة الاستيراد / Import Diagnostics: {diag_summary}",
+            font=get_font(11, "bold"),
+            text_color=diag_color,
+            anchor="w"
+        )
+        diag_lbl.grid(row=1, column=0, sticky="w", pady=(0, 6))
 
         # Search Bar and Count Frame
         filter_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-        filter_frame.grid(row=1, column=0, sticky="ew")
+        filter_frame.grid(row=2, column=0, sticky="ew")
         filter_frame.grid_columnconfigure(0, weight=1)
 
         search_var = tk.StringVar()
@@ -1158,7 +1242,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.2 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.4 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -1384,19 +1468,9 @@ class PharmaProcurementApp(ctk.CTk):
             )
             del_btn.grid(row=0, column=4, padx=(5, 10), pady=8, sticky="e")
 
-            # Row 1: Catalog Inspection & Item Viewer Action (OCR feature archived as failed)
+            # Row 1: Catalog Inspection, Refresh & Item Viewer Action
             if f_item.category == "Catalog":
-                # Medication Count Badge (Formatted cleanly without duplicate number)
-                if f_item.item_count is not None:
-                    if f_item.item_count > 0:
-                        count_text = f"📦 {f_item.item_count} صنف / items"
-                        count_color = COLOR_CATALOG_BADGE
-                    else:
-                        count_text = "⚠️ 0 صنف / 0 items"
-                        count_color = COLOR_WARN_BADGE
-                else:
-                    count_text = "⏳ جاري فحص الأصناف... / Checking count..."
-                    count_color = ("gray50", "gray60")
+                count_text, count_color = self._format_catalog_badge(f_item)
 
                 count_badge = ctk.CTkLabel(
                     card,
@@ -1408,9 +1482,25 @@ class PharmaProcurementApp(ctk.CTk):
                 count_badge.grid(row=1, column=0, columnspan=2, padx=(10, 5), pady=(0, 6), sticky="w")
                 card._count_badge = count_badge
 
-                # Action button: View Items & Discounts
+                actions_frame = ctk.CTkFrame(card, fg_color="transparent")
+                actions_frame.grid(row=1, column=2, columnspan=3, padx=(5, 10), pady=(0, 6), sticky="e")
+
+                refresh_btn = ctk.CTkButton(
+                    actions_frame,
+                    text="🔄 تحديث / Refresh",
+                    font=get_font(10, "bold"),
+                    width=105,
+                    height=24,
+                    fg_color=("gray70", "gray30"),
+                    hover_color=("gray60", "gray40"),
+                    text_color=("black", "white"),
+                    command=lambda p=f_item.path: self._on_refresh_catalog(p)
+                )
+                refresh_btn.pack(side="left", padx=(0, 6))
+                card._refresh_btn = refresh_btn
+
                 view_items_btn = ctk.CTkButton(
-                    card,
+                    actions_frame,
                     text="👁️ عرض الأصناف والخصومات / View Items & Discounts",
                     font=get_font(10, "bold"),
                     width=210,
@@ -1419,7 +1509,7 @@ class PharmaProcurementApp(ctk.CTk):
                     hover_color="#047857",
                     command=lambda p=f_item.path: self._open_catalog_item_viewer(p)
                 )
-                view_items_btn.grid(row=1, column=2, columnspan=2, padx=5, pady=(0, 6), sticky="e")
+                view_items_btn.pack(side="left")
 
             self._file_card_widgets[f_item.path] = card
 
@@ -1474,6 +1564,73 @@ class PharmaProcurementApp(ctk.CTk):
         avg_discounts_file = avg_discounts_files[0] if avg_discounts_files else None
         output_dir = self.output_dir_var.get()
 
+        # Revalidate catalog fingerprints and check for partial imports requiring explicit acknowledgment
+        accepted_tokens = set()
+        unacknowledged_items = []
+        for f_item in self.file_model.files:
+            if f_item.category != "Catalog":
+                continue
+            res = inspect_catalog(f_item.path, refresh=False)
+            if (
+                f_item.catalog_result is not None
+                and f_item.catalog_result.acknowledgment_token != res.acknowledgment_token
+            ):
+                f_item.acknowledged_token = None
+            f_item.catalog_result = res
+            f_item.item_count = len(res.dataframe)
+            f_item.diagnostic_status = res.diagnostics.status
+            f_item.diagnostic_summary = res.diagnostics.summary()
+            self._update_file_card_badge(f_item.path)
+
+            if res.diagnostics.requires_acknowledgment:
+                token = res.acknowledgment_token
+                if f_item.acknowledged_token != token:
+                    unacknowledged_items.append((f_item, res, token))
+                else:
+                    accepted_tokens.add(f_item.acknowledged_token)
+
+        # Single consolidated confirmation popup regardless of how many catalogs require acknowledgment
+        if unacknowledged_items:
+            if len(unacknowledged_items) == 1:
+                item_f, item_res, _ = unacknowledged_items[0]
+                dialog_title = "تأكيد استيراد جزئي للكتالوج / Partial Catalog Import"
+                msg_body = (
+                    f"تم اكتشاف استيراد جزئي في الكتالوج:\n"
+                    f"📄 {item_f.filename}\n\n"
+                    f"• الأصناف المستخرجة: {len(item_res.dataframe)} صنف\n"
+                    f"• التفاصيل: {item_res.diagnostics.summary()}\n\n"
+                    f"هل توافق على اعتماد هذه النتائج الجزئية والمتابعة في عملية التوزيع؟\n"
+                    f"Do you explicitly acknowledge and accept this partial import for procurement?"
+                )
+            else:
+                dialog_title = "تأكيد استيراد جزئي للكتالوجات / Partial Catalog Imports"
+                lines = [
+                    f"تم اكتشاف استيراد جزئي في {len(unacknowledged_items)} كتالوجات / مخازن:\n"
+                    f"Partial imports detected in {len(unacknowledged_items)} catalogs:\n"
+                ]
+                for idx, (item_f, item_res, _) in enumerate(unacknowledged_items, 1):
+                    lines.append(
+                        f"{idx}. 📄 {item_f.filename}\n"
+                        f"   • المستخرج: {len(item_res.dataframe)} صنف | التفاصيل: {item_res.diagnostics.summary()}"
+                    )
+                lines.append(
+                    f"\nهل توافق على اعتماد هذه النتائج الجزئية لجميع هذه المخازن والمتابعة؟\n"
+                    f"Do you explicitly acknowledge and accept all these partial imports for procurement?"
+                )
+                msg_body = "\n".join(lines)
+
+            confirm = messagebox.askyesno(dialog_title, msg_body)
+            if not confirm:
+                self.status_label.configure(
+                    text="⚠️ تم إيقاف التشغيل لعدم تأكيد الاستيراد الجزئي للكتالوجات / Run cancelled: partial imports not acknowledged."
+                )
+                return
+
+            for item_f, _, token in unacknowledged_items:
+                item_f.acknowledged_token = token
+                self._update_file_card_badge(item_f.path)
+                accepted_tokens.add(token)
+
         # Reset Progress and Status
         self.progress_bar.set(0.0)
         self.status_label.configure(text="جاري بدء محرك التوزيع الصيدلاني... / Initializing engine...")
@@ -1486,7 +1643,8 @@ class PharmaProcurementApp(ctk.CTk):
             order_files=order_files,
             catalog_files=catalog_files,
             output_dir=output_dir,
-            avg_discounts_file=avg_discounts_file
+            avg_discounts_file=avg_discounts_file,
+            accepted_partial_tokens=accepted_tokens,
         )
 
         self._update_ui_state()
@@ -1745,30 +1903,90 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     app._on_change_theme("Light")
     app._on_change_theme("System")
 
-    # 4. Verify Catalog Inspection and Card Rendering with Count Badge
-    test_item = FileItem("sample_warehouse_catalog.pdf", "Catalog")
-    test_item.item_count = 15
-    test_item.is_ocr = True
-    app.file_model.files.append(test_item)
-    app._render_file_list()
-    assert len(app._file_card_widgets) == 1, "Catalog card should be rendered"
-    app.file_model.clear()
-    app._render_file_list()
-    assert len(app.file_model.files) == 0, "File model should be clean after test"
+    # 4. Verify Real PDF Parsing and Card Rendering with Count Badge
+    print("[SELF-TEST] Testing real PDF extraction pipeline...")
+    base_dirs = [
+        os.path.dirname(os.path.abspath(__file__)),
+        getattr(sys, "_MEIPASS", ""),
+        os.getcwd(),
+    ]
+    hayah_candidates = [
+        os.path.join(d, "tests", "fixtures", "hayah_shibin.pdf") for d in base_dirs if d
+    ] + ["tests/fixtures/hayah_shibin.pdf"]
+    hayah_path = next((p for p in hayah_candidates if os.path.exists(p)), None)
 
+    if hayah_path:
+        from src.pdf_parser import PDFCatalogParser
+        from src.controller import inspect_catalog
 
-    # 4. Clean destruction if created here
+        # Real parser extraction
+        df_real = PDFCatalogParser(hayah_path, warehouse_name="SelfTestWarehouse").parse()
+        assert len(df_real) == 571, f"Self-test expected 571 items from Hayah fixture, got {len(df_real)}"
+
+        # Real controller inspection & diagnostics
+        res_real = inspect_catalog(hayah_path)
+        assert res_real.diagnostics.status == "complete", f"Self-test expected 'complete' status, got {res_real.diagnostics.status}"
+        assert len(res_real.dataframe) == 571, f"Self-test expected 571 items in dataframe, got {len(res_real.dataframe)}"
+
+        # Real card rendering in GUI with real count badge
+        test_item = FileItem(hayah_path, "Catalog")
+        test_item.item_count = len(res_real.dataframe)
+        test_item.is_ocr = False
+        app.file_model.files.append(test_item)
+        app._render_file_list()
+        assert len(app._file_card_widgets) == 1, "Catalog card should be rendered"
+        app.file_model.clear()
+        app._render_file_list()
+        assert len(app.file_model.files) == 0, "File model should be clean after test"
+        print(f"[SELF-TEST] Real PDF extraction verified: {len(df_real)} items recovered from {os.path.basename(hayah_path)}")
+    else:
+        print("[SELF-TEST] Warning: hayah_shibin.pdf not found; skipping fixture self-test.")
+
+    # 5. Clean destruction if created here
     if created_here:
-        app.destroy()
+        try:
+            app.quit()
+        except Exception:
+            pass
+        try:
+            app.destroy()
+        except Exception:
+            pass
     print("[SELF-TEST] CustomTkinter Windows 11 GUI initialized, validated, and verified cleanly.")
     return 0
 
 
 def main():
     """Application entry point."""
+    if "--test-catalog" in sys.argv:
+        idx = sys.argv.index("--test-catalog")
+        if idx + 1 < len(sys.argv):
+            catalog_file = sys.argv[idx + 1]
+            import json
+            from src.pdf_parser import PDFCatalogParser
+            from src.catalog_diagnostics import CatalogResult
+            df = PDFCatalogParser(catalog_file, warehouse_name="PackagedCLITest").parse()
+            res = CatalogResult.from_dataframe(df)
+            out = {
+                "count": len(df),
+                "status": res.diagnostics.status if res else "unknown",
+                "candidate_rows": res.diagnostics.candidate_rows if res else 0,
+                "accepted_rows": res.diagnostics.accepted_rows if res else 0,
+                "rejected_rows": res.diagnostics.rejected_rows if res else 0,
+                "unprocessed_rows": res.diagnostics.unprocessed_rows if res else 0,
+                "items": [
+                    {"name": r["item_name"], "price": r["base_price"], "discount": r["discount_rate"]}
+                    for _, r in df.iterrows()
+                ]
+            }
+            print("__JSON_RESULT__" + json.dumps(out) + "__JSON_RESULT__")
+            sys.stdout.flush()
+            os._exit(0)
+
     if "--self-test" in sys.argv:
         code = run_headless_self_test()
-        sys.exit(code)
+        sys.stdout.flush()
+        os._exit(code)
 
     app = PharmaProcurementApp()
     app.mainloop()

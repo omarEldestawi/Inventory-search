@@ -49,5 +49,4 @@ scripts/*.json
 # Runtime test data and large binary inputs/outputs
 input/catalogs/*.pdf
 input/orders/*.xlsx
-output/*.xlsx
-output/*.md
+output/

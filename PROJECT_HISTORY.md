@@ -1,6 +1,6 @@
 # 📜 Project History & Developer Onboarding Guide (`PROJECT_HISTORY.md`)
 
-Welcome to the **Egyptian Pharma Procurement Optimizer (`نظام المشتريات الصيدلانية الأمثل`)** repository. This document provides a complete architectural and historical overview so that any new engineer joining the project can quickly understand **why** the system is designed the way it is, **what** domain edge cases it solves, and **how** it evolved from `v1.0.0` to `v2.0`.
+Welcome to the **Egyptian Pharma Procurement Optimizer (`نظام المشتريات الصيدلانية الأمثل`)** repository. This document provides a complete architectural and historical overview so that any new engineer joining the project can quickly understand **why** the system is designed the way it is, **what** domain edge cases it solves, and **how** it evolved from `v1.0.0` to `v2.3`.
 
 ---
 
@@ -75,7 +75,7 @@ flowchart TD
 
 ---
 
-## 3. Chronological Evolution (`v1.0.0` $\rightarrow$ `v2.0`)
+## 3. Chronological Evolution (`v1.0.0` $\rightarrow$ `v2.3`)
 
 ### **v1.0.0 (September 2026) — Initial Deterministic Allocator**
 - Built the initial two-pass procurement allocator (`src/allocator.py`) and clinical safety gates (`src/pharma_matcher.py`) to match pharmacy orders against major Egyptian wholesaler catalogs (*Al-Motahedon*, *Ibn Sina*, *Soficopharm*, *Al-Fares*).
@@ -109,6 +109,18 @@ flowchart TD
   1. `Warehouse Discount - Reference Weighted Average Discount >= 4.0%`, **AND**
   2. `Unit Saving = Base Price * (Warehouse Discount - Reference Weighted Average Discount) >= 4.00 EGP`.
 - Added visual competitive highlighting on Column 8 (`المخزن صاحب أعلى خصم`): **Soft Green (`#E2EFDA`)** when the current warehouse offers the highest discount market-wide, and **Soft Yellow (`#FFF2CC`)** showing the competing warehouse name and discount when another supplier is higher.
+
+### **v2.3 (October 2026) — Structural Multi-Group PDF Recognition, Group-Level BiDi Voting, Completeness Diagnostics & Fingerprint Cache**
+- **Root Problems Solved**:
+  1. Multi-column wholesaler PDFs such as **Al-Hayah Pharm (`م الحياه شبين المنوفيه.pdf` / `tests/fixtures/hayah_shibin.pdf`)** visually contain 3 side-by-side product groups (`Price | Discount | Product`), but PyMuPDF `find_tables()` detected **11 structural columns instead of 9** due to split header cells (`7/8` and `9/10`) that have no corresponding body cells (`8` and `10` are `None` in all body rows). Because `11` is not divisible by `3` or `4`, the parser treated the entire table as a single group and extracted only the left column (`195` items instead of **571 items**).
+  2. 96 of the 571 rows in `hayah_shibin.pdf` (e.g., `'٣٠ك مجم٥٠/١٠٠٠ ستبيلج'`) lacked individual reversed-token keywords and remained reversed under single-cell heuristics.
+  3. The in-memory `CatalogCache` keyed entries only by file path without validating content hash or parser revision, and the UI displayed raw item counts without completeness verification.
+- **Structural Multi-Group Recognition & Header-Only Slot Pruning (`src/catalog_reader.py`, `src/pdf_parser.py`)**:
+  - Retains cell bounding boxes alongside text, merges split header fragments (`'مص' + 'خلا'` $\rightarrow$ `'مصخلا'`), prunes confirmed header-only slots (`[8, 10]`), dynamically discovers repeated `(price, discount, name[, code])` groups (`(0, 1, 2)`, `(3, 4, 5)`, `(6, 7, 9)`), and carries layout across continuation and partial final pages to recover all **571 unique items** (`141 / 141 / 141 / 141 / 7` per page; `47 / 47 / 47` on pages 1–4 and `7 / 0 / 0` on page 5).
+- **Group-Level Arabic Direction Voting (`resolve_group_arabic_direction`)**:
+  - Establishes group reading direction from unambiguous rows within each product group and applies it to ambiguous Arabic rows while preserving forward Arabic and Latin runs, decimal strengths (`12.5`, `642.9`), and ratios (`50/1000`, `160/12.5`).
+- **Completeness Diagnostics, Fingerprint Cache & Partial-Import Acknowledgment (`src/catalog_diagnostics.py`, `src/controller.py`, `src/pipeline.py`, `app_gui.py`)**:
+  - Enforces row reconciliation invariants (`candidate_rows == accepted_rows + rejected_rows + unprocessed_rows`, `accepted_rows == unique_records + duplicate_records`), validates `CatalogCache` entries via `FileFingerprint` (canonical path + SHA-256 + `PARSER_REVISION = "2026.10.27.1"` + PyMuPDF `1.28.2`), and gates partial imports on explicit user acknowledgment bound to `CatalogResult.acknowledgment_token`.
 
 ### **v2.2 (October 2026) — Updater Relaunch Overhaul, Download Verification & Release 2.2**
 - **Overhauled Auto-Updater Process Lifecycle**:

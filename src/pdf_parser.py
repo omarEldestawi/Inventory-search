@@ -50,7 +50,51 @@ except ImportError:
         is_catalog_noise
     )
 
+try:
+    from .catalog_reader import (
+        TableGeometry,
+        ProductGroup,
+        analyze_table_geometry,
+        detect_product_groups,
+        resolve_group_arabic_direction,
+        extract_item_from_group_row,
+        parse_structural_table,
+        CatalogImportMetadata,
+        is_genuine_header_cell,
+    )
+    from .catalog_diagnostics import (
+        FileFingerprint,
+        RowDiagnostic,
+        GroupDiagnostics,
+        PageDiagnostics,
+        ImportDiagnostics,
+        CatalogResult,
+        METADATA_KEY,
+    )
+except ImportError:
+    from catalog_reader import (
+        TableGeometry,
+        ProductGroup,
+        analyze_table_geometry,
+        detect_product_groups,
+        resolve_group_arabic_direction,
+        extract_item_from_group_row,
+        parse_structural_table,
+        CatalogImportMetadata,
+        is_genuine_header_cell,
+    )
+    from catalog_diagnostics import (
+        FileFingerprint,
+        RowDiagnostic,
+        GroupDiagnostics,
+        PageDiagnostics,
+        ImportDiagnostics,
+        CatalogResult,
+        METADATA_KEY,
+    )
+
 logger = logging.getLogger("PDFCatalogParser")
+
 
 _ocr_engine = None
 _table_engine = None
@@ -419,6 +463,10 @@ class PDFCatalogParser:
             self.warehouse_name = normalize_vendor_name(warehouse_name) if warehouse_name else ""
         self.last_error: Optional[str] = None
         self._doc_first_num_is_price: Optional[bool] = None
+        self._established_geometry: Optional[TableGeometry] = None
+        self._established_groups: Optional[List[ProductGroup]] = None
+        self._page_diagnostics: List[PageDiagnostics] = []
+        self._import_diagnostics: Optional[ImportDiagnostics] = None
 
     @staticmethod
     def _extract_raw_float(val: Any) -> float:
@@ -580,6 +628,11 @@ class PDFCatalogParser:
         items = []
         self.last_error = None
         self._doc_first_num_is_price = None
+        self._established_geometry = None
+        self._established_groups = None
+        self._page_diagnostics = []
+        self._import_diagnostics = None
+        raw_accepted_count = 0
         doc = None
         try:
             doc = pymupdf.open(self.pdf_path)
@@ -607,9 +660,18 @@ class PDFCatalogParser:
             )
             
             if is_block_layout:
-                for page in doc:
+                for page_idx, page in enumerate(doc):
                     block_items = self._process_page_blocks(page)
                     items.extend(block_items)
+                    raw_accepted_count += len(block_items)
+                    self._page_diagnostics.append(
+                        PageDiagnostics(
+                            page=page_idx + 1,
+                            strategy="blocks",
+                            accepted_rows=len(block_items),
+                            groups=[GroupDiagnostics(group=0, strategy="blocks", candidate_rows=len(block_items), accepted_rows=len(block_items))]
+                        )
+                    )
             else:
                 for page_idx, page in enumerate(doc):
                     page_items = []
@@ -623,9 +685,11 @@ class PDFCatalogParser:
                         sina_items = self._extract_sina_columns(page)
                         if sina_items:
                             page_items.extend(sina_items)
+                            raw_accepted_count += len(sina_items)
                     
                     if not page_items:
                         tables = page.find_tables()
+                        covered_bboxes = []
                         if tables and len(tables.tables) > 0:
                             all_tables = tables.tables
                             if len(all_tables) > 1:
@@ -649,12 +713,120 @@ class PDFCatalogParser:
                             else:
                                 filtered_tables = all_tables
 
-                            # Stitch contiguous 1-row table slices (e.g. El-Qemma)
-                            stitched_tables = self._stitch_contiguous_tables(filtered_tables)
-                            for table_data in stitched_tables:
-                                if table_data and len(table_data) > 1:
-                                    parsed_items = self._process_table(table_data)
-                                    page_items.extend(parsed_items)
+                            # Process all detected tables on the page (structural and legacy)
+                            structural_tables = set()
+                            table_groups: List[GroupDiagnostics] = []
+                            table_items: List[Dict[str, Any]] = []
+                            table_errors: List[str] = []
+                            table_expected_known = True
+
+                            for t_idx, t in enumerate(filtered_tables):
+                                if hasattr(t, "rows") and len(t.rows) >= 1:
+                                    t_extract = t.extract()
+                                    geom = analyze_table_geometry(t, established_layout=self._established_geometry)
+                                    groups = detect_product_groups(geom, t_extract, established_groups=self._established_groups) if geom else []
+                                    has_multi_groups = bool(groups and len(groups) >= 2 and any(g.is_valid for g in groups))
+                                    t_num_cols = len(t_extract[0]) if (t_extract and t_extract[0]) else (len(t.rows[0].cells) if t.rows else 0)
+                                    t_headers = [str(c).strip() if c is not None else "" for c in t_extract[0]] if t_extract else None
+                                    sample_rows = t_extract[1:10] if (t_extract and len(t_extract) > 1) else t_extract
+                                    is_layout_compat = bool(
+                                        self._established_geometry and self._established_geometry.is_compatible(
+                                            t_num_cols,
+                                            other_headers=t_headers,
+                                            other_col_bboxes=getattr(geom, 'col_bboxes', None),
+                                            sample_rows=sample_rows,
+                                        )
+                                    )
+                                    has_est_multi_groups = bool(
+                                        self._established_groups and len(self._established_groups) >= 2
+                                        and geom and is_layout_compat
+                                    )
+                                    is_single_row_structural = bool(len(t.rows) == 1 and groups and any(g.is_valid for g in groups))
+
+                                    if has_multi_groups or has_est_multi_groups or is_single_row_structural:
+                                        est_geom_to_pass = self._established_geometry if is_layout_compat else None
+                                        est_groups_to_pass = self._established_groups if (est_geom_to_pass is not None) else None
+
+                                        p_items, new_geom, new_groups, t_diag = parse_structural_table(
+                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self
+                                        )
+
+                                        if has_multi_groups or (new_groups and any(g.is_valid for g in new_groups)):
+                                            self._established_geometry = new_geom
+                                            self._established_groups = new_groups
+
+                                        structural_tables.add(t)
+                                        if hasattr(t, 'bbox') and t.bbox:
+                                            covered_bboxes.append(t.bbox)
+                                        table_items.extend(p_items)
+                                        raw_accepted_count += len(p_items)
+
+                                        # Incorporate group diagnostics with unambiguous table-indexed provenance
+                                        for g_diag in t_diag.groups:
+                                            grp_idx_on_page = len(table_groups)
+                                            g_diag.group = grp_idx_on_page
+                                            g_diag.strategy = f"structural_table_t{t_idx}"
+                                            for r_diag in g_diag.rows:
+                                                r_diag.group = grp_idx_on_page
+                                            table_groups.append(g_diag)
+
+                                        if not t_diag.expected_count_known:
+                                            table_expected_known = False
+                                        if t_diag.errors:
+                                            table_errors.extend(t_diag.errors)
+
+                            # Legacy extraction for remaining tables not handled structurally
+                            remaining_tables = [t for t in filtered_tables if t not in structural_tables]
+                            if remaining_tables:
+                                stitched_tables = self._stitch_contiguous_tables(remaining_tables)
+                                for rem_idx, table_data in enumerate(stitched_tables):
+                                    if table_data and len(table_data) >= 1:
+                                        t_items = self._process_table(table_data)
+                                        # Skip non-product banner/footer tables that yield no items and lack product catalog indicators
+                                        if not t_items and not self._is_likely_catalog_table(table_data):
+                                            continue
+                                        table_items.extend(t_items)
+                                        raw_accepted_count += len(t_items)
+
+                                        grp_idx_on_page = len(table_groups)
+                                        legacy_accepted = len(t_items)
+                                        header_offset = 1 if (len(table_data) > 1 and any(is_genuine_header_cell(c) for c in table_data[0] if c)) else 0
+                                        legacy_candidates = max(legacy_accepted, len(table_data) - header_offset)
+                                        legacy_rejected = max(0, legacy_candidates - legacy_accepted)
+
+                                        rem_bbox = None
+                                        if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], 'bbox'):
+                                            rem_bbox = list(remaining_tables[rem_idx].bbox)
+
+                                        legacy_grp = GroupDiagnostics(
+                                            group=grp_idx_on_page,
+                                            strategy=f"legacy_table_t{rem_idx}",
+                                            candidate_rows=legacy_candidates,
+                                            accepted_rows=legacy_accepted,
+                                            rejected_rows=legacy_rejected,
+                                            unprocessed_rows=0,
+                                            bbox=rem_bbox,
+                                        )
+                                        table_groups.append(legacy_grp)
+
+                                for t in remaining_tables:
+                                    if hasattr(t, 'bbox') and t.bbox:
+                                        covered_bboxes.append(t.bbox)
+
+                            # Aggregate all table and group results into one page-level diagnostic record
+                            page_items.extend(table_items)
+                            if table_groups:
+                                page_accepted = sum(g.accepted_rows for g in table_groups)
+                                self._page_diagnostics.append(
+                                    PageDiagnostics(
+                                        page=page_idx + 1,
+                                        strategy="structural_table" if structural_tables else "legacy_table",
+                                        expected_count_known=table_expected_known,
+                                        accepted_rows=page_accepted,
+                                        groups=table_groups,
+                                        errors=table_errors,
+                                    )
+                                )
                         
                         # Dynamically detect 2-column ArwaSoft pages where PyMuPDF only found the left table (Xmax <= 315)
                         is_page_arwasoft_2col = is_arwasoft_2col or (
@@ -665,32 +837,150 @@ class PDFCatalogParser:
                         )
 
                         # Fallback for 3-column ArwaSoft row-rectangle pages (e.g. Zahra Pharm / تحديث زهره.pdf),
-                        # 2-column borderless pages (e.g. Dar Al-Fouad), or block extraction
-                        if len(page_items) < 2 and not is_cure and not is_makramy and not is_sina and not is_page_arwasoft_2col:
-                            if not is_dar_fouad and (not tables or len(tables.tables) == 0):
+                        # 2-column borderless pages (e.g. Dar Al-Fouad), or block extraction when no tables found
+                        if not tables or len(tables.tables) == 0:
+                            fb_items = []
+                            if not is_dar_fouad:
                                 rect_3col_items = self._extract_arwasoft_3col_rects(page)
                                 if rect_3col_items:
-                                    page_items.extend(rect_3col_items)
-                            if len(page_items) < 2 and (is_dar_fouad or (tables and len(tables.tables) == 0)):
+                                    fb_items.extend(rect_3col_items)
+                            if len(fb_items) < 2 and (is_dar_fouad or (tables and len(tables.tables) == 0)):
                                 fouad_items = self._extract_dar_fouad_columns(page)
                                 if fouad_items:
-                                    page_items.extend(fouad_items)
-                            if len(page_items) < 2:
+                                    fb_items.extend(fouad_items)
+                            if len(fb_items) < 2:
                                 block_items = self._process_page_blocks(page)
-                                page_items.extend(block_items)
+                                fb_items.extend(block_items)
+                            page_items.extend(fb_items)
+                            raw_accepted_count += len(fb_items)
+                            if len(self._page_diagnostics) <= page_idx:
+                                self._page_diagnostics.append(
+                                    PageDiagnostics(
+                                        page=page_idx + 1,
+                                        strategy="fallback",
+                                        accepted_rows=len(fb_items),
+                                        groups=[GroupDiagnostics(group=0, strategy="fallback", candidate_rows=len(fb_items), accepted_rows=len(fb_items))]
+                                    )
+                                )
                             
                         # Multi-column accounting layout recovery (ArwaSoft PDFs)
                         if is_cure:
                             right_items = self._extract_cure_right_column(page)
-                            page_items.extend(right_items)
+                            if right_items:
+                                page_items.extend(right_items)
+                                raw_accepted_count += len(right_items)
+                                covered_bboxes.append((300.0, 80.0, 600.0, 790.0))
+                                if len(self._page_diagnostics) > page_idx:
+                                    grp_idx = len(self._page_diagnostics[page_idx].groups)
+                                    self._page_diagnostics[page_idx].groups.append(
+                                        GroupDiagnostics(
+                                            group=grp_idx,
+                                            strategy="cure_right_column",
+                                            candidate_rows=len(right_items),
+                                            accepted_rows=len(right_items),
+                                            rejected_rows=0,
+                                            unprocessed_rows=0,
+                                        )
+                                    )
+                                    self._page_diagnostics[page_idx].accepted_rows += len(right_items)
                         elif is_page_arwasoft_2col:
                             right_items = self._extract_arwasoft_right_column(page)
-                            page_items.extend(right_items)
+                            if right_items:
+                                page_items.extend(right_items)
+                                raw_accepted_count += len(right_items)
+                                covered_bboxes.append((315.0, 80.0, 600.0, 790.0))
+                                if len(self._page_diagnostics) > page_idx:
+                                    self._page_diagnostics[page_idx].groups.append(
+                                        GroupDiagnostics(
+                                            group=1,
+                                            strategy="arwasoft_right_column",
+                                            candidate_rows=len(right_items),
+                                            accepted_rows=len(right_items),
+                                            rejected_rows=0,
+                                            unprocessed_rows=0,
+                                        )
+                                    )
+                                    self._page_diagnostics[page_idx].accepted_rows += len(right_items)
                         elif is_makramy:
                             extra_cols = self._extract_makramy_columns(page)
-                            page_items.extend(extra_cols)
-                        
+                            if extra_cols:
+                                page_items.extend(extra_cols)
+                                raw_accepted_count += len(extra_cols)
+                                covered_bboxes.append((200.0, 80.0, 600.0, 790.0))
+                                if len(self._page_diagnostics) > page_idx:
+                                    grp_idx = len(self._page_diagnostics[page_idx].groups)
+                                    self._page_diagnostics[page_idx].groups.append(
+                                        GroupDiagnostics(
+                                            group=grp_idx,
+                                            strategy="makramy_columns",
+                                            candidate_rows=len(extra_cols),
+                                            accepted_rows=len(extra_cols),
+                                            rejected_rows=0,
+                                            unprocessed_rows=0,
+                                        )
+                                    )
+                                    self._page_diagnostics[page_idx].accepted_rows += len(extra_cols)
+
+                        # Coordinate-based uncovered-region recovery (Feature F12)
+                        # Replaces legacy '< 2 items' check by scanning text blocks outside table bboxes
+                        if covered_bboxes and not is_cure and not is_makramy and not is_sina and not is_page_arwasoft_2col:
+                            uncovered = self._find_uncovered_blocks(page, covered_bboxes)
+                            if uncovered:
+                                coord_items = self._extract_items_from_blocks(uncovered)
+                                if coord_items:
+                                    for ci in coord_items:
+                                        ci['_strategy'] = "coordinate_recovery"
+                                    page_items.extend(coord_items)
+                                    raw_accepted_count += len(coord_items)
+                                    if len(self._page_diagnostics) > page_idx:
+                                        grp_idx = len(self._page_diagnostics[page_idx].groups)
+                                        self._page_diagnostics[page_idx].groups.append(
+                                            GroupDiagnostics(
+                                                group=grp_idx,
+                                                strategy="coordinate_recovery",
+                                                candidate_rows=len(coord_items),
+                                                accepted_rows=len(coord_items),
+                                                rejected_rows=0,
+                                                unprocessed_rows=0,
+                                            )
+                                        )
+                                        self._page_diagnostics[page_idx].accepted_rows += len(coord_items)
+                                    else:
+                                        self._page_diagnostics.append(
+                                            PageDiagnostics(
+                                                page=page_idx + 1,
+                                                strategy="coordinate_recovery",
+                                                accepted_rows=len(coord_items),
+                                                groups=[
+                                                    GroupDiagnostics(
+                                                        group=0,
+                                                        strategy="coordinate_recovery",
+                                                        candidate_rows=len(coord_items),
+                                                        accepted_rows=len(coord_items),
+                                                        rejected_rows=0,
+                                                        unprocessed_rows=0,
+                                                    )
+                                                ]
+                                            )
+                                        )
+
+                    for it in page_items:
+                        if '_page' not in it:
+                            it['_page'] = page_idx
                     items.extend(page_items)
+                    if len(self._page_diagnostics) <= page_idx:
+                        self._page_diagnostics.append(
+                            PageDiagnostics(
+                                page=page_idx + 1,
+                                strategy="page",
+                                accepted_rows=len(page_items),
+                                groups=[GroupDiagnostics(group=0, strategy="page", candidate_rows=len(page_items), accepted_rows=len(page_items))]
+                            )
+                        )
+                    else:
+                        self._page_diagnostics[page_idx].accepted_rows = sum(
+                            g.accepted_rows for g in self._page_diagnostics[page_idx].groups
+                        )
         except Exception as e:
             self.last_error = f"Corrupted or invalid PDF file ({os.path.basename(self.pdf_path)}): {e}"
             logger.warning(f"Error parsing PDF {self.warehouse_name}: {e}")
@@ -703,18 +993,106 @@ class PDFCatalogParser:
 
 
         if not items:
-            return pd.DataFrame(columns=[
+            df = pd.DataFrame(columns=[
                 'warehouse_name', 'item_name', 'normalized_name', 'dosage',
                 'unit_size', 'base_price', 'discount_rate', 'stock_status'
             ])
+            import_diag = ImportDiagnostics(
+                pages=self._page_diagnostics,
+                accepted_rows=0,
+                unique_records=0,
+                duplicate_records=0,
+                errors=[self.last_error] if self.last_error else [],
+            )
+            self._import_diagnostics = import_diag
+            fp = FileFingerprint.from_path(self.pdf_path) if self.pdf_path and os.path.exists(self.pdf_path) else None
+            res = CatalogResult(dataframe=df, diagnostics=import_diag, fingerprint=fp)
+            df.attrs[METADATA_KEY] = CatalogImportMetadata(
+                diagnostics=import_diag,
+                fingerprint=fp,
+                acknowledgment_token=res.acknowledgment_token
+            )
+            df.diagnostics = import_diag
+            df.fingerprint = fp
+            df.acknowledgment_token = res.acknowledgment_token
+            return df
             
+        # Sort items by document position before deduplication (Feature F12)
+        items.sort(key=lambda it: (it.get('_page', 0), it.get('_y', 0.0)))
+        for it in items:
+            it.pop('_page', None)
+            it.pop('_y', None)
+            it.pop('_strategy', None)
+
         df = pd.DataFrame(items)
-        # Deduplicate & pick highest discount for same product in this warehouse
-        df = df.sort_values(by='discount_rate', ascending=False).drop_duplicates(
-            subset=['normalized_name', 'dosage', 'unit_size', 'base_price'], keep='first'
-        )
         df = df[(df['base_price'] > 0.0) & (df['base_price'] < 10000.0)]
+
+        unique_records = len(df)
+        accepted_rows = raw_accepted_count
+        duplicate_records = max(0, accepted_rows - unique_records)
+
+        import_diag = ImportDiagnostics(
+            pages=self._page_diagnostics,
+            accepted_rows=accepted_rows,
+            unique_records=unique_records,
+            duplicate_records=duplicate_records,
+            errors=[self.last_error] if self.last_error else [],
+        )
+        self._import_diagnostics = import_diag
+        fp = FileFingerprint.from_path(self.pdf_path) if self.pdf_path and os.path.exists(self.pdf_path) else None
+        res = CatalogResult(dataframe=df, diagnostics=import_diag, fingerprint=fp)
+        df.attrs[METADATA_KEY] = CatalogImportMetadata(
+            diagnostics=import_diag,
+            fingerprint=fp,
+            acknowledgment_token=res.acknowledgment_token
+        )
+        df.diagnostics = import_diag
+        df.fingerprint = fp
+        df.acknowledgment_token = res.acknowledgment_token
         return df
+
+
+
+    def _is_likely_catalog_table(self, table_data: list) -> bool:
+        """
+        Determines whether a raw table is likely an actual product catalog table
+        rather than a page banner, header logo, or footer metadata table.
+        """
+        if not table_data or len(table_data) < 1:
+            return False
+
+        # 1. Check for genuine product catalog column headers (in first 3 rows)
+        for row in table_data[:3]:
+            for cell in row:
+                if cell and is_genuine_header_cell(cell):
+                    return True
+
+        # 2. For headerless tables: must have at least 2 rows and at least 2 columns
+        if len(table_data) < 2 or len(table_data[0]) < 2:
+            return False
+
+        # 3. Look for combinations of price-like numbers and product-like text across rows
+        has_price = False
+        has_product_text = False
+        for row in table_data:
+            for cell in row:
+                if not cell:
+                    continue
+                s = str(cell).strip()
+                s_num = re.sub(r'[^\d.]', '', s.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")))
+                try:
+                    val = float(s_num)
+                    if 0.5 <= val <= 50000.0:
+                        has_price = True
+                except ValueError:
+                    pass
+                letters = re.findall(r'[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeffa-zA-Z]', s)
+                if len(letters) >= 3 and not any(kw in s for kw in ['تاريخ', 'صفحة', 'الوقت', 'طبع', 'مساهمة']):
+                    has_product_text = True
+            if has_price and has_product_text:
+                return True
+
+        return False
 
     def _process_table(self, table: list) -> list:
         """Parse raw 2D list table into catalog items, supporting split side-by-side tables."""
@@ -1444,12 +1822,61 @@ class PDFCatalogParser:
 
         return p
 
-    def _process_page_blocks(self, page) -> list:
-        """Extract lines using PyMuPDF text blocks for whitespace-layout PDFs."""
-        items = []
-        blocks = page.get_text("blocks")
+    def _find_uncovered_blocks(self, page, covered_bboxes: list) -> list:
+        """
+        Scan text blocks outside covered table bounding boxes (Feature F12).
+        Filters out header/footer noise (y < 80, y > 790) and catalog noise.
+        """
+        uncovered = []
+        try:
+            blocks = page.get_text("blocks")
+        except Exception:
+            return []
+
         for b in blocks:
-            text = b[4].strip()
+            # b: (x0, y0, x1, y1, text, block_no, block_type)
+            if len(b) > 6 and b[6] != 0:
+                continue
+            bx0, by0, bx1, by1 = b[0], b[1], b[2], b[3]
+            # Filter margin noise (y < 80, y > 790)
+            if by0 < 80.0 or by1 > 790.0:
+                continue
+            text = b[4].strip() if len(b) > 4 else ""
+            if not text or is_catalog_noise(text):
+                continue
+            # Filter repeated column header noise
+            if any(h in text for h in ['الخصم', 'السعر', 'الصنف', 'المخزن', 'أصناف', 'شركة اروى', 'لتجارة وتوزيع']):
+                if not re.search(r'\d+', text):
+                    continue
+
+            # Check overlap with covered bounding boxes
+            is_covered = False
+            b_area = max(1.0, (bx1 - bx0) * (by1 - by0))
+            for cbox in covered_bboxes:
+                cx0, cy0, cx1, cy1 = cbox[0], cbox[1], cbox[2], cbox[3]
+                ix0 = max(bx0, cx0)
+                iy0 = max(by0, cy0)
+                ix1 = min(bx1, cx1)
+                iy1 = min(by1, cy1)
+                if ix1 > ix0 and iy1 > iy0:
+                    inter_area = (ix1 - ix0) * (iy1 - iy0)
+                    if inter_area / b_area > 0.2:
+                        is_covered = True
+                        break
+            if not is_covered:
+                uncovered.append(b)
+
+        return uncovered
+
+    def _extract_items_from_blocks(self, blocks: list) -> list:
+        """Extract medication items from a list of PyMuPDF text blocks."""
+        items = []
+        for b in blocks:
+            if len(b) > 1 and (b[1] < 80.0 or b[3] > 790.0):
+                continue
+            text = b[4].strip() if len(b) > 4 else ""
+            if not text or is_catalog_noise(text):
+                continue
             lines = [l.strip() for l in text.split('\n') if l.strip()]
             for full_line in lines:
                 if any(k in full_line for k in ['لتجــارة', 'ميجــا', 'اسم الصنف', 'السعر', '0502384138', 'المنصـورة']):
@@ -1480,15 +1907,16 @@ class PDFCatalogParser:
                                     'unit_size': unit_size,
                                     'base_price': price_val,
                                     'discount_rate': discount_val,
-                                    'stock_status': True
+                                    'stock_status': True,
+                                    '_y': b[1] if len(b) > 1 else 0.0,
                                 })
 
         # Multi-line ArwaSoft block fallback (when item name, price, and discount are split by \n inside each block)
         if len(items) < 2:
             for b in blocks:
-                if b[1] < 80 or b[3] > 800:
+                if len(b) > 1 and (b[1] < 80.0 or b[3] > 790.0):
                     continue
-                raw_text = b[4].strip()
+                raw_text = b[4].strip() if len(b) > 4 else ""
                 if not raw_text or any(h in raw_text for h in ['الخصم', 'السعر', 'الصنف', 'المخزن', 'أصناف', 'شركة اروى', 'لتجارة وتوزيع']):
                     continue
                 text = unicodedata.normalize('NFKD', raw_text)
@@ -1523,9 +1951,18 @@ class PDFCatalogParser:
                             'unit_size': unit_size,
                             'base_price': price_val,
                             'discount_rate': disc_val,
-                            'stock_status': True
+                            'stock_status': True,
+                            '_y': b[1] if len(b) > 1 else 0.0,
                         })
         return items
+
+    def _process_page_blocks(self, page) -> list:
+        """Extract lines using PyMuPDF text blocks for whitespace-layout PDFs."""
+        try:
+            blocks = page.get_text("blocks")
+        except Exception:
+            return []
+        return self._extract_items_from_blocks(blocks)
 
     def _extract_arwasoft_3col_rects(self, page) -> list:
         """

@@ -24,6 +24,7 @@ from src.excel_parser import load_purchase_order
 from src.allocator import MedicineAllocator
 from src.report_generator import ArabicExcelReportGenerator
 from src.normalizer import parse_discount, normalize_vendor_name
+from src.catalog_diagnostics import CatalogResult
 
 def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
     """Extracts catalog items, discounts, and prices from warehouse Excel/CSV files."""
@@ -117,6 +118,7 @@ def main():
     parser.add_argument("--avg-discounts-file", default=None, help="Specific reference average discounts file ('أرصده المخازن') path")
     parser.add_argument("--output-dir", default=None, help="Directory to save generated Excel reports")
     parser.add_argument("--date", default=None, help="Custom date for report name (YYYY-MM-DD), default is today")
+    parser.add_argument("--allow-partial-imports", action="store_true", help="Explicitly accept partial catalog imports in non-interactive CLI mode")
 
     args = parser.parse_args()
 
@@ -163,7 +165,15 @@ def main():
         print(f"  -> Reading PDF Catalog: '{w_name}' ...", end=" ", flush=True)
         parser_inst = PDFCatalogParser(pdf, warehouse_name=w_name)
         df = parser_inst.parse()
-        print(f"({len(df)} items extracted)")
+        cat_res = CatalogResult.from_dataframe(df)
+        status_str = f", status={cat_res.diagnostics.status}" if cat_res else ""
+        print(f"({len(df)} items extracted{status_str})")
+        if cat_res and cat_res.diagnostics.requires_acknowledgment and not args.allow_partial_imports:
+            print(
+                f"\n[!] Partial catalog import detected for '{os.path.basename(pdf)}': {cat_res.diagnostics.summary()}\n"
+                f"    Pass --allow-partial-imports to explicitly accept partial results in CLI mode."
+            )
+            sys.exit(2)
         if not df.empty:
             all_catalogs.append(df)
 

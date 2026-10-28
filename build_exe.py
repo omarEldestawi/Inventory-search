@@ -43,11 +43,12 @@ def build():
     except Exception as e:
         print(f"Warning: Could not resolve customtkinter path: {e}")
 
-    # 2. Source code, input templates, application assets, and medication knowledge base
+    # 2. Source code, input templates, application assets, test fixtures, and medication knowledge base
     add_data_item("src", "src")
     add_data_item("input", "input")
     add_data_item("assets", "assets")
     add_data_item("data", "data")
+    add_data_item("tests/fixtures", "tests/fixtures")
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
@@ -69,6 +70,8 @@ def build():
         "--hidden-import", "src.medication_db",
         "--hidden-import", "src.average_discounts",
         "--hidden-import", "src.updater",
+        "--hidden-import", "src.catalog_diagnostics",
+        "--hidden-import", "src.catalog_reader",
     ]
 
     for d in datas:
@@ -82,13 +85,22 @@ def build():
         print("PyInstaller build failed.")
         sys.exit(res.returncode)
 
-    # Ensure data/ is bundled directly in dist/EgyptianPharmaOptimizer/data for standalone runs
+    # Ensure data/ and tests/fixtures/ are bundled directly for standalone runs
     out_data = os.path.join("dist", "EgyptianPharmaOptimizer", "data")
     if os.path.exists("data"):
         os.makedirs(out_data, exist_ok=True)
         for fname in os.listdir("data"):
             src_f = os.path.join("data", fname)
             dst_f = os.path.join(out_data, fname)
+            if os.path.isfile(src_f):
+                shutil.copy2(src_f, dst_f)
+
+    out_fixtures = os.path.join("dist", "EgyptianPharmaOptimizer", "tests", "fixtures")
+    if os.path.exists(os.path.join("tests", "fixtures")):
+        os.makedirs(out_fixtures, exist_ok=True)
+        for fname in os.listdir(os.path.join("tests", "fixtures")):
+            src_f = os.path.join("tests", "fixtures", fname)
+            dst_f = os.path.join(out_fixtures, fname)
             if os.path.isfile(src_f):
                 shutil.copy2(src_f, dst_f)
 

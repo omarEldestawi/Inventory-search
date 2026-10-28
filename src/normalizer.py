@@ -6,7 +6,7 @@ import os
 import re
 import unicodedata
 import functools
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, List, Tuple, Any, Sequence
 
 # XML 1.0 illegal characters regex for openpyxl safety
 # Prohibits ASCII control characters (0-8, 11-12, 14-31) and surrogate/non-character code points
@@ -425,7 +425,7 @@ def normalize_vendor_name(filename_or_raw_name: str) -> str:
         return 'مخزن السلطان'
     if 'المكرومي' in name_clean:
         return 'مخزن المكرومي'
-    if 'الحياه' in name_clean or 'الحياة' in name_clean:
+    if 'الحياه' in name_clean or 'الحياة' in name_clean or 'hayah_shibin' in name.lower() or 'hayah' in name_clean.lower():
         return 'مخزن الحياة فارم'
     if 'فالكون' in name_clean:
         return 'مخزن فالكون فارم'
@@ -762,8 +762,53 @@ def unreverse_arabic_text(text: str, force_reverse: Optional[bool] = None) -> st
     text = text.replace('ی', 'ي').replace('ک', 'ك').replace('ہ', 'ه')
     text = text.replace('ٌ', 'ي').replace('ً', 'ي')
     text = text.replace('ـ', '')
-    
+
+    # Final cleanup of any un-reversed tokens exposed after presentation form normalization
+    post_words = text.split()
+    cleaned_post = []
+    for w in post_words:
+        wc = re.sub(r'^[^\w]+|[^\w]+$', '', w)
+        if wc in REVERSED_TOKEN_MAP:
+            cleaned_post.append(w.replace(wc, REVERSED_TOKEN_MAP[wc]))
+        else:
+            cleaned_post.append(w)
+    text = ' '.join(cleaned_post)
     return re.sub(r'\s+', ' ', text).strip()
+
+
+
+def resolve_group_arabic_direction(rows: Sequence[Sequence[Any]], name_col: int) -> str:
+    """
+    Establishes group-level Arabic reading direction from multiple clear examples within the group.
+    Returns 'reversed', 'forward', or 'unknown'.
+    """
+    if name_col is None or not rows:
+        return "unknown"
+
+    rev_votes = 0
+    fwd_votes = 0
+
+    for r in rows:
+        if name_col >= len(r) or r[name_col] is None:
+            continue
+        val = str(r[name_col]).strip()
+        if not val or len(val) < 2 or val.isdigit():
+            continue
+        decoded = decode_custom_catalog_glyphs(val)
+        if is_catalog_noise(decoded):
+            continue
+
+        if is_arabic_text_reversed(decoded):
+            rev_votes += 1
+        elif any(w in decoded for w in FORWARD_PHARMA_TOKENS):
+            fwd_votes += 1
+
+    if rev_votes >= 2 and rev_votes > fwd_votes * 1.5:
+        return "reversed"
+    if fwd_votes >= 2 and fwd_votes > rev_votes * 1.5:
+        return "forward"
+    return "unknown"
+
 
 def pre_tokenize_pharma_string(text: str) -> str:
     """

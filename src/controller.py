@@ -14,9 +14,27 @@ from typing import Optional, Union, Dict, List
 import pandas as pd
 
 try:
-    from .pipeline import run_procurement_pipeline, PipelineExecutionError
+    from .pipeline import run_procurement_pipeline, PipelineExecutionError, validate_cached_catalog
+    from .catalog_diagnostics import (
+        FileFingerprint,
+        CatalogResult,
+        ImportDiagnostics,
+        PageDiagnostics,
+        GroupDiagnostics,
+        METADATA_KEY,
+        PARSER_REVISION,
+    )
 except ImportError:
-    from pipeline import run_procurement_pipeline, PipelineExecutionError
+    from pipeline import run_procurement_pipeline, PipelineExecutionError, validate_cached_catalog
+    from catalog_diagnostics import (
+        FileFingerprint,
+        CatalogResult,
+        ImportDiagnostics,
+        PageDiagnostics,
+        GroupDiagnostics,
+        METADATA_KEY,
+        PARSER_REVISION,
+    )
 
 logger = logging.getLogger("ProcurementController")
 
@@ -260,57 +278,148 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
 
 
 class CatalogCache:
-    """Thread-safe in-memory cache for parsed catalog DataFrames."""
+    """Thread-safe in-memory cache for parsed catalog DataFrames with fingerprint validation."""
     def __init__(self):
         self._cache: Dict[str, pd.DataFrame] = {}
+        self._fingerprints: Dict[str, FileFingerprint] = {}
         self._lock = threading.Lock()
 
     def get(self, file_path: str) -> Optional[pd.DataFrame]:
+        if not file_path or not isinstance(file_path, str):
+            return None
         with self._lock:
             norm = os.path.normpath(os.path.abspath(file_path))
             df = self._cache.get(norm)
-            return df.copy() if df is not None else None
+            if df is None:
+                return None
+            fp = self._fingerprints.get(norm)
+            if fp is not None and not fp.is_current(norm):
+                self._cache.pop(norm, None)
+                self._fingerprints.pop(norm, None)
+                return None
+            out = df.copy(deep=True)
+            out.attrs = dict(df.attrs)
+            return out
 
     def set(self, file_path: str, df: pd.DataFrame):
+        if not file_path or not isinstance(file_path, str):
+            return
         with self._lock:
             norm = os.path.normpath(os.path.abspath(file_path))
-            self._cache[norm] = df.copy() if df is not None else pd.DataFrame()
+            if df is not None:
+                stored = df.copy(deep=True)
+                stored.attrs = dict(df.attrs)
+            else:
+                stored = pd.DataFrame()
+            self._cache[norm] = stored
+
+            if os.path.isfile(norm):
+                res = CatalogResult.from_dataframe(stored)
+                if (
+                    res is not None
+                    and res.fingerprint is not None
+                    and isinstance(res.fingerprint.path, str)
+                    and os.path.isabs(res.fingerprint.path)
+                    and os.path.normcase(os.path.realpath(res.fingerprint.path)) == os.path.normcase(os.path.realpath(norm))
+                ):
+                    self._fingerprints[norm] = res.fingerprint
+                else:
+                    self._fingerprints.pop(norm, None)
+            else:
+                self._fingerprints.pop(norm, None)
 
     def remove(self, file_path: str):
+        if not file_path or not isinstance(file_path, str):
+            return
         with self._lock:
             norm = os.path.normpath(os.path.abspath(file_path))
             self._cache.pop(norm, None)
+            self._fingerprints.pop(norm, None)
 
     def clear(self):
         with self._lock:
             self._cache.clear()
+            self._fingerprints.clear()
 
     def all_cached(self) -> Dict[str, pd.DataFrame]:
         with self._lock:
-            return {k: v.copy() for k, v in self._cache.items()}
+            invalid_keys = []
+            for k, v in list(self._cache.items()):
+                if os.path.isfile(k):
+                    verified = validate_cached_catalog(v, k)
+                    if verified is None:
+                        invalid_keys.append(k)
+                else:
+                    fp = self._fingerprints.get(k)
+                    if fp is not None and not fp.is_current(k):
+                        invalid_keys.append(k)
+
+            for k in invalid_keys:
+                self._cache.pop(k, None)
+                self._fingerprints.pop(k, None)
+
+            result = {}
+            for k, v in self._cache.items():
+                copied = v.copy(deep=True)
+                copied.attrs = dict(v.attrs)
+                result[k] = copied
+            return result
 
 
 global_catalog_cache = CatalogCache()
 
 
-def inspect_single_catalog(catalog_file: str) -> tuple[str, int, pd.DataFrame]:
+def inspect_catalog(catalog_file: str, refresh: bool = False) -> CatalogResult:
     """
-    Inspects a single catalog file, returning (normalized_path, count, df).
-    Reads from cache if present; otherwise parses and caches.
+    Result-oriented catalog inspection entry point.
+    Returns a structured CatalogResult containing the 8-column DataFrame,
+    ImportDiagnostics, and FileFingerprint.
     """
+    empty_cols = [
+        'warehouse_name', 'item_name', 'normalized_name', 'dosage',
+        'unit_size', 'base_price', 'discount_rate', 'stock_status'
+    ]
+    empty_df = pd.DataFrame(columns=empty_cols)
+
     if not catalog_file or not isinstance(catalog_file, str):
-        return "", 0, pd.DataFrame()
+        return CatalogResult(
+            dataframe=empty_df,
+            diagnostics=ImportDiagnostics(errors=["Invalid catalog file path"]),
+            fingerprint=None,
+        )
+
     norm = os.path.normpath(os.path.abspath(catalog_file))
     if not os.path.isfile(norm):
-        return norm, 0, pd.DataFrame()
+        global_catalog_cache.remove(norm)
+        return CatalogResult(
+            dataframe=empty_df,
+            diagnostics=ImportDiagnostics(errors=[f"Catalog file not found: {norm}"]),
+            fingerprint=None,
+        )
 
-    cached_df = global_catalog_cache.get(norm)
-    if cached_df is not None:
-        return norm, len(cached_df), cached_df
+    if refresh:
+        global_catalog_cache.remove(norm)
+    else:
+        cached_df = global_catalog_cache.get(norm)
+        if cached_df is not None:
+            cached_res = validate_cached_catalog(cached_df, norm)
+            if cached_res is not None:
+                return cached_res
+            else:
+                # Absent, malformed, relative-path, or unverified cache:
+                # treat as cache miss, evict stale entry and trigger full parse
+                global_catalog_cache.remove(norm)
 
-    df = pd.DataFrame()
+    try:
+        fp = FileFingerprint.from_path(norm)
+    except OSError:
+        fp = None
+
+    df = empty_df.copy()
     fname = os.path.basename(norm)
     w_raw = os.path.splitext(fname)[0]
+    parse_err = None
+
     try:
         if norm.lower().endswith('.pdf'):
             try:
@@ -328,13 +437,75 @@ def inspect_single_catalog(catalog_file: str) -> tuple[str, int, pd.DataFrame]:
                 from normalizer import normalize_vendor_name
             df = parse_excel_catalog(norm, normalize_vendor_name(w_raw))
     except Exception as exc:
-        logger.debug(f"Fast inspection failed for {norm}: {exc}")
+        parse_err = str(exc)
+        logger.debug(f"Catalog inspection failed for {norm}: {exc}")
+
+    res = CatalogResult.from_dataframe(df)
+    if res is None:
+        if norm.lower().endswith(('.xlsx', '.xls', '.csv')) and not df.empty:
+            page_diag = PageDiagnostics(
+                page=1,
+                strategy="excel",
+                expected_count_known=True,
+                accepted_rows=len(df),
+                groups=[
+                    GroupDiagnostics(
+                        group=0,
+                        strategy="excel",
+                        candidate_rows=len(df),
+                        accepted_rows=len(df),
+                    )
+                ],
+            )
+            diag = ImportDiagnostics(
+                pages=[page_diag],
+                accepted_rows=len(df),
+                unique_records=len(df),
+                duplicate_records=0,
+                errors=[parse_err] if parse_err else [],
+            )
+        else:
+            errs = [parse_err] if parse_err else (["No valid catalog items extracted"] if df.empty else [])
+            diag = ImportDiagnostics(
+                pages=[],
+                accepted_rows=len(df),
+                unique_records=len(df),
+                duplicate_records=0,
+                errors=errs,
+            )
+        res = CatalogResult(dataframe=df, diagnostics=diag, fingerprint=fp)
+        df = res.to_dataframe()
+    elif res.fingerprint is None and fp is not None:
+        res = CatalogResult(dataframe=res.dataframe, diagnostics=res.diagnostics, fingerprint=fp)
+        df = res.to_dataframe()
 
     global_catalog_cache.set(norm, df)
-    return norm, len(df), df
+    return res
 
 
-def inspect_catalog_counts(catalog_files: list[str]) -> dict[str, int]:
+def refresh_catalog(catalog_file: str) -> CatalogResult:
+    """Forces re-inspection of a catalog file, invalidating any cached result."""
+    return inspect_catalog(catalog_file, refresh=True)
+
+
+def inspect_single_catalog(catalog_file: str, refresh: bool = False) -> tuple[str, int, pd.DataFrame]:
+    """
+    Inspects a single catalog file, returning (normalized_path, count, df).
+    Reads from fingerprint-validated cache if present; otherwise parses and caches.
+    """
+    if not catalog_file or not isinstance(catalog_file, str):
+        return "", 0, pd.DataFrame()
+    norm = os.path.normpath(os.path.abspath(catalog_file))
+    if not os.path.isfile(norm):
+        global_catalog_cache.remove(norm)
+        return norm, 0, pd.DataFrame()
+
+    res = inspect_catalog(norm, refresh=refresh)
+    df_out = res.to_dataframe()
+    return norm, len(df_out), df_out
+
+
+def inspect_catalog_counts(catalog_files: list[str], refresh: bool = False) -> dict[str, int]:
     """
     Inspects medication count for a list of catalog files.
     Reads from in-memory cache if available; otherwise uses fast digital parser and caches.
@@ -342,7 +513,7 @@ def inspect_catalog_counts(catalog_files: list[str]) -> dict[str, int]:
     """
     counts = {}
     for f in catalog_files:
-        norm, count, _ = inspect_single_catalog(f)
+        norm, count, _ = inspect_single_catalog(f, refresh=refresh)
         if norm:
             counts[norm] = count
     return counts
@@ -388,13 +559,17 @@ def reread_catalog_with_ocr(catalog_file: str, progress_callback=None) -> tuple[
         df = parse_excel_catalog(norm_path, normalize_vendor_name(w_raw))
 
     # Non-degradation safety: if OCR yielded valid items, accept them directly.
-    # Only fall back to previously cached items if OCR returned 0 items.
+    # Only fall back to previously cached items if OCR returned 0 items and cached entry is valid.
     prev_cached = global_catalog_cache.get(norm_path)
     if not df.empty:
         logger.info(f"OCR successfully extracted {len(df)} items for {fname}")
     elif prev_cached is not None and not prev_cached.empty:
-        logger.info(f"OCR returned 0 items; preserving {len(prev_cached)} previously cached items for {fname}")
-        df = prev_cached
+        verified_prev = validate_cached_catalog(prev_cached, norm_path)
+        if verified_prev is not None:
+            logger.info(f"OCR returned 0 items; preserving {len(prev_cached)} previously cached items for {fname}")
+            df = verified_prev.to_dataframe()
+        else:
+            global_catalog_cache.remove(norm_path)
 
     if df.empty and last_err:
         raise RuntimeError(last_err)
@@ -444,6 +619,8 @@ class ProcurementEngineBridge:
         custom_date_str: Optional[str] = None,
         catalog_cache: Optional[Dict[str, pd.DataFrame]] = None,
         avg_discounts_file: Optional[str] = None,
+        allow_partial_imports: bool = False,
+        accepted_partial_tokens: Optional[Union[set[str], list[str]]] = None,
     ) -> threading.Thread:
         """
         Launches the procurement pipeline in a daemon background thread.
@@ -480,6 +657,10 @@ class ProcurementEngineBridge:
                 sig = inspect.signature(run_procurement_pipeline)
                 if "avg_discounts_file" in sig.parameters:
                     pipeline_kwargs["avg_discounts_file"] = avg_discounts_file
+                if "allow_partial_imports" in sig.parameters:
+                    pipeline_kwargs["allow_partial_imports"] = allow_partial_imports
+                if "accepted_partial_tokens" in sig.parameters:
+                    pipeline_kwargs["accepted_partial_tokens"] = accepted_partial_tokens
 
                 results = run_procurement_pipeline(**pipeline_kwargs)
                 self.last_result = results

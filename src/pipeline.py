@@ -13,7 +13,7 @@ import traceback
 import tempfile
 import time
 import threading
-from typing import Callable, Optional, Union
+from typing import Any, Callable, Optional, Union
 import pandas as pd
 
 try:
@@ -23,6 +23,15 @@ try:
     from .report_generator import ArabicExcelReportGenerator
     from .normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
     from .average_discounts import load_average_discounts_file, resolve_default_avg_discounts_path
+    from .catalog_diagnostics import (
+        FileFingerprint,
+        CatalogResult,
+        ImportDiagnostics,
+        PageDiagnostics,
+        GroupDiagnostics,
+        METADATA_KEY,
+        PARSER_REVISION,
+    )
 except ImportError:
     from pdf_parser import PDFCatalogParser
     from excel_parser import load_purchase_order
@@ -30,6 +39,15 @@ except ImportError:
     from report_generator import ArabicExcelReportGenerator
     from normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
     from average_discounts import load_average_discounts_file, resolve_default_avg_discounts_path
+    from catalog_diagnostics import (
+        FileFingerprint,
+        CatalogResult,
+        ImportDiagnostics,
+        PageDiagnostics,
+        GroupDiagnostics,
+        METADATA_KEY,
+        PARSER_REVISION,
+    )
 
 logger = logging.getLogger("ProcurementPipeline")
 
@@ -291,6 +309,85 @@ class PipelineExecutionError(RuntimeError):
         self.diagnostics = diagnostics or {}
 
 
+def validate_cached_catalog(
+    candidate: Any,
+    expected_file_path: str,
+) -> Optional[CatalogResult]:
+    """
+    Validates that a cached catalog candidate matches the current file and parser.
+    Reuse cached results only when identity is verifiable and matches the current file and parser.
+    Requires:
+      - File exists on disk.
+      - Matching canonical file identity.
+      - Fingerprint is present, uses an absolute path, and matches canonical file path.
+      - Matching content SHA-256 hash against the file on disk.
+      - Matching parser revision and extraction library version.
+      - Valid non-empty dataframe and diagnostics metadata.
+    Treats absent, malformed, relative-path, or mismatched fingerprints as cache misses.
+    Returns the verified CatalogResult if valid; otherwise returns None.
+    """
+    if not expected_file_path or not isinstance(expected_file_path, str):
+        return None
+
+    norm_expected = os.path.normpath(os.path.abspath(expected_file_path))
+    if not os.path.isfile(norm_expected):
+        return None
+
+    try:
+        canonical_expected = os.path.normcase(os.path.realpath(norm_expected))
+    except Exception:
+        canonical_expected = os.path.normcase(norm_expected)
+
+    if candidate is None:
+        return None
+
+    if isinstance(candidate, CatalogResult):
+        cached_res = candidate
+    elif isinstance(candidate, pd.DataFrame):
+        if candidate.empty:
+            return None
+        cached_res = CatalogResult.from_dataframe(candidate)
+    else:
+        return None
+
+    if cached_res is None or cached_res.dataframe is None:
+        return None
+
+    fp = getattr(cached_res, "fingerprint", None)
+    if fp is None or not isinstance(fp, FileFingerprint):
+        return None
+
+    fp_path = getattr(fp, "path", None)
+    if not fp_path or not isinstance(fp_path, str) or not os.path.isabs(fp_path):
+        return None
+
+    try:
+        canonical_fp = os.path.normcase(os.path.realpath(os.path.abspath(fp_path)))
+    except Exception:
+        canonical_fp = os.path.normcase(os.path.abspath(fp_path))
+
+    if canonical_fp != canonical_expected:
+        return None
+
+    fp_sha = getattr(fp, "sha256", None)
+    if not fp_sha or not isinstance(fp_sha, str) or len(fp_sha) != 64:
+        return None
+
+    if not getattr(fp, "parser_revision", None) or not getattr(fp, "library_version", None):
+        return None
+
+    try:
+        if not fp.is_current(norm_expected):
+            return None
+    except Exception:
+        return None
+
+    if not hasattr(cached_res, "diagnostics") or cached_res.diagnostics is None:
+        return None
+
+    return cached_res
+
+
 def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
     """
     Extracts catalog items, discounts, and prices from warehouse Excel or CSV files.
@@ -381,6 +478,8 @@ def run_procurement_pipeline(
     cancel_check: Optional[Callable[[], bool]] = None,
     catalog_cache: Optional[dict] = None,
     avg_discounts_file: Optional[str] = None,
+    allow_partial_imports: bool = False,
+    accepted_partial_tokens: Optional[Union[set[str], list[str], tuple[str, ...]]] = None,
 ) -> dict:
     """
     Executes catalog ingestion, purchase order loading & combining, clinical safety allocation,
@@ -396,6 +495,8 @@ def run_procurement_pipeline(
         cancel_check: Optional callable() returning True if operation should be aborted.
         catalog_cache: Optional cache dictionary for parsed catalog DataFrames.
         avg_discounts_file: Optional path to reference average discounts dataset ('أرصده المخازن' / 'خصم مرجح').
+        allow_partial_imports: If True, allows partial catalog imports without explicit acknowledgment token.
+        accepted_partial_tokens: Set or list of acknowledgment tokens explicitly approved by user.
 
     Returns:
         dict:
@@ -411,6 +512,7 @@ def run_procurement_pipeline(
         InterruptedError: If cancelled by cancel_check.
     """
     current_stage = "initialization"
+    accepted_tokens = set(accepted_partial_tokens) if accepted_partial_tokens else set()
     diagnostics = {
         "stage": current_stage,
         "order_files": list(order_files) if order_files else [],
@@ -422,6 +524,7 @@ def run_procurement_pipeline(
         "orders_processed": 0,
         "total_catalog_items": 0,
         "total_order_items": 0,
+        "catalog_diagnostics": {},
     }
 
     def _notify(pct: float, msg: str):
@@ -479,11 +582,33 @@ def run_procurement_pipeline(
 
             df_cat = pd.DataFrame()
             norm_cat = os.path.normpath(os.path.abspath(cat_file))
-            if catalog_cache and norm_cat in catalog_cache and catalog_cache[norm_cat] is not None and not catalog_cache[norm_cat].empty:
-                df_cat = catalog_cache[norm_cat].copy()
-            elif catalog_cache and cat_file in catalog_cache and catalog_cache[cat_file] is not None and not catalog_cache[cat_file].empty:
-                df_cat = catalog_cache[cat_file].copy()
-            elif cat_file.lower().endswith('.pdf'):
+            cached_candidate = None
+            if catalog_cache is not None:
+                if hasattr(catalog_cache, "get") and not isinstance(catalog_cache, dict):
+                    cand = catalog_cache.get(norm_cat)
+                    if cand is None or (isinstance(cand, pd.DataFrame) and cand.empty):
+                        cand = catalog_cache.get(cat_file)
+                    if cand is not None and not (isinstance(cand, pd.DataFrame) and cand.empty):
+                        cached_candidate = cand
+                elif isinstance(catalog_cache, dict):
+                    cand = catalog_cache.get(norm_cat)
+                    if cand is None or (isinstance(cand, pd.DataFrame) and cand.empty):
+                        cand = catalog_cache.get(cat_file)
+                    if cand is not None and not (isinstance(cand, pd.DataFrame) and cand.empty):
+                        cached_candidate = cand
+
+            if cached_candidate is not None and not (isinstance(cached_candidate, pd.DataFrame) and cached_candidate.empty):
+                verified_res = validate_cached_catalog(cached_candidate, norm_cat)
+                if verified_res is not None:
+                    df_cat = verified_res.to_dataframe()
+                    logger.info(f"Using verified cached catalog for '{base_name}'.")
+                else:
+                    logger.info(
+                        f"Cached catalog '{base_name}' is unverified, malformed, or stale on disk; re-parsing fresh copy."
+                    )
+                    df_cat = pd.DataFrame()
+
+            if df_cat.empty and cat_file.lower().endswith('.pdf'):
                 try:
                     parser_inst = PDFCatalogParser(cat_file, warehouse_name=w_name)
                     df_cat = parser_inst.parse()
@@ -499,12 +624,56 @@ def run_procurement_pipeline(
                             logger.warning(f"OCR parsing for '{base_name}' reported: {parser_inst.last_error}")
                 except Exception as cat_err:
                     logger.warning(f"Error parsing PDF catalog '{base_name}': {cat_err}")
-            elif cat_file.lower().endswith(('.xlsx', '.xls', '.csv')):
+            elif df_cat.empty and cat_file.lower().endswith(('.xlsx', '.xls', '.csv')):
                 try:
                     df_cat = parse_excel_catalog(cat_file, warehouse_name=w_name)
+                    if not df_cat.empty:
+                        try:
+                            fp = FileFingerprint.from_path(norm_cat)
+                        except OSError:
+                            fp = None
+                        page_diag = PageDiagnostics(
+                            page=1,
+                            strategy="excel",
+                            expected_count_known=True,
+                            accepted_rows=len(df_cat),
+                            groups=[
+                                GroupDiagnostics(
+                                    group=0,
+                                    strategy="excel",
+                                    candidate_rows=len(df_cat),
+                                    accepted_rows=len(df_cat),
+                                )
+                            ],
+                        )
+                        diag = ImportDiagnostics(
+                            pages=[page_diag],
+                            accepted_rows=len(df_cat),
+                            unique_records=len(df_cat),
+                            duplicate_records=0,
+                        )
+                        res = CatalogResult(dataframe=df_cat, diagnostics=diag, fingerprint=fp)
+                        df_cat = res.to_dataframe()
                 except Exception as cat_err:
                     logger.warning(f"Error parsing Excel/CSV catalog '{base_name}': {cat_err}")
 
+            cat_res = CatalogResult.from_dataframe(df_cat) if df_cat is not None else None
+            if cat_res is not None:
+                diagnostics["catalog_diagnostics"][norm_cat] = cat_res.diagnostics.to_dict()
+                if cat_res.diagnostics.requires_acknowledgment:
+                    token = cat_res.acknowledgment_token
+                    if not allow_partial_imports and token not in accepted_tokens:
+                        summary_str = cat_res.diagnostics.summary()
+                        raise PipelineExecutionError(
+                            f"Partial catalog import detected for '{base_name}' ({summary_str}). "
+                            f"Explicit acknowledgment is required before procurement (token: {token}).",
+                            diagnostics={
+                                **diagnostics,
+                                **cat_res.diagnostics.to_dict(),
+                                "partial_catalog": norm_cat,
+                                "acknowledgment_token": token,
+                            },
+                        )
 
             if df_cat is not None and not df_cat.empty:
                 all_catalogs.append(df_cat)
@@ -643,9 +812,12 @@ def run_procurement_pipeline(
             'output_dir': output_dir,
             'kpis': kpis,
             'above_average_discounts': above_avg_df,
-            'per_warehouse_above_average_discounts': per_wh_above_avg
+            'per_warehouse_above_average_discounts': per_wh_above_avg,
+            'catalog_diagnostics': diagnostics.get("catalog_diagnostics", {}),
         }
 
+    except PipelineExecutionError:
+        raise
     except InterruptedError:
         logger.info("Procurement pipeline was cancelled by caller.")
         raise

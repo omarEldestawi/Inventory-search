@@ -5,6 +5,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.4] - 2026-10-28
+
+### 🚀 Added & Improved
+- **Multi-Table Extraction on Single Pages (`src/pdf_parser.py`)**:
+  - Removed premature extraction loop break, parsing all structural and legacy tables on a page.
+  - Reconciles candidate, accepted, rejected, and unprocessed rows with aggregate page-level completeness diagnostics.
+- **Headerless Continuation and First-Page Recovery (`src/catalog_reader.py`)**:
+  - Automatically identifies whether row 0 contains product data or headers; retains row 0 on headerless continuation pages and standalone single-row tables.
+- **Transposed Column Protection (`TableGeometry.is_compatible`, `src/catalog_reader.py`)**:
+  - Enforces position-by-position column role compatibility checking to prevent swapped headers (`Discount | Price | Name` vs `Price | Discount | Name`) from corrupting pricing and discount fields.
+- **Mixed-Header Repeated Group Inference (`detect_product_groups`)**:
+  - Resolves plain numeric discounts (`20` vs `20%`) in headerless repeated groups by inferring missing roles from neighboring explicit header groups across Left, Middle, and Right table configurations.
+- **Strict Cache Integrity & Rejection of Unvalidated Entries (`src/pipeline.py`, `src/controller.py`)**:
+  - Validates cached catalogs against canonical path, SHA-256 digest, parser revision, and extraction library version; rejects unvalidated or relative-path cache records.
+- **Standalone Windows Executable & Installer v2.4 (`EgyptianPharmaOptimizer_Setup_v2.4.exe`)**:
+  - Bundled and compiled with PyInstaller and Inno Setup 6, featuring `--self-test` headless GUI verification and `--test-catalog` JSON extraction.
+
+---
+
+## [2.3] - 2026-10-27
+
+### 🚀 Added & Improved
+- **Structural Multi-Group PDF Table Recognition (`src/catalog_reader.py`, `src/pdf_parser.py`)**:
+  - Retains extracted PyMuPDF cell bounding boxes (`table.rows[r].cells`) alongside text before reducing tables to plain lists.
+  - Merges split header fragments belonging to the same body column (`'مص' + 'خلا'` -> `'مصخلا'`) and prunes confirmed header-only structural slots (`[8, 10]`) that have zero occupied body cells.
+  - Dynamically discovers repeated `(price, discount, name[, code])` product groups without requiring table width to be divisible by `3` or `4`, and carries the established layout across continuation and partial final pages.
+  - Recovers all **571 unique items** (`141 / 141 / 141 / 141 / 7` per page; `47 / 47 / 47` on pages 1–4 and `7 / 0 / 0` on page 5) from `tests/fixtures/hayah_shibin.pdf` (`م الحياه شبين المنوفيه.pdf`).
+- **Group-Level Arabic Direction Voting (`resolve_group_arabic_direction`, `src/normalizer.py`)**:
+  - Establishes reading direction from clear multi-row examples within each product group and applies it consistently to ambiguous Arabic rows (resolving all 96 ambiguous rows in `hayah_shibin.pdf`, e.g., `'٣٠ك مجم٥٠/١٠٠٠ ستبيلج'` -> `'جليبتس 50/1000 مجم ك 30'`) while preserving forward Arabic and Latin text runs, decimal strengths (`12.5`, `642.9`), and ratios (`50/1000`, `160/12.5`).
+- **Completeness Diagnostics & Coordinate Recovery (`src/catalog_diagnostics.py`, `src/pdf_parser.py`)**:
+  - Replaced the legacy `< 2 items` recovery trigger with structural bounding-box coverage analysis (`_find_uncovered_blocks`) and enforced strict count reconciliation (`candidate_rows == accepted_rows + rejected_rows + unprocessed_rows` and `accepted_rows == unique_records + duplicate_records`).
+  - Attaches typed `CatalogImportMetadata` (`CatalogResult`, `ImportDiagnostics`, `FileFingerprint`) to `df.attrs["catalog_import"]` while preserving the 8-column DataFrame contract.
+- **Fingerprint-Validated Caching & Partial-Import Acknowledgment (`src/controller.py`, `src/pipeline.py`, `app_gui.py`, `main.py`)**:
+  - Upgraded `CatalogCache` to validate cached entries against canonical path, SHA-256 content hash, `PARSER_REVISION` (`"2026.10.27.1"`), and PyMuPDF library version (`1.28.2`).
+  - Added `inspect_catalog(file_path, refresh=False) -> CatalogResult`, `refresh_catalog()`, a `🔄 تحديث / Refresh` button on GUI catalog cards, diagnostic status badges (`complete`, `partial`, `unverified`, `failed`), and explicit user acknowledgment bound to `CatalogResult.acknowledgment_token` for partial imports (`--allow-partial-imports` in CLI mode).
+- **Documentation & Packaging (`docs/current/TROUBLESHOOTING.md`, `installer.iss`, `build_exe.py`)**:
+  - Added [`docs/current/TROUBLESHOOTING.md`](docs/current/TROUBLESHOOTING.md) documenting the verified root cause, before/after counts, diagnostic badge meanings, and refresh/acknowledgment workflows.
+  - Updated version strings across all project files to `2.3` and compiled standalone executable and `dist_installer/EgyptianPharmaOptimizer_Setup_v2.3.exe`.
+
+---
+
 ## [2.2] - 2026-10-26
 
 ### 🛡️ Fixed & Improved
