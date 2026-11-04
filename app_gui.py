@@ -26,7 +26,7 @@ import pymupdf
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.5")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.6")
     except Exception:
         pass
 
@@ -1408,7 +1408,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.5 / Egyptian Pharma Procurement Optimizer v2.5")
+        self.title("نظام المشتريات الصيدلانية v2.6 / Egyptian Pharma Procurement Optimizer v2.6")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -1445,7 +1445,7 @@ class PharmaProcurementApp(ctk.CTk):
         self._latest_applied_seq: Dict[str, int] = {}
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.5"
+        self.app_version = "2.6"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -1589,7 +1589,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.5 Windows 11 Edition • Engine Ready",
+            text="v2.6 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -1661,7 +1661,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.5)",
+            text="🔄 التحديثات / Updates (v2.6)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -2379,7 +2379,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.5 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.6 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"

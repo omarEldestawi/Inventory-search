@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.6] - 2026-11-04
+
+### 🚀 Added & Improved
+- **ArwaSoft 2026 Custom 8-bit Font Glyph Decoding (`src/normalizer.py`)**:
+  - Implemented `ARWASOFT_2026_CHAR_MAP` mapping all control byte characters (`0x01`–`0x1F`) and ASCII symbols used by ArwaSoft print drivers back to valid Arabic characters.
+  - Crucially resolved byte `0x0A` (`\n`) as the Arabic letter **ق** (preventing split words like `ا\nراص` $\rightarrow$ `اقراص`).
+  - Updated `strip_illegal_characters()` to decode custom catalog glyphs before stripping non-printable characters.
+  - Contextual decoding of digits so pure numbers (e.g. `10`, `20`, `100`, `13`) retain their digits without turning into letters.
+  - Added packaging phrase normalizations (`تكت`/`تك` $\rightarrow$ `باكت`, `ةلبسوك` $\rightarrow$ `كبسولة`, `راصاب` $\rightarrow$ `اقراص باكت`).
+  - Automatic vendor detection resolving `"طباعه مزدوجه"` / `"طباعة مزدوجة"` and company tax card headers to `"مخزن الهضبة فارم"`.
+- **Side-by-Side Dual-Table Extraction (`src/pdf_parser.py`)**:
+  - Implemented `_is_arwasoft_dual_column_catalog` and `_extract_arwasoft_dual_column_items`.
+  - Seamlessly extracts both Left ($X < 305\text{ pt}$) and Right ($X \ge 305\text{ pt}$) tables across all pages, extracting 1,250+ valid items from ArwaSoft dual-column PDFs without requiring explicit headers on continuation pages.
+
+---
+
 ## [2.5] - 2026-10-28
 
 ### 🚀 Added & Improved

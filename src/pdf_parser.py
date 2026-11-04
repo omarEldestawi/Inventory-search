@@ -639,12 +639,15 @@ class PDFCatalogParser:
 
             if len(doc) > 0:
                 p0_text = unicodedata.normalize('NFKD', doc[0].get_text("text")[:400])
+                p0_dec = decode_custom_catalog_glyphs(p0_text)
                 if 'الدولية الحديثة' in p0_text or 'الدوليه الحديثه' in p0_text:
                     if not re.search(r'[\u0600-\u06ff]', self.warehouse_name) or self.warehouse_name == 'الدولية فارما':
                         self.warehouse_name = 'مخزن الدولية الحديثة'
                 elif 'زهرة فارم' in p0_text or 'زهره فارم' in p0_text:
                     if not re.search(r'[\u0600-\u06ff]', self.warehouse_name) or 'زهر' in self.warehouse_name:
                         self.warehouse_name = 'زهرة فارم'
+                elif 'الهضبة' in p0_dec or 'الهضبه' in p0_dec or '645-769-533' in p0_text or '01201999050' in p0_text:
+                    self.warehouse_name = 'مخزن الهضبة فارم'
                 self._doc_first_num_is_price = self._detect_page_header_price_first(doc[0])
             
             # Check if this catalog uses whitespace block layout (e.g. Mega Farm)
@@ -654,12 +657,26 @@ class PDFCatalogParser:
             base_fname = os.path.basename(self.pdf_path)
             is_sina = 'سينا' in self.warehouse_name or 'سينا' in base_fname
             is_dar_fouad = 'دار الفؤاد' in self.warehouse_name or 'دار الفؤاد' in base_fname
+            is_arwasoft_dual = self._is_arwasoft_dual_column_catalog(doc)
             is_arwasoft_2col = (
                 any(k in base_fname for k in ['ادم جمله', 'بيرفكت فارم', 'رواد الدوا', 'الدولية الحديثة', 'الدوليه الحديثه']) or
                 any(k in self.warehouse_name for k in ['ادم', 'بيرفكت فارم', 'رواد الدواء', 'الدولية الحديثة'])
             )
             
-            if is_block_layout:
+            if is_arwasoft_dual:
+                for page_idx, page in enumerate(doc):
+                    dual_items = self._extract_arwasoft_dual_column_items(page, page_idx)
+                    items.extend(dual_items)
+                    raw_accepted_count += len(dual_items)
+                    self._page_diagnostics.append(
+                        PageDiagnostics(
+                            page=page_idx + 1,
+                            strategy="arwasoft_dual_column",
+                            accepted_rows=len(dual_items),
+                            groups=[GroupDiagnostics(group=0, strategy="arwasoft_dual_column", candidate_rows=len(dual_items), accepted_rows=len(dual_items))]
+                        )
+                    )
+            elif is_block_layout:
                 for page_idx, page in enumerate(doc):
                     block_items = self._process_page_blocks(page)
                     items.extend(block_items)
@@ -2338,6 +2355,139 @@ class PDFCatalogParser:
                     'stock_status': True
                 })
         return items
+
+    def _is_arwasoft_dual_column_catalog(self, doc) -> bool:
+        """Detects whether document is an ArwaSoft 2-column dual-table catalog (e.g. Al-Hadaba 2026)."""
+        if not doc or len(doc) == 0:
+            return False
+        base_fname = os.path.basename(self.pdf_path or "")
+        if any(k in base_fname for k in ['الهضبه', 'الهضبة', 'طباعه مزدوجه', 'طباعة مزدوجة']):
+            return True
+        if any(k in self.warehouse_name for k in ['الهضبة', 'الهضبه']):
+            return True
+        # Check first page content
+        p0 = doc[0]
+        p0_raw = p0.get_text("text")[:500]
+        p0_dec = decode_custom_catalog_glyphs(p0_raw)
+        if any(k in p0_dec for k in ['الهضبة', 'الهضبه', 'أروى سوفت', 'أروى', '645-769-533', '01201999050', 'أصناف المخزن']):
+            return True
+        return False
+
+    def _extract_arwasoft_dual_column_items(self, page, page_idx: int) -> list:
+        """
+        Extracts items from 2-column ArwaSoft accounting catalogs (e.g. Al-Hadaba 2026)
+        where each page contains two side-by-side 3-column tables (Left: X < 305, Right: X >= 305)
+        with custom 8-bit glyph encoding and no headers on continuation pages.
+        """
+        spans = []
+        d = page.get_text('dict')
+        for b in d.get('blocks', []):
+            for l in b.get('lines', []):
+                for s in l.get('spans', []):
+                    t = s.get('text', '')
+                    if not t.strip():
+                        continue
+                    bbox = s['bbox']
+                    spans.append({
+                        'text': t,
+                        'x0': bbox[0],
+                        'y0': bbox[1],
+                        'x1': bbox[2],
+                        'y1': bbox[3],
+                        'yc': (bbox[1] + bbox[3]) / 2.0
+                    })
+
+        if not spans:
+            return []
+
+        # Split into left and right tables, ignoring header (yc < 95) and footer (yc > 790)
+        left_spans = [s for s in spans if s['x0'] < 305 and 95 < s['yc'] < 790]
+        right_spans = [s for s in spans if s['x0'] >= 305 and 95 < s['yc'] < 790]
+
+        extracted = []
+        for col_name, col_spans, name_x_min, p_x_min, p_x_max, d_x_max in [
+            ('left', left_spans, 130, 75, 125, 75),
+            ('right', right_spans, 400, 340, 395, 340),
+        ]:
+            if not col_spans:
+                continue
+
+            # Group spans by vertical alignment (yc)
+            rows = []
+            for s in sorted(col_spans, key=lambda x: x['yc']):
+                matched = False
+                for r in rows:
+                    if abs(r['yc'] - s['yc']) <= 5.0:
+                        r['spans'].append(s)
+                        r['yc'] = sum(x['yc'] for x in r['spans']) / len(r['spans'])
+                        matched = True
+                        break
+                if not matched:
+                    rows.append({'yc': s['yc'], 'spans': [s]})
+
+            for r in rows:
+                sorted_s = sorted(r['spans'], key=lambda x: -x['x0'])
+                n_spans = [s for s in sorted_s if s['x0'] >= name_x_min]
+                p_spans = [s for s in sorted_s if p_x_min <= s['x0'] < p_x_max]
+                d_spans = [s for s in sorted_s if s['x0'] < d_x_max]
+
+                if not n_spans or (not p_spans and not d_spans):
+                    continue
+
+                # Stitch adjacent name spans (distance <= 2.5 pt)
+                name_parts = []
+                for idx, s in enumerate(n_spans):
+                    if idx > 0 and (n_spans[idx - 1]['x0'] - s['x1']) <= 2.5:
+                        name_parts[-1] += s['text']
+                    else:
+                        name_parts.append(s['text'])
+
+                raw_n = " ".join(name_parts).strip()
+                raw_p = " ".join(s['text'] for s in p_spans).strip()
+                raw_d = " ".join(s['text'] for s in d_spans).strip()
+
+                # Filter out table header rows
+                if any(kw in raw_n for kw in ['إسم', 'الصنف', 'إ\x16م']) or 'السعر' in raw_p or 'الخصم' in raw_d:
+                    continue
+
+                clean_name = decode_custom_catalog_glyphs(raw_n)
+                clean_name = unreverse_arabic_text(clean_name)
+                clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+                if not clean_name or len(clean_name) < 3 or is_catalog_noise(clean_name):
+                    continue
+
+                try:
+                    p_num = float(re.sub(r'[^\d.]', '', raw_p.translate(ALL_EASTERN_DIGITS)))
+                except ValueError:
+                    p_num = 0.0
+
+                try:
+                    d_num = float(re.sub(r'[^\d.]', '', raw_d.translate(ALL_EASTERN_DIGITS)))
+                except ValueError:
+                    d_num = 0.0
+
+                if p_num <= 0.0 or p_num > 50000.0:
+                    continue
+
+                d_rate = round(d_num / 100.0, 4) if d_num > 1.0 else round(d_num, 4)
+                if d_rate > 0.85:
+                    continue
+
+                dosage, pack = parse_dosage_and_pack(clean_name)
+                norm_name = normalize_arabic_text(clean_name)
+                extracted.append({
+                    'warehouse_name': self.warehouse_name,
+                    'item_name': clean_name,
+                    'normalized_name': norm_name,
+                    'dosage': dosage,
+                    'unit_size': pack,
+                    'base_price': p_num,
+                    'discount_rate': d_rate,
+                    'page_number': page_idx + 1,
+                    'stock_status': True
+                })
+
+        return extracted
 
     def _extract_arwasoft_right_column(self, page) -> list:
         """

@@ -1,8 +1,16 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 2.5 (Production Windows Release)  
+**Version:** 2.6 (Production Windows Release)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
+
+---
+
+## 🌟 What's New in Version 2.6
+
+- 🔤 **ArwaSoft 2026 Custom 8-bit Glyph Decoding (`src/normalizer.py`)**: Full decoding of ASCII control bytes (`0x01`–`0x1F`) and symbols used by ArwaSoft print drivers. Correctly resolves byte `0x0A` (`\n`) as Arabic letter **ق** to prevent word splits (`ا\nراص` $\rightarrow$ `اقراص`).
+- 📑 **Side-by-Side Dual-Table Catalog Extraction (`src/pdf_parser.py`)**: Extracts both Left ($X < 305\text{ pt}$) and Right ($X \ge 305\text{ pt}$) tables across all pages, extracting 1,250+ valid items from ArwaSoft dual-column PDFs (e.g. Al-Hadaba 2026) without requiring explicit headers on continuation pages.
+- 🏢 **Automatic Wholesaler Resolution**: Resolves `"طباعه مزدوجه"` / `"طباعة مزدوجة"` and company tax card headers directly to `"مخزن الهضبة فارم"`.
 
 ---
 
@@ -61,7 +69,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v2.5.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v2.6.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.

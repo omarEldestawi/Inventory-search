@@ -16,9 +16,11 @@ ILLEGAL_CHARACTERS_RE = re.compile(
 
 
 def strip_illegal_characters(text: str) -> str:
-    """Removes non-printable ASCII control characters and surrogate code points."""
+    """Removes non-printable ASCII control characters and surrogate code points after decoding custom catalog glyphs."""
     if not text:
         return ""
+    if 'decode_custom_catalog_glyphs' in globals():
+        text = decode_custom_catalog_glyphs(text)
     return ILLEGAL_CHARACTERS_RE.sub("", str(text))
 
 EASTERN_ARABIC_DIGITS = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
@@ -291,6 +293,35 @@ CUSTOM_CATALOG_GLYPH_MAP['ᘭ'] = 'ي'
 CUSTOM_CATALOG_GLYPH_MAP['ᢔ'] = 'ب'
 CUSTOM_CATALOG_GLYPH_MAP['\u16ff'] = 'ك'
 
+ARWASOFT_2026_CHAR_MAP = {
+    '\n': 'ق',
+    '\x03': 'ة',
+    '\x04': 'ي',
+    '\x05': 'ب',
+    '\x07': 'ص',
+    '\x08': 'ل',
+    '\x0b': 'ا',
+    '\x0e': 'ج',
+    '\x0f': 'ت',
+    '\x11': 'س',
+    '\x12': 'ش',
+    '\x14': 'ف',
+    '\x15': 'ح',
+    '\x16': 'م',
+    '\x1a': 'ن',
+    '\x1f': 'ل',
+    '%': 'ك',
+    '*': 'ج',
+    '!': 'ع',
+    '-': 'ل',
+    ',': 'ع',
+    ':': 'غ',
+    '@': 'ب',
+    '#': 'ر',
+    '$': 'و',
+    'G': 'غ',
+}
+
 def normalize_ocr_split_medication_names(text: str) -> str:
     """Normalize OCR-split multi-word Arabic medication names into unified canonical forms."""
     if not text or not isinstance(text, str):
@@ -321,16 +352,44 @@ def normalize_ocr_split_medication_names(text: str) -> str:
     return t
 
 def decode_custom_catalog_glyphs(text: str) -> str:
-    """Decodes custom ERP font encodings (ArwaSoft Greek, Al-Hadaba/OrgaSoft Aboriginal/Runic) back into standard Arabic letters."""
+    """Decodes custom ERP font encodings (ArwaSoft Greek, Al-Hadaba/OrgaSoft Aboriginal/Runic, and ArwaSoft 2026 8-bit glyphs) back into standard Arabic letters."""
     if not text or not isinstance(text, str):
         return ""
     t = str(text)
+    
+    # 1. ArwaSoft 2026 byte / control character encoding
+    if any(ord(c) < 32 for c in t) or any(c in t for c in ['%', '*', '!', ':', '@', '#', '$']):
+        # Map 0 to ف only when adjacent to non-digits (not within pure numbers)
+        t = re.sub(r'(?<![0-9])0(?![0-9])|(?<=[^\s0-9])0|0(?=[^\s0-9])', 'ف', t)
+        t = re.sub(r'(?<![0-9])3(?![0-9])|(?<=[^\s0-9])3|3(?=[^\s0-9])', 'ت', t)
+        for glyph, arabic_char in ARWASOFT_2026_CHAR_MAP.items():
+            if glyph in t:
+                t = t.replace(glyph, arabic_char)
+
+    # 2. Custom catalog ligatures
     for lig, rep in CUSTOM_CATALOG_LIGATURE_MAP.items():
         if lig in t:
             t = t.replace(lig, rep)
+
+    # 3. Custom catalog glyphs (Greek and Canadian Aboriginal)
     for glyph, arabic_char in CUSTOM_CATALOG_GLYPH_MAP.items():
         if glyph in t:
             t = t.replace(glyph, arabic_char)
+
+    # 4. ArwaSoft common token replacements
+    if 'تكاب' in t:
+        t = t.replace('تكاب', 'باكت')
+    if 'ريمك' in t:
+        t = t.replace('ريمك', 'كريم')
+    if 'ولك' in t:
+        t = t.replace('ولك', 'كبسول')
+    if 'راصك' in t:
+        t = t.replace('راصك', 'اقراص')
+    if 'اق راص' in t:
+        t = t.replace('اق راص', 'اقراص')
+    if 'م ج' in t:
+        t = t.replace('م ج', 'مج')
+
     t = normalize_ocr_split_medication_names(t)
     return t
 
@@ -445,7 +504,7 @@ def normalize_vendor_name(filename_or_raw_name: str) -> str:
         return 'مصر لتجارة الأدوية'
     if 'كيور' in name_clean:
         return 'كيور فارما'
-    if 'الهضبه' in name_clean or 'الهضبة' in name_clean:
+    if 'الهضبه' in name_clean or 'الهضبة' in name_clean or 'طباعه مزدوجه' in name_clean or 'طباعة مزدوجة' in name_clean:
         return 'مخزن الهضبة فارم'
     if 'النجوم' in name_clean:
         return 'مخزن النجوم'
@@ -561,6 +620,10 @@ REVERSED_TOKEN_MAP = {
 }
 
 REVERSED_PHRASE_PATTERNS = [
+    (r'\bةلبسوك\b|\bهلبسوك\b|\bوك\s+هلبس\b|\bوك\s+ةلبس\b', 'كبسولة'),
+    (r'\bلبسوك\b|\bولك\b', 'كبسول'),
+    (r'\bتكت\b|\bتتك\b|\bتك\b(?=\s+\d+)', 'باكت'),
+    (r'\bراصاب\b|\bراص\s+اب\b', 'اقراص باكت'),
     (r'\bكولب\s+نص\b', 'صن بلوك'),
     (r'\bبلوك\s+صن\b', 'صن بلوك'),
     (r'\bنص\s+كولب\b', 'صن بلوك'),
