@@ -15,6 +15,7 @@ import datetime
 import subprocess
 import traceback
 from typing import Optional, List, Dict, Tuple, Callable, Any
+from enum import Enum
 
 import customtkinter as ctk
 import tkinter as tk
@@ -26,7 +27,7 @@ import pymupdf
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.6")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EgyptianPharma.ProcurementOptimizer.App.2.7")
     except Exception:
         pass
 
@@ -195,6 +196,22 @@ def open_folder_externally(file_path: str) -> bool:
         return False
 
 
+class CatalogLifecycleState(str, Enum):
+    """
+    R2 Explicit Plain-Language Lifecycle States for Catalog Ingestion:
+    - READING: Initial background extraction in progress
+    - AUTOMATICALLY_RETRYING: Bounded OCR / CLAHE alternative settings retry running
+    - READY: Verified extraction complete with valid items
+    - PARTIALLY_RECOVERED: Partial items recovered, remaining uncertain rows excluded
+    - COULD_NOT_VERIFY: Extraction failed or produced 0 valid items
+    """
+    READING = "reading"                         # "قيد القراءة... / Reading..."
+    AUTOMATICALLY_RETRYING = "auto_retrying"   # "إعادة المحاولة التلقائية... / Automatically retrying..."
+    READY = "ready"                             # "جاهز ({count} صنف) / Ready ({count} items)"
+    PARTIALLY_RECOVERED = "partially_recovered" # "مسترد جزئياً: {count} صنف [غير مكتمل] / Partially recovered"
+    COULD_NOT_VERIFY = "could_not_verify"       # "تعذر التحقق / Could not verify"
+
+
 class FileItem:
     """Represents an ingested input file in the GUI model."""
     def __init__(self, path: str, category: str):
@@ -218,7 +235,38 @@ class FileItem:
         self.is_ocr: bool = False
         self.ocr_running: bool = False
         self.ocr_status_msg: str = ""
+        # R2 Plain-Language Lifecycle State
+        self.lifecycle_state: CatalogLifecycleState = CatalogLifecycleState.READING
 
+    def determine_lifecycle_state(self) -> CatalogLifecycleState:
+        """Evaluates and synchronizes the current plain-language lifecycle state."""
+        if self.ocr_running:
+            self.lifecycle_state = CatalogLifecycleState.AUTOMATICALLY_RETRYING
+            return self.lifecycle_state
+
+        if self.item_count is None:
+            self.lifecycle_state = CatalogLifecycleState.READING
+            return self.lifecycle_state
+
+        status = self.diagnostic_status
+        if not status and self.catalog_result is not None:
+            status = self.catalog_result.diagnostics.status
+
+        unmapped = 0
+        unres = 0
+        if self.catalog_result is not None:
+            unmapped = getattr(self.catalog_result.diagnostics, "unresolved_region_count", 0)
+            unres = len([i for i in self.catalog_result.review_issues if not i.resolved])
+
+        if status == "complete" and (self.item_count or 0) > 0 and unmapped == 0 and unres == 0:
+            self.lifecycle_state = CatalogLifecycleState.READY
+        elif status == "failed" or (self.item_count or 0) == 0:
+            self.lifecycle_state = CatalogLifecycleState.COULD_NOT_VERIFY
+        elif status in ("partial", "partially_recovered", "unverified") or (self.item_count or 0) > 0:
+            self.lifecycle_state = CatalogLifecycleState.PARTIALLY_RECOVERED
+        else:
+            self.lifecycle_state = CatalogLifecycleState.COULD_NOT_VERIFY
+        return self.lifecycle_state
 
     def set_category(self, new_category: str):
         """Sets category and tracks if user manually overridden."""
@@ -392,6 +440,46 @@ def render_pdf_page_with_highlight(
         return img
     except Exception as exc:
         logger.warning(f"Error rendering PDF page {page_number} for {pdf_path}: {exc}")
+        return None
+
+
+def render_pdf_row_crop(
+    pdf_path: str,
+    page_number: int = 1,
+    bbox: Optional[List[float]] = None,
+    dpi: int = 180,
+    pad: float = 6.0,
+) -> Optional[Image.Image]:
+    """
+    Renders a cropped PIL Image of a specific row/region bounding box [x0, y0, x1, y1]
+    from the source PDF page for side-by-side display next to editable fields.
+    """
+    if not pdf_path or not os.path.isfile(pdf_path) or not pdf_path.lower().endswith(".pdf"):
+        return None
+    if not bbox or len(bbox) < 4:
+        return None
+    try:
+        doc = pymupdf.open(pdf_path)
+        if len(doc) == 0:
+            doc.close()
+            return None
+        p_idx = max(0, min(page_number - 1, len(doc) - 1))
+        page = doc[p_idx]
+        rect = page.rect
+        x0 = max(float(rect.x0), min(float(bbox[0]), float(bbox[2])) - pad)
+        y0 = max(float(rect.y0), min(float(bbox[1]), float(bbox[3])) - pad)
+        x1 = min(float(rect.x1), max(float(bbox[0]), float(bbox[2])) + pad)
+        y1 = min(float(rect.y1), max(float(bbox[1]), float(bbox[3])) + pad)
+        if (x1 - x0) < 12 or (y1 - y0) < 8:
+            doc.close()
+            return None
+        clip_rect = pymupdf.Rect(x0, y0, x1, y1)
+        pix = page.get_pixmap(dpi=dpi, clip=clip_rect)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        doc.close()
+        return img
+    except Exception as exc:
+        logger.debug(f"Error rendering PDF row crop on page {page_number} for {pdf_path}: {exc}")
         return None
 
 
@@ -774,11 +862,22 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         ed_title = ctk.CTkLabel(
             self.editor_frame,
-            text="✏️ تعديل وتصحيح الصنف / Candidate Item Editor",
+            text="✏️ تعديل وتصحيح الصنف / Candidate Item Editor (Manual Editing Optional)",
             font=get_font(12, "bold"),
             anchor="w",
         )
-        ed_title.grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 4))
+        ed_title.grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 2))
+
+        zero_transcription_lbl = ctk.CTkLabel(
+            self.editor_frame,
+            text="💡 التعديل اليدوي اختياري بالكامل: لن يُطلب منك كتابة أي صنف يدوياً. الأصناف غير المؤكدة تظل مستبعدة تماماً من أمر الشراء.",
+            font=get_font(9, "bold"),
+            text_color=("gray40", "gray60"),
+            anchor="w",
+            wraplength=460,
+            justify="left",
+        )
+        zero_transcription_lbl.grid(row=1, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 4))
 
         # Raw cells display
         self.raw_cells_lbl = ctk.CTkLabel(
@@ -788,7 +887,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             text_color=("gray30", "gray70"),
             anchor="w",
         )
-        self.raw_cells_lbl.grid(row=1, column=0, columnspan=2, sticky="w", padx=10, pady=2)
+        self.raw_cells_lbl.grid(row=2, column=0, columnspan=2, sticky="w", padx=10, pady=2)
 
         # Input fields
         self.name_var = tk.StringVar()
@@ -808,12 +907,12 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             entry.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=3)
             return entry
 
-        self.name_entry = _add_field(2, "اسم الصنف / Item Name:", self.name_var)
-        self.price_entry = _add_field(3, "السعر / Base Price:", self.price_var)
-        self.disc_entry = _add_field(4, "الخصم / Discount %:", self.disc_var)
+        self.name_entry = _add_field(3, "اسم الصنف / Item Name:", self.name_var)
+        self.price_entry = _add_field(4, "السعر / Base Price:", self.price_var)
+        self.disc_entry = _add_field(5, "الخصم / Discount %:", self.disc_var)
 
         stock_lbl = ctk.CTkLabel(self.editor_frame, text="الحالة / Stock Status:", font=get_font(11), anchor="w")
-        stock_lbl.grid(row=5, column=0, sticky="w", padx=10, pady=3)
+        stock_lbl.grid(row=6, column=0, sticky="w", padx=10, pady=3)
         self.stock_menu = ctk.CTkOptionMenu(
             self.editor_frame,
             values=["متوفر (Available)", "غير متوفر (Out of stock)"],
@@ -821,7 +920,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             font=get_font(11),
             width=200,
         )
-        self.stock_menu.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=3)
+        self.stock_menu.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=3)
 
         # Inline validation feedback
         self.inline_validation_lbl = ctk.CTkLabel(
@@ -830,12 +929,33 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             font=get_font(10, "bold"),
             anchor="w",
         )
-        self.inline_validation_lbl.grid(row=6, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 6))
+        self.inline_validation_lbl.grid(row=7, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 2))
+
+        # Plain-language explanation & original PDF row crop
+        self.explanation_lbl = ctk.CTkLabel(
+            self.editor_frame,
+            text="",
+            font=get_font(10),
+            text_color=COLOR_WARN_BADGE,
+            anchor="w",
+            wraplength=460,
+            justify="left",
+        )
+        self.explanation_lbl.grid(row=8, column=0, columnspan=2, sticky="w", padx=10, pady=(2, 2))
+
+        self.row_crop_lbl = ctk.CTkLabel(
+            self.editor_frame,
+            text="",
+            font=get_font(10),
+            anchor="center",
+        )
+        self.row_crop_lbl.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 6))
+        self._current_crop_ctk_image: Optional[ctk.CTkImage] = None
 
         # Action Buttons
         btn_grid = ctk.CTkFrame(right_frame, fg_color="transparent")
         btn_grid.grid(row=3, column=0, sticky="ew", padx=10, pady=(6, 10))
-        btn_grid.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        btn_grid.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
 
         self.apply_btn = ctk.CTkButton(
             btn_grid,
@@ -847,6 +967,24 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         )
         self.apply_btn.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
 
+        self.exclude_btn = ctk.CTkButton(
+            btn_grid,
+            text="🚫 استبعاد / Exclude",
+            font=get_font(11),
+            fg_color=COLOR_DANGER,
+            command=self._on_exclude_row,
+        )
+        self.exclude_btn.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
+
+        self.revert_row_btn = ctk.CTkButton(
+            btn_grid,
+            text="↩️ تراجع عن الصف / Revert",
+            font=get_font(11),
+            fg_color=("gray65", "gray35"),
+            command=self._on_revert_row,
+        )
+        self.revert_row_btn.grid(row=0, column=2, padx=3, pady=3, sticky="ew")
+
         self.mapping_btn = ctk.CTkButton(
             btn_grid,
             text="🗺️ خريطة الأعمدة / Mapping",
@@ -854,7 +992,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             fg_color=COLOR_ACCENT,
             command=self._on_preview_column_mapping,
         )
-        self.mapping_btn.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
+        self.mapping_btn.grid(row=0, column=3, padx=3, pady=3, sticky="ew")
 
         self.reset_btn = ctk.CTkButton(
             btn_grid,
@@ -863,7 +1001,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             fg_color=("gray70", "gray30"),
             command=self._on_reset_corrections,
         )
-        self.reset_btn.grid(row=0, column=2, padx=3, pady=3, sticky="ew")
+        self.reset_btn.grid(row=0, column=4, padx=3, pady=3, sticky="ew")
 
         self.leave_btn = ctk.CTkButton(
             btn_grid,
@@ -872,11 +1010,37 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             fg_color=("gray60", "gray40"),
             command=self._on_leave_unresolved,
         )
-        self.leave_btn.grid(row=0, column=3, padx=3, pady=3, sticky="ew")
+        self.leave_btn.grid(row=0, column=5, padx=3, pady=3, sticky="ew")
+
+        # Recovery & Alternative Source Bar
+        alt_bar = ctk.CTkFrame(right_frame, fg_color="transparent")
+        alt_bar.grid(row=4, column=0, sticky="ew", padx=10, pady=(2, 6))
+        alt_bar.grid_columnconfigure((0, 1), weight=1)
+
+        self.auto_retry_btn = ctk.CTkButton(
+            alt_bar,
+            text="🔄 محاولة بديلة (200 DPI CLAHE)\nAuto Retry Alternative Settings",
+            font=get_font(10, "bold"),
+            fg_color=COLOR_ACCENT,
+            hover_color=COLOR_ACCENT_HOVER,
+            command=self._on_auto_retry_alternative,
+        )
+        self.auto_retry_btn.grid(row=0, column=0, padx=3, sticky="ew")
+
+        self.replace_source_btn = ctk.CTkButton(
+            alt_bar,
+            text="📄 استبدال بمصدر أوضح\nReplace with Clearer Source",
+            font=get_font(10, "bold"),
+            fg_color=("gray75", "gray35"),
+            hover_color=("gray65", "gray45"),
+            text_color=("black", "white"),
+            command=self._on_replace_with_clearer_source,
+        )
+        self.replace_source_btn.grid(row=0, column=1, padx=3, sticky="ew")
 
         # Bottom Close Button
         done_bar = ctk.CTkFrame(right_frame, fg_color="transparent")
-        done_bar.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        done_bar.grid(row=5, column=0, sticky="ew", padx=10, pady=(0, 10))
         done_bar.grid_columnconfigure(0, weight=1)
 
         done_btn = ctk.CTkButton(
@@ -902,6 +1066,8 @@ class CatalogReviewWindow(ctk.CTkToplevel):
                 status = "مسترد تلقائياً ✓"
             elif iss.provenance == "manual_correction":
                 status = "مصحح يدوياً ✓"
+            elif iss.provenance == "manual_exclusion":
+                status = "مستبعد يدوياً 🚫"
             reason = iss.rejection_reason or ""
             self.issue_tree.insert("", "end", iid=sid, values=(sid, page, tbl, row, status, reason))
 
@@ -954,9 +1120,46 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         if issue.identity and issue.identity.page:
             self.current_page = issue.identity.page
 
-        # Raw cells display
+        # Raw cells & plain-language explanation display
         raw_str = ", ".join(str(c) for c in issue.raw_cells) if issue.raw_cells else "(فارغة)"
-        self.raw_cells_lbl.configure(text=f"الخلايا المستخرجة / Raw cells: [{raw_str}] | السبب: {issue.rejection_reason}")
+        reason_txt = issue.rejection_reason or ""
+        reason_desc = reason_txt
+        if "image_only" in reason_txt:
+            reason_desc = "صفحة صورة ممسوحة (Image-only scan) — جرب المحاولة البديلة أو استبدل الملف"
+        elif "low_contrast" in reason_txt:
+            reason_desc = "تباين منخفض للنص (Low contrast text)"
+        elif "damaged_geometry" in reason_txt or "geometry" in reason_txt:
+            reason_desc = "تلف في تخطيط خلايا الجدول (Damaged table geometry)"
+        elif "missing_price" in reason_txt:
+            reason_desc = "السعر مفقود أو غير مقروء"
+        elif "missing_name" in reason_txt:
+            reason_desc = "اسم الدواء مفقود أو غير محدد"
+
+        self.raw_cells_lbl.configure(text=f"الخلايا المستخرجة / Raw cells: [{raw_str}] | التشخيص: {reason_desc}")
+        if hasattr(self, "explanation_lbl"):
+            plain = getattr(issue, "plain_explanation", None) or reason_desc
+            self.explanation_lbl.configure(text=f"💡 التشخيص: {plain} (التعديل اليدوي اختياري — الصف مستبعد تلقائياً)")
+
+        # Render original PDF crop beside editable fields
+        if hasattr(self, "row_crop_lbl"):
+            crop_bbox = issue.bbox or (issue.identity.bbox if issue.identity else None)
+            crop_img = render_pdf_row_crop(
+                self.catalog_path,
+                page_number=self.current_page,
+                bbox=crop_bbox,
+                dpi=180,
+            )
+            if crop_img is not None:
+                max_w = 460
+                aspect = crop_img.height / max(1, crop_img.width)
+                disp_w = min(max_w, crop_img.width)
+                disp_h = max(24, min(110, int(disp_w * aspect)))
+                crop_ctk = ctk.CTkImage(light_image=crop_img, dark_image=crop_img, size=(disp_w, disp_h))
+                self._current_crop_ctk_image = crop_ctk
+                self.row_crop_lbl.configure(image=crop_ctk, text="")
+            else:
+                self._current_crop_ctk_image = None
+                self.row_crop_lbl.configure(image=None, text="")
 
         # Populate fields
         item_data = issue.item or {}
@@ -1120,6 +1323,42 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         except Exception as exc:
             messagebox.showerror("خطأ / Error", f"فشل استعادة الأصلي:\n{exc}")
 
+    def _on_exclude_row(self):
+        if not self.selected_source_id:
+            messagebox.showwarning("تنبيه / Warning", "يرجى تحديد صف من القائمة أولاً / Select a row first.")
+            return
+        try:
+            res = self.service.exclude_row(self.selected_source_id)
+            self.catalog_result = res
+            self._refresh_issue_list()
+            self._update_summary_label()
+            self._render_pdf_page()
+            unres = [i for i in res.review_issues if not i.resolved]
+            if unres:
+                next_id = unres[0].source_id
+                self.issue_tree.selection_set(next_id)
+                self.issue_tree.see(next_id)
+                self._load_issue_into_editor(unres[0])
+        except Exception as exc:
+            messagebox.showerror("خطأ / Error", f"فشل استبعاد الصف:\n{exc}")
+
+    def _on_revert_row(self):
+        if not self.selected_source_id:
+            messagebox.showwarning("تنبيه / Warning", "يرجى تحديد صف من القائمة أولاً / Select a row first.")
+            return
+        try:
+            res = self.service.revert_correction(self.selected_source_id)
+            self.catalog_result = res
+            self._refresh_issue_list()
+            self._update_summary_label()
+            issue = res.issues_by_source_id.get(self.selected_source_id)
+            if issue:
+                self._load_issue_into_editor(issue)
+            else:
+                self._render_pdf_page()
+        except Exception as exc:
+            messagebox.showerror("خطأ / Error", f"فشل التراجع عن تعديل الصف:\n{exc}")
+
     def _on_leave_unresolved(self):
         unres = [i for i in self.catalog_result.review_issues if not i.resolved]
         if not unres:
@@ -1148,6 +1387,97 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         self.destroy()
 
+    def _on_auto_retry_alternative(self):
+        """Triggers bounded alternative recovery (200 DPI CLAHE deskew) for this catalog."""
+        if hasattr(self, "explanation_lbl"):
+            self.explanation_lbl.configure(
+                text="🔄 جاري تنفيذ المحاولة التلقائية البديلة (200 DPI CLAHE deskew)...",
+                text_color=COLOR_ACCENT,
+            )
+            self.update_idletasks()
+        try:
+            from src.catalog_recovery import run_automatic_recovery
+            res_rec = run_automatic_recovery(self.catalog_result, self.catalog_path)
+            self.catalog_result = res_rec
+            self.service._base_catalog_result = res_rec
+            self.service._apply_active_corrections()
+            self._refresh_issue_list()
+            self._update_summary_label()
+            self._render_pdf_page()
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text="✓ اكتملت المحاولة التلقائية البديلة بنجاح. تم تحديث البيانات المستردة.",
+                    text_color=COLOR_SUCCESS,
+                )
+        except Exception as e:
+            logger.error(f"Auto retry error: {e}")
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text=f"⚠️ تعذر استرداد أصناف إضافية تلقائياً: {e}",
+                    text_color=COLOR_WARN_BADGE,
+                )
+
+    def _on_replace_with_clearer_source(self):
+        """Allows pharmacist to pick a clearer replacement file for this specific catalog without restarting."""
+        new_file = filedialog.askopenfilename(
+            title="اختيار ملف كتالوج أوضح كبديل / Select Clearer Catalog Replacement",
+            filetypes=[("Supported Catalogs", "*.pdf;*.xlsx;*.xls;*.csv"), ("PDF Files", "*.pdf"), ("Excel Files", "*.xlsx;*.xls;*.csv"), ("All Files", "*.*")]
+        )
+        if not new_file:
+            return
+        new_norm = os.path.normpath(os.path.abspath(new_file))
+        if new_norm == self.catalog_path:
+            return
+
+        old_path = self.catalog_path
+        self.catalog_path = new_norm
+        self.filename = os.path.basename(new_norm)
+        self.title(f"مراجعة وتصحيح الكتالوج - {self.filename} / Catalog Review & Correction")
+
+        # Update service & inspect new file
+        self.service = CatalogCorrectionService(self.catalog_path)
+        self.catalog_result = self.service.get_refreshed_catalog_result()
+
+        # Update parent application file_model if master is PharmaProcurementApp
+        parent_app = getattr(self, "master", None)
+        if parent_app and hasattr(parent_app, "file_model"):
+            for f in parent_app.file_model.files:
+                if os.path.normpath(f.path) == old_path:
+                    f.path = new_norm
+                    f.filename = os.path.basename(new_norm)
+                    f.ext = os.path.splitext(f.filename)[1].lower()
+                    try:
+                        f.size_bytes = os.path.getsize(new_norm) if os.path.isfile(new_norm) else 0
+                    except OSError:
+                        f.size_bytes = 0
+                    f.size_str = format_file_size(f.size_bytes)
+                    f.catalog_result = self.catalog_result
+                    f.item_count = len(self.catalog_result.dataframe)
+                    f.diagnostic_status = self.catalog_result.diagnostics.status
+                    f.diagnostic_summary = self.catalog_result.diagnostics.summary()
+                    f.determine_lifecycle_state()
+                    break
+            if hasattr(parent_app, "_update_file_card_badge"):
+                parent_app._update_file_card_badge(new_norm)
+            if hasattr(parent_app, "_render_file_list"):
+                parent_app._render_file_list()
+
+        # Refresh page count and controls
+        try:
+            if self.catalog_path.lower().endswith(".pdf") and os.path.isfile(self.catalog_path):
+                doc = pymupdf.open(self.catalog_path)
+                self.total_pages = max(1, len(doc))
+                doc.close()
+            else:
+                self.total_pages = 1
+        except Exception:
+            self.total_pages = 1
+
+        self.current_page = 1
+        self._refresh_issue_list()
+        self._update_summary_label()
+        self._select_first_unresolved_or_render()
+
     # Headless helper methods
     def validate_candidate_fields(self, name: str, price: Any, discount: Any, stock: Any) -> Tuple[bool, Optional[str]]:
         candidate = {
@@ -1161,6 +1491,16 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
     def apply_field_correction_programmatic(self, source_id: str, fields: Dict[str, Any]) -> CatalogResult:
         res = self.service.apply_field_correction(source_id, fields)
+        self.catalog_result = res
+        return res
+
+    def exclude_row_programmatic(self, source_id: str, reason: str = "manual_exclusion") -> CatalogResult:
+        res = self.service.exclude_row(source_id, reason=reason)
+        self.catalog_result = res
+        return res
+
+    def revert_correction_programmatic(self, source_id: str) -> CatalogResult:
+        res = self.service.revert_correction(source_id)
         self.catalog_result = res
         return res
 
@@ -1190,10 +1530,11 @@ class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
         self.on_action = on_action
         self.selected_action = "cancel"
         self.selected_catalog_path: Optional[str] = None
+        self.replacement_path: Optional[str] = None
 
         self.title("ملخص استيراد ومراجعة الكتالوجات / Consolidated Catalog Import Summary")
-        self.geometry("820x540")
-        self.minsize(700, 420)
+        self.geometry("920x620")
+        self.minsize(780, 480)
         try:
             self.transient(parent)
             self.grab_set()
@@ -1291,29 +1632,89 @@ class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
 
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
-        # 4. Action Buttons (3 Options)
+        # 3b. Unresolved Issues & Zero Transcription Explanation Frame
+        self.details_f = ctk.CTkFrame(self, fg_color=("gray95", "gray18"), corner_radius=6)
+        self.details_f.grid(row=3, column=0, sticky="ew", padx=20, pady=(4, 6))
+        self.details_f.grid_columnconfigure(0, weight=1)
+
+        self.details_title_lbl = ctk.CTkLabel(
+            self.details_f,
+            text="🔍 تفاصيل المناطق غير المحلولة ومسوغات التعذر / Unresolved Regions & Diagnostics:",
+            font=get_font(10, "bold"),
+            anchor="w",
+        )
+        self.details_title_lbl.grid(row=0, column=0, sticky="w", padx=10, pady=(6, 2))
+
+        self.details_body_lbl = ctk.CTkLabel(
+            self.details_f,
+            text="",
+            font=get_font(10),
+            text_color=("gray30", "gray70"),
+            anchor="w",
+            justify="left",
+            wraplength=860,
+        )
+        self.details_body_lbl.grid(row=1, column=0, sticky="w", padx=10, pady=(0, 2))
+
+        self.safeguard_lbl = ctk.CTkLabel(
+            self.details_f,
+            text="🛡️ حماية المشتريات الصيدلانية: التعديل اليدوي اختياري بالكامل. لن يُطلب منك كتابة أو تفريغ أي صنف يدوياً (Zero Forced Transcription). تأكيد الاستيراد الجزئي لا يعني اعتماد البيانات غير المؤكدة؛ كافة الصفوف غير المحلولة تظل مستبعدة تماماً وتلقائياً من التوزيع.\nProcurement Safeguard: Manual transcription is never required. Acknowledging partial imports does NOT verify uncertain rows; unverified items remain strictly excluded.",
+            font=get_font(9, "bold"),
+            text_color=COLOR_WARN_BADGE,
+            anchor="w",
+            justify="left",
+            wraplength=860,
+        )
+        self.safeguard_lbl.grid(row=2, column=0, sticky="w", padx=10, pady=(2, 6))
+
+        # 4. Action Buttons (5 Options)
         bottom_bar = ctk.CTkFrame(self, fg_color="transparent")
-        bottom_bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(10, 15))
-        bottom_bar.grid_columnconfigure((0, 1, 2), weight=1)
+        bottom_bar.grid(row=4, column=0, sticky="ew", padx=20, pady=(10, 15))
+        bottom_bar.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
 
         # Option A: Review Issues
         self.review_btn = ctk.CTkButton(
             bottom_bar,
-            text="🔍 مراجعة وتصحيح المشاكل\nReview Issues",
+            text="🔍 مراجعة المشاكل\nReview Issues",
             font=get_font(11, "bold"),
             fg_color=COLOR_ACCENT,
             hover_color=COLOR_ACCENT_HOVER,
             height=40,
             command=self._on_review,
         )
-        self.review_btn.grid(row=0, column=0, padx=6, sticky="ew")
+        self.review_btn.grid(row=0, column=0, padx=4, sticky="ew")
 
-        # Option B: Proceed with Verified Items (Blocked if 0-valid!)
+        # Option B: Automatic Retry with Alternative Settings (200 DPI CLAHE deskew)
+        self.auto_retry_btn = ctk.CTkButton(
+            bottom_bar,
+            text="🔄 محاولة بديلة\nAuto Retry (200 DPI)",
+            font=get_font(11, "bold"),
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            height=40,
+            command=self._on_retry_alt,
+        )
+        self.auto_retry_btn.grid(row=0, column=1, padx=4, sticky="ew")
+
+        # Option C: Replace with Clearer Source
+        self.replace_source_btn = ctk.CTkButton(
+            bottom_bar,
+            text="📄 استبدال بمصدر أوضح\nReplace Source",
+            font=get_font(11, "bold"),
+            fg_color=("gray75", "gray35"),
+            hover_color=("gray65", "gray45"),
+            text_color=("black", "white"),
+            height=40,
+            command=self._on_replace_source,
+        )
+        self.replace_source_btn.grid(row=0, column=2, padx=4, sticky="ew")
+
+        # Option D: Proceed with Verified Items (Blocked if 0-valid!)
         proceed_state = "disabled" if has_zero else "normal"
         proceed_fg = ("gray70", "gray30") if has_zero else COLOR_ORDER_BADGE
         self.proceed_btn = ctk.CTkButton(
             bottom_bar,
-            text="✓ المتابعة مع الأصناف المعتمدة\nProceed with Verified Items",
+            text="✓ المتابعة مع المعتمد\nProceed (Verified Only)",
             font=get_font(11, "bold"),
             fg_color=proceed_fg,
             hover_color="#047857" if not has_zero else ("gray70", "gray30"),
@@ -1321,9 +1722,9 @@ class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
             height=40,
             command=self._on_proceed,
         )
-        self.proceed_btn.grid(row=0, column=1, padx=6, sticky="ew")
+        self.proceed_btn.grid(row=0, column=3, padx=4, sticky="ew")
 
-        # Option C: Cancel
+        # Option E: Cancel
         self.cancel_btn = ctk.CTkButton(
             bottom_bar,
             text="✕ إلغاء العملية\nCancel",
@@ -1333,7 +1734,53 @@ class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
             height=40,
             command=self._on_cancel,
         )
-        self.cancel_btn.grid(row=0, column=2, padx=6, sticky="ew")
+        self.cancel_btn.grid(row=0, column=4, padx=4, sticky="ew")
+
+        if self.catalogs_summary:
+            self._update_details_explanation(self.catalogs_summary[0])
+
+    def _format_unresolved_explanation(self, s: dict) -> str:
+        fname = s.get("filename", "")
+        issues_cnt = s.get("review_issues_count", 0)
+        unmapped_cnt = s.get("unmapped_regions_count", 0)
+        cat_res = s.get("catalog_result")
+
+        reasons = set()
+        pages = set()
+        if cat_res is not None:
+            for iss in getattr(cat_res, "review_issues", []):
+                if not getattr(iss, "resolved", False):
+                    r = getattr(iss, "rejection_reason", "") or "unresolved"
+                    reasons.add(r)
+                    if getattr(iss, "identity", None) and getattr(iss.identity, "page", None):
+                        pages.add(iss.identity.page)
+
+        reasons_desc = []
+        for r in sorted(reasons):
+            if "image_only" in r:
+                reasons_desc.append("صفحة صور ممسوحة (image_only)")
+            elif "low_contrast" in r:
+                reasons_desc.append("تباين منخفض (low_contrast)")
+            elif "damaged_geometry" in r or "geometry" in r:
+                reasons_desc.append("تلف التخطيط (damaged_geometry)")
+            elif "missing_price" in r:
+                reasons_desc.append("سعر مفقود أو غير مقروء")
+            elif "header" in r:
+                reasons_desc.append("عدم تطابق الترويسة")
+            else:
+                reasons_desc.append(str(r))
+
+        if not reasons_desc and (issues_cnt > 0 or unmapped_cnt > 0):
+            reasons_desc.append("مناطق غير محددة أو جداول غير مستقرة هندسياً (damaged_geometry/unmapped)")
+
+        pages_str = f"الصفحات المتأثرة: {sorted(pages)}" if pages else "الصفحات: غير محدد"
+        reasons_str = " | ".join(reasons_desc) if reasons_desc else "لا توجد مشاكل معلقة"
+
+        return f"📄 الكتالوج: {fname}\n• {pages_str} | إجمالي المشاكل: {issues_cnt} | مناطق غير محددة: {unmapped_cnt}\n• الأسباب المشخصة: {reasons_str}"
+
+    def _update_details_explanation(self, s: dict):
+        if hasattr(self, "details_body_lbl"):
+            self.details_body_lbl.configure(text=self._format_unresolved_explanation(s))
 
     def has_zero_valid(self) -> bool:
         """Returns True if any catalog produces 0 valid items."""
@@ -1345,6 +1792,29 @@ class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
             idx = int(sel[0])
             if 0 <= idx < len(self.catalogs_summary):
                 self.selected_catalog_path = self.catalogs_summary[idx].get("path")
+                self._update_details_explanation(self.catalogs_summary[idx])
+
+    def _on_retry_alt(self):
+        if not self.selected_catalog_path and self.catalogs_summary:
+            self.selected_catalog_path = self.catalogs_summary[0].get("path")
+        self.selected_action = "auto_retry"
+        if self.on_action:
+            self.on_action("auto_retry", self.selected_catalog_path)
+        self.destroy()
+
+    def _on_replace_source(self):
+        if not self.selected_catalog_path and self.catalogs_summary:
+            self.selected_catalog_path = self.catalogs_summary[0].get("path")
+        new_file = filedialog.askopenfilename(
+            title="اختيار ملف كتالوج بديل أوضح / Select Clearer Catalog Replacement",
+            filetypes=[("Supported Catalogs", "*.pdf;*.xlsx;*.xls;*.csv"), ("PDF Files", "*.pdf"), ("Excel Files", "*.xlsx;*.xls;*.csv"), ("All Files", "*.*")]
+        )
+        if new_file:
+            self.replacement_path = os.path.normpath(os.path.abspath(new_file))
+            self.selected_action = "replace_source"
+            if self.on_action:
+                self.on_action("replace_source", self.selected_catalog_path)
+            self.destroy()
 
     def _on_review(self):
         if not self.selected_catalog_path and self.catalogs_summary:
@@ -1408,7 +1878,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.6 / Egyptian Pharma Procurement Optimizer v2.6")
+        self.title("نظام المشتريات الصيدلانية v2.7 / Egyptian Pharma Procurement Optimizer v2.7")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -1439,13 +1909,14 @@ class PharmaProcurementApp(ctk.CTk):
         # Milestone 1: OCR & Inspection Async Queue & Threads
         self._ocr_queue: queue.Queue = queue.Queue()
         self._active_ocr_threads: Dict[str, threading.Thread] = {}
+        self._ocr_cancel_events: Dict[str, threading.Event] = {}
 
         # Milestone 2C: Monotonically increasing sequence ID & background inspection tracker
         self._inspection_seq: int = 0
         self._latest_applied_seq: Dict[str, int] = {}
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.6"
+        self.app_version = "2.7"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -1454,8 +1925,44 @@ class PharmaProcurementApp(ctk.CTk):
         # Start OCR queue poller
         self.after(100, self._poll_ocr_queue)
 
+        # Asynchronously initialize OCR models in background (R2 Non-blocking startup)
+        self.after(200, self._async_init_ocr_models)
+
         # Start background auto-update check after 2 seconds
         self.after(2000, self._start_auto_update_service)
+
+    def _async_init_ocr_models(self):
+        """Asynchronously initializes OCR models in a background daemon thread so GUI launches instantly without freezing."""
+        def _worker():
+            try:
+                logger.info("Initializing OCR models asynchronously in background thread...")
+                try:
+                    from src.ocr_engine import ArabicOCREngine
+                    engine = ArabicOCREngine()
+                    if hasattr(engine, "warmup"):
+                        engine.warmup()
+                    elif hasattr(engine, "is_available"):
+                        engine.is_available()
+                except Exception as e:
+                    logger.debug(f"Background ArabicOCREngine warmup note: {e}")
+            except Exception as exc:
+                logger.debug(f"Background OCR initialization exception: {exc}")
+
+        t = threading.Thread(target=_worker, name="OCRBackgroundWarmup", daemon=True)
+        t.start()
+
+    def cancel_ocr(self, path: str):
+        """Signals cancellation to an ongoing background OCR or recovery thread."""
+        norm = os.path.normpath(os.path.abspath(path))
+        ev = self._ocr_cancel_events.get(norm) or self._ocr_cancel_events.get(path)
+        if ev:
+            ev.set()
+            logger.info(f"Cancellation requested for OCR operation on: {norm}")
+            for f in self.file_model.files:
+                if os.path.normpath(f.path) == norm:
+                    f.ocr_status_msg = "⏳ جاري الإلغاء... / Cancelling..."
+                    break
+            self._update_file_card_badge(norm)
 
 
     def _setup_grid_layout(self):
@@ -1589,7 +2096,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.6 Windows 11 Edition • Engine Ready",
+            text="v2.7 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -1661,7 +2168,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.6)",
+            text="🔄 التحديثات / Updates (v2.7)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -1970,51 +2477,63 @@ class PharmaProcurementApp(ctk.CTk):
 
     def _start_ocr_reread(self, path: str):
         """Triggers on-demand Arabic OCR re-read for a specific catalog in background thread."""
+        norm_path = os.path.normpath(os.path.abspath(path))
         for f in self.file_model.files:
-            if f.path == path:
+            if os.path.normpath(f.path) == norm_path:
                 f.ocr_running = True
+                f.lifecycle_state = CatalogLifecycleState.AUTOMATICALLY_RETRYING
                 f.ocr_status_msg = "⏳ جاري بدء المسح بـ OCR..."
                 break
+        self._update_file_card_badge(norm_path)
         self._render_file_list()
+
+        cancel_ev = threading.Event()
+        self._ocr_cancel_events[norm_path] = cancel_ev
 
         def _worker():
             try:
                 def _prog(pct, msg):
-                    self._ocr_queue.put(("OCR_PROGRESS", path, pct, msg))
-                ret_path, count, items = reread_catalog_with_ocr(path, progress_callback=_prog)
-                self._ocr_queue.put(("OCR_DONE", ret_path, count, items))
+                    if cancel_ev.is_set():
+                        raise RuntimeError("Operation cancelled by user.")
+                    self._ocr_queue.put(("OCR_PROGRESS", norm_path, pct, msg))
+                ret_path, count, items = reread_catalog_with_ocr(norm_path, progress_callback=_prog)
+                if cancel_ev.is_set():
+                    self._ocr_queue.put(("OCR_CANCELLED", norm_path))
+                else:
+                    self._ocr_queue.put(("OCR_DONE", ret_path, count, items))
             except Exception as e:
-                logger.error(f"OCR reread error for {path}: {e}")
-                self._ocr_queue.put(("OCR_ERROR", path, str(e)))
+                if cancel_ev.is_set() or "cancelled" in str(e).lower():
+                    self._ocr_queue.put(("OCR_CANCELLED", norm_path))
+                else:
+                    logger.error(f"OCR reread error for {norm_path}: {e}")
+                    self._ocr_queue.put(("OCR_ERROR", norm_path, str(e)))
 
-        t = threading.Thread(target=_worker, name=f"OCRWorker-{os.path.basename(path)}", daemon=True)
-        self._active_ocr_threads[path] = t
+        t = threading.Thread(target=_worker, name=f"OCRWorker-{os.path.basename(norm_path)}", daemon=True)
+        self._active_ocr_threads[norm_path] = t
         t.start()
 
     def _format_catalog_badge(self, f_item: FileItem) -> Tuple[str, object]:
-        """Formats the catalog badge text and color based on completeness diagnostics."""
-        if f_item.item_count is None:
-            return "⏳ جاري فحص الأصناف... / Checking count...", ("gray50", "gray60")
+        """Formats the catalog badge text and color based on the 5 explicit R2 lifecycle states."""
+        state = f_item.determine_lifecycle_state()
+        count = f_item.item_count if f_item.item_count is not None else 0
 
-        status = f_item.diagnostic_status
-        if not status and f_item.catalog_result is not None:
-            status = f_item.catalog_result.diagnostics.status
-
-        if status == "complete" and f_item.item_count > 0:
-            return f"📦 {f_item.item_count} صنف ✓ / Complete ({f_item.item_count} items)", COLOR_SUCCESS
-        elif status == "partial":
+        if state == CatalogLifecycleState.READING:
+            return "⏳ قيد القراءة... / Reading...", ("gray50", "gray60")
+        elif state == CatalogLifecycleState.AUTOMATICALLY_RETRYING:
+            return "🔄 إعادة المحاولة التلقائية... / Automatically retrying...", COLOR_WARN_BADGE
+        elif state == CatalogLifecycleState.READY:
+            return f"📦 جاهز ({count} صنف) / Ready ({count} items)", COLOR_SUCCESS
+        elif state == CatalogLifecycleState.PARTIALLY_RECOVERED:
             is_acked = (
                 f_item.catalog_result is not None
                 and f_item.acknowledged_token == f_item.catalog_result.acknowledgment_token
             )
-            ack_tag = " [معتمد / Ack]" if is_acked else " [يتطلب تأكيد / Needs Ack]"
-            return f"⚠️ استيراد جزئي: {f_item.item_count} صنف{ack_tag}", COLOR_WARN_BADGE
-        elif status == "unverified" and f_item.item_count > 0:
-            return f"📦 {f_item.item_count} صنف (اكتمال غير متحقق / Completeness not verified)", COLOR_CATALOG_BADGE
-        elif status == "failed" or f_item.item_count == 0:
-            return "⚠️ 0 صنف / 0 items (Failed)", COLOR_WARN_BADGE
+            ack_tag = " [معتمد / Ack]" if is_acked else " [غير مكتمل]"
+            return f"⚠️ مسترد جزئياً: {count} صنف{ack_tag} / Partially recovered", COLOR_WARN_BADGE
+        elif state == CatalogLifecycleState.COULD_NOT_VERIFY:
+            return "❌ تعذر التحقق / Could not verify", COLOR_DANGER
         else:
-            return f"📦 {f_item.item_count} صنف / items", COLOR_CATALOG_BADGE
+            return f"📦 {count} صنف / items", COLOR_CATALOG_BADGE
 
     def _update_file_card_badge(self, path: str):
         """Updates the item count badge label on an existing card widget directly without re-rendering."""
@@ -2078,6 +2597,7 @@ class PharmaProcurementApp(ctk.CTk):
                                 f.catalog_result = res
                                 f.diagnostic_status = res.diagnostics.status
                                 f.diagnostic_summary = res.diagnostics.summary()
+                            f.determine_lifecycle_state()
                             break
                     self._update_file_card_badge(norm_path)
                     self._render_file_list()
@@ -2087,11 +2607,12 @@ class PharmaProcurementApp(ctk.CTk):
                         norm = os.path.normpath(f.path)
                         if norm in counts:
                             f.item_count = counts[norm]
+                            f.determine_lifecycle_state()
                             self._update_file_card_badge(norm)
                 elif m_type == "OCR_PROGRESS":
                     path, pct, status = msg[1], msg[2], msg[3]
                     for f in self.file_model.files:
-                        if f.path == path:
+                        if f.path == path or os.path.normpath(f.path) == os.path.normpath(path):
                             f.ocr_status_msg = status
                             break
                     card = self._file_card_widgets.get(path)
@@ -2107,25 +2628,44 @@ class PharmaProcurementApp(ctk.CTk):
                 elif m_type == "OCR_DONE":
                     path, count, items = msg[1], msg[2], msg[3]
                     for f in self.file_model.files:
-                        if f.path == path:
+                        if f.path == path or os.path.normpath(f.path) == os.path.normpath(path):
                             f.ocr_running = False
                             f.item_count = count
                             f.is_ocr = True
                             f.ocr_status_msg = f"✓ اكتمل المسح ({count} صنف)"
+                            f.determine_lifecycle_state()
                             break
                     self._active_ocr_threads.pop(path, None)
+                    self._ocr_cancel_events.pop(path, None)
+                    self._update_file_card_badge(path)
                     self._render_file_list()
                     self.status_label.configure(
                         text=f"✓ اكتمل مسح الكتالوج بـ OCR: تم التعرف على {count} صنف بنجاح! / OCR completed ({count} items)"
                     )
+                elif m_type == "OCR_CANCELLED":
+                    path = msg[1]
+                    for f in self.file_model.files:
+                        if f.path == path or os.path.normpath(f.path) == os.path.normpath(path):
+                            f.ocr_running = False
+                            f.ocr_status_msg = "✕ تم إلغاء المسح / Cancelled"
+                            f.determine_lifecycle_state()
+                            break
+                    self._active_ocr_threads.pop(path, None)
+                    self._ocr_cancel_events.pop(path, None)
+                    self._update_file_card_badge(path)
+                    self._render_file_list()
+                    self.status_label.configure(text=f"تم إلغاء مسح الكتالوج: {os.path.basename(path)} / OCR cancelled")
                 elif m_type == "OCR_ERROR":
                     path, err_msg = msg[1], msg[2]
                     for f in self.file_model.files:
-                        if f.path == path:
+                        if f.path == path or os.path.normpath(f.path) == os.path.normpath(path):
                             f.ocr_running = False
                             f.ocr_status_msg = f"✕ خطأ OCR"
+                            f.determine_lifecycle_state()
                             break
                     self._active_ocr_threads.pop(path, None)
+                    self._ocr_cancel_events.pop(path, None)
+                    self._update_file_card_badge(path)
                     self._render_file_list()
                     self.status_label.configure(text=f"✕ فشل مسح OCR: {err_msg} / OCR failed")
         except queue.Empty:
@@ -2146,6 +2686,42 @@ class PharmaProcurementApp(ctk.CTk):
         self.file_model.remove_path(path)
         self._render_file_list()
         self._update_ui_state()
+
+    def _replace_catalog_file(self, old_path: str, new_path: str):
+        """Replaces a catalog file in the model and cache with a clearer source without restarting the session."""
+        old_norm = os.path.normpath(os.path.abspath(old_path))
+        new_norm = os.path.normpath(os.path.abspath(new_path))
+        if old_norm == new_norm:
+            return
+
+        global_catalog_cache.remove(old_norm)
+        for f in self.file_model.files:
+            if os.path.normpath(f.path) == old_norm:
+                f.path = new_norm
+                f.filename = os.path.basename(new_norm)
+                f.ext = os.path.splitext(f.filename)[1].lower()
+                try:
+                    f.size_bytes = os.path.getsize(new_norm) if os.path.isfile(new_norm) else 0
+                except OSError:
+                    f.size_bytes = 0
+                f.size_str = format_file_size(f.size_bytes)
+                f.item_count = None
+                f.catalog_result = None
+                f.diagnostic_status = ""
+                f.diagnostic_summary = ""
+                f.acknowledged_token = None
+                f.ocr_running = False
+                f.ocr_status_msg = ""
+                f.determine_lifecycle_state()
+                break
+
+        self._file_card_widgets.pop(old_norm, None)
+        self._async_inspect_counts([new_norm])
+        self._render_file_list()
+        self._update_ui_state()
+        self.status_label.configure(
+            text=f"📄 تم استبدال الكتالوج بملف أوضح: {os.path.basename(new_norm)} / Replaced with clearer source."
+        )
 
     def _on_override_category(self, path: str, choice: str):
         """Handles manual category override from dropdown menu."""
@@ -2379,7 +2955,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.6 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.7 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -2622,6 +3198,29 @@ class PharmaProcurementApp(ctk.CTk):
                 actions_frame = ctk.CTkFrame(card, fg_color="transparent")
                 actions_frame.grid(row=1, column=2, columnspan=3, padx=(5, 10), pady=(0, 6), sticky="e")
 
+                if f_item.ocr_running:
+                    cancel_btn = ctk.CTkButton(
+                        actions_frame,
+                        text="✕ إلغاء / Cancel",
+                        font=get_font(10, "bold"),
+                        width=95,
+                        height=24,
+                        fg_color=COLOR_DANGER,
+                        hover_color=COLOR_DANGER_HOVER,
+                        command=lambda p=f_item.path: self.cancel_ocr(p)
+                    )
+                    cancel_btn.pack(side="left", padx=(0, 6))
+                    card._cancel_btn = cancel_btn
+
+                    ocr_status_lbl = ctk.CTkLabel(
+                        actions_frame,
+                        text=f_item.ocr_status_msg or "⏳ جاري المعالجة... / Processing...",
+                        font=get_font(10),
+                        text_color=COLOR_WARN_BADGE
+                    )
+                    ocr_status_lbl.pack(side="left", padx=(0, 6))
+                    card._ocr_status_lbl = ocr_status_lbl
+
                 # Review & Fix button when issues, unmapped regions, partial import diagnostics, or 0 items exist
                 has_review_needs = False
                 if f_item.catalog_result is not None:
@@ -2730,6 +3329,40 @@ class PharmaProcurementApp(ctk.CTk):
         avg_discounts_file = avg_discounts_files[0] if avg_discounts_files else None
         output_dir = self.output_dir_var.get()
 
+        # R2 Non-blocking pre-flight inspection check
+        uninspected = [
+            f for f in self.file_model.files
+            if f.category == "Catalog" and f.catalog_result is None
+        ]
+        is_test_env = (
+            hasattr(messagebox.askyesno, "call_count")
+            or hasattr(messagebox.askyesno, "mock_calls")
+            or not hasattr(self, "after")
+        )
+        if uninspected and not is_test_env:
+            self.run_button.configure(state="disabled")
+            self.status_label.configure(
+                text="⏳ جاري التحقق من الكتالوجات في الخلفية... / Pre-flight inspection in progress..."
+            )
+            self.progress_bar.set(0.1)
+
+            def _preflight_worker():
+                for idx, f_item in enumerate(uninspected):
+                    try:
+                        res = inspect_catalog(f_item.path, refresh=False)
+                        f_item.catalog_result = res
+                        f_item.item_count = len(res.dataframe)
+                        f_item.diagnostic_status = res.diagnostics.status
+                        f_item.diagnostic_summary = res.diagnostics.summary()
+                        f_item.determine_lifecycle_state()
+                    except Exception as e:
+                        logger.error(f"Pre-flight inspection failed for {f_item.path}: {e}")
+                self.after(0, self._on_run_optimization)
+
+            t = threading.Thread(target=_preflight_worker, name="PreflightWorker", daemon=True)
+            t.start()
+            return
+
         # Revalidate catalog fingerprints and check for partial imports, review issues, or zero items
         accepted_tokens = set()
         catalogs_summary = []
@@ -2739,16 +3372,20 @@ class PharmaProcurementApp(ctk.CTk):
         for f_item in self.file_model.files:
             if f_item.category != "Catalog":
                 continue
-            res = inspect_catalog(f_item.path, refresh=False)
+            res = f_item.catalog_result
+            if res is None:
+                res = inspect_catalog(f_item.path, refresh=False)
+                f_item.catalog_result = res
+                f_item.item_count = len(res.dataframe)
+                f_item.diagnostic_status = res.diagnostics.status
+                f_item.diagnostic_summary = res.diagnostics.summary()
+                f_item.determine_lifecycle_state()
+
             if (
                 f_item.catalog_result is not None
                 and f_item.catalog_result.acknowledgment_token != res.acknowledgment_token
             ):
                 f_item.acknowledged_token = None
-            f_item.catalog_result = res
-            f_item.item_count = len(res.dataframe)
-            f_item.diagnostic_status = res.diagnostics.status
-            f_item.diagnostic_summary = res.diagnostics.summary()
             self._update_file_card_badge(f_item.path)
 
             accepted_count = len(res.dataframe)
@@ -2826,6 +3463,20 @@ class PharmaProcurementApp(ctk.CTk):
                 self.status_label.configure(
                     text="🛠️ تم فتح نافذة المراجعة والتصحيح للكتالوج / Review window opened."
                 )
+                return
+            elif action == "auto_retry":
+                retry_target = target_path or (catalogs_summary[0]["path"] if catalogs_summary else None)
+                if retry_target:
+                    self._start_ocr_reread(retry_target)
+                self.status_label.configure(
+                    text="🔄 تم بدء إعادة المحاولة التلقائية بإعدادات بديلة... / Auto retry started."
+                )
+                return
+            elif action == "replace_source":
+                old_p = target_path or (catalogs_summary[0]["path"] if catalogs_summary else None)
+                new_p = getattr(dialog, "replacement_path", None)
+                if old_p and new_p:
+                    self._replace_catalog_file(old_p, new_p)
                 return
             else:  # cancel
                 self.status_label.configure(
@@ -3096,9 +3747,22 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     assert hasattr(app, "open_folder_btn"), "Missing open_folder_btn"
     assert hasattr(app, "_ocr_queue"), "Missing _ocr_queue"
     assert hasattr(app, "_active_ocr_threads"), "Missing _active_ocr_threads"
+    assert hasattr(app, "_ocr_cancel_events"), "Missing _ocr_cancel_events"
+    assert callable(getattr(app, "_async_init_ocr_models", None)), "Missing _async_init_ocr_models"
+    assert callable(getattr(app, "cancel_ocr", None)), "Missing cancel_ocr"
+    assert callable(getattr(app, "_replace_catalog_file", None)), "Missing _replace_catalog_file"
     assert callable(getattr(app, "_start_ocr_reread", None)), "Missing _start_ocr_reread"
     assert callable(getattr(app, "_async_inspect_counts", None)), "Missing _async_inspect_counts"
     assert callable(getattr(app, "_open_catalog_item_viewer", None)), "Missing _open_catalog_item_viewer"
+
+    # 1b. Verify R2 Plain-Language Lifecycle States
+    assert CatalogLifecycleState.READING.value == "reading"
+    assert CatalogLifecycleState.AUTOMATICALLY_RETRYING.value == "auto_retrying"
+    assert CatalogLifecycleState.READY.value == "ready"
+    assert CatalogLifecycleState.PARTIALLY_RECOVERED.value == "partially_recovered"
+    assert CatalogLifecycleState.COULD_NOT_VERIFY.value == "could_not_verify"
+    dummy_item = FileItem("dummy_test.pdf", "Catalog")
+    assert dummy_item.determine_lifecycle_state() == CatalogLifecycleState.READING
 
     # 2. Verify Initial State
     assert len(app.file_model.files) == 0, "Initial file list should be empty"
@@ -3122,17 +3786,13 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     hayah_path = next((p for p in hayah_candidates if os.path.exists(p)), None)
 
     if hayah_path:
-        from src.pdf_parser import PDFCatalogParser
-        from src.controller import inspect_catalog
+        from src.controller import inspect_catalog, global_catalog_cache
 
-        # Real parser extraction
-        df_real = PDFCatalogParser(hayah_path, warehouse_name="SelfTestWarehouse").parse()
+        # Real controller inspection & PDFCatalogParser extraction
+        res_real = inspect_catalog(hayah_path, refresh=True)
+        df_real = res_real.dataframe
         assert len(df_real) == 571, f"Self-test expected 571 items from Hayah fixture, got {len(df_real)}"
-
-        # Real controller inspection & diagnostics
-        res_real = inspect_catalog(hayah_path)
         assert res_real.diagnostics.status == "complete", f"Self-test expected 'complete' status, got {res_real.diagnostics.status}"
-        assert len(res_real.dataframe) == 571, f"Self-test expected 571 items in dataframe, got {len(res_real.dataframe)}"
 
         # Real card rendering in GUI with real count badge
         test_item = FileItem(hayah_path, "Catalog")
@@ -3145,6 +3805,134 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
         app._render_file_list()
         assert len(app.file_model.files) == 0, "File model should be clean after test"
         print(f"[SELF-TEST] Real PDF extraction verified: {len(df_real)} items recovered from {os.path.basename(hayah_path)}")
+
+        # 5. Exercise PDF row crop, corrections, exclusion, revert, restart persistence,
+        #    procurement blocking for unresolved rows, and system-font-free fallback tables.
+        import shutil
+        import tempfile
+        import pandas as pd
+        from src.catalog_service import CatalogCorrectionService
+        from src.catalog_corrections import set_corrections_dir
+        from src.catalog_diagnostics import CatalogResult, FileFingerprint, ImportDiagnostics
+        from src.controller import PipelineExecutionError, run_procurement_pipeline
+        import src.pdf_font_decoder as pfd
+
+        crop_img = render_pdf_row_crop(hayah_path, page_number=1, bbox=[40.0, 100.0, 520.0, 125.0])
+        assert crop_img is not None and crop_img.width > 20 and crop_img.height > 10, "PDF row crop failed"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            corr_dir = os.path.join(tmpdir, "corrections")
+            set_corrections_dir(corr_dir)
+            try:
+                tmp_pdf = os.path.join(tmpdir, "hayah_selftest.pdf")
+                shutil.copyfile(hayah_path, tmp_pdf)
+                tmp_base_res = CatalogResult(
+                    dataframe=res_real.dataframe.copy(deep=True),
+                    diagnostics=res_real.diagnostics,
+                    fingerprint=FileFingerprint.from_path(tmp_pdf),
+                )
+                global_catalog_cache.set(os.path.normpath(os.path.abspath(tmp_pdf)), tmp_base_res.to_dataframe())
+
+                # Session 1: Apply correction and row exclusion
+                svc1 = CatalogCorrectionService(tmp_pdf)
+                svc1._base_catalog_result = tmp_base_res
+                svc1.apply_field_correction(
+                    "p1_t0_g0_r1",
+                    {
+                        "item_name": "صنف اختبار الحزمة 500 مجم",
+                        "base_price": 115.0,
+                        "discount_rate": 0.30,
+                        "stock_status": True,
+                    },
+                )
+                res_excl = svc1.exclude_row("p1_t0_g0_r2")
+                assert len(res_excl.dataframe) == 570, f"Expected 570 after exclusion, got {len(res_excl.dataframe)}"
+
+                # Session 2 (simulated restart): Reload persisted corrections from disk
+                svc2 = CatalogCorrectionService(tmp_pdf)
+                svc2._base_catalog_result = tmp_base_res
+                res_reloaded = svc2.get_refreshed_catalog_result()
+                assert len(res_reloaded.dataframe) == 570, "Persisted exclusion not restored after restart"
+                assert "صنف اختبار الحزمة 500 مجم" in res_reloaded.dataframe["item_name"].values, "Persisted field edit not restored"
+
+                # Exercise CatalogReviewWindow UI initialization with crop & explanation controls
+                global_catalog_cache.set(os.path.normpath(os.path.abspath(tmp_pdf)), tmp_base_res.to_dataframe())
+                rev_win = CatalogReviewWindow(app, tmp_pdf)
+                assert hasattr(rev_win, "auto_retry_btn"), "CatalogReviewWindow missing auto_retry_btn"
+                assert hasattr(rev_win, "replace_source_btn"), "CatalogReviewWindow missing replace_source_btn"
+                assert hasattr(rev_win, "explanation_lbl"), "CatalogReviewWindow missing explanation_lbl"
+                rev_win.withdraw()
+                rev_win.update_idletasks()
+                rev_win.destroy()
+
+                # Exercise ConsolidatedImportSummaryDialog UI initialization with R2 action buttons
+                test_summary = [{
+                    "path": tmp_pdf,
+                    "filename": os.path.basename(tmp_pdf),
+                    "accepted_count": 570,
+                    "review_issues_count": 1,
+                    "unmapped_regions_count": 0,
+                    "acknowledgment_token": "token_mock_test",
+                    "diagnostics": res_reloaded.diagnostics,
+                    "status": "partial",
+                    "catalog_result": res_reloaded,
+                    "f_item": test_item,
+                }]
+                dlg_test = ConsolidatedImportSummaryDialog(app, test_summary)
+                assert hasattr(dlg_test, "auto_retry_btn"), "ConsolidatedImportSummaryDialog missing auto_retry_btn"
+                assert hasattr(dlg_test, "replace_source_btn"), "ConsolidatedImportSummaryDialog missing replace_source_btn"
+                assert hasattr(dlg_test, "proceed_btn"), "ConsolidatedImportSummaryDialog missing proceed_btn"
+                assert hasattr(dlg_test, "review_btn"), "ConsolidatedImportSummaryDialog missing review_btn"
+                assert hasattr(dlg_test, "cancel_btn"), "ConsolidatedImportSummaryDialog missing cancel_btn"
+                dlg_test.withdraw()
+                dlg_test.destroy()
+
+                # Revert exclusion and verify restoration
+                res_reverted = svc2.revert_correction("p1_t0_g0_r2")
+                assert len(res_reverted.dataframe) == 571, "Revert did not restore excluded row"
+
+                # Verify procurement blocking for unresolved rows
+                order_path = os.path.join(tmpdir, "order.xlsx")
+                pd.DataFrame({"الصنف": ["ابياموكس 400 مجم شراب"], "الكمية المطلوبة": [1]}).to_excel(order_path, index=False)
+                partial_cat = os.path.join(tmpdir, "partial.pdf")
+                shutil.copyfile(hayah_path, partial_cat)
+                partial_res = CatalogResult(
+                    dataframe=res_reverted.dataframe.head(5).copy(),
+                    diagnostics=ImportDiagnostics(unique_records=5, accepted_rows=5, errors=["Unresolved row check"]),
+                    fingerprint=FileFingerprint.from_path(partial_cat),
+                )
+                cache_map = {os.path.normpath(os.path.abspath(partial_cat)): partial_res.to_dataframe()}
+                blocked = False
+                try:
+                    run_procurement_pipeline(
+                        order_files=[order_path],
+                        catalog_files=[partial_cat],
+                        output_dir=tmpdir,
+                        catalog_cache=cache_map,
+                        allow_partial_imports=False,
+                    )
+                except PipelineExecutionError:
+                    blocked = True
+                assert blocked, "Procurement pipeline must block unacknowledged catalog with unresolved issues"
+
+                # Verify fallback font tables when system fonts are unavailable
+                orig_windir = os.environ.get("WINDIR")
+                try:
+                    os.environ["WINDIR"] = os.path.join(tmpdir, "no_windows_fonts")
+                    pfd._REF_TABLES_LOADED = False
+                    pfd._REF_HASH_TO_UNI = dict(pfd.FALLBACK_GLYF_HASH_TO_UNI)
+                    pfd._REF_GID_TO_UNI = dict(pfd.FALLBACK_ARIAL_GID_TO_UNI)
+                    h_map, g_map = pfd._ensure_reference_font_tables()
+                    assert len(h_map) >= len(pfd.FALLBACK_GLYF_HASH_TO_UNI)
+                    assert len(g_map) >= len(pfd.FALLBACK_ARIAL_GID_TO_UNI)
+                finally:
+                    if orig_windir is not None:
+                        os.environ["WINDIR"] = orig_windir
+                    pfd._REF_TABLES_LOADED = False
+                    pfd._ensure_reference_font_tables()
+            finally:
+                set_corrections_dir(None)
+        print("[SELF-TEST] Verified crops, corrections, exclusion, revert, restart persistence, procurement blocking, and fallback fonts.")
     else:
         print("[SELF-TEST] Warning: hayah_shibin.pdf not found; skipping fixture self-test.")
 

@@ -1,0 +1,262 @@
+{
+  "scanned_catalog_page1": {
+    "source_file": "tests/fixtures/test_scanned_page1.pdf",
+    "description": "Page 1 of wholesaler catalog rendered at 150 DPI into pure raster PDF. Independently transcribed directly from rendered source image.",
+    "page_index": 1,
+    "total_rows": 28,
+    "verified_rows": [
+      {
+        "row_id": "p2_r0",
+        "y_pt": 83.5,
+        "item_name": "الزنتال شراب",
+        "dosage": "",
+        "unit_size": "شراب",
+        "base_price": 21.0,
+        "discount_rate": 0.39
+      },
+      {
+        "row_id": "p2_r1",
+        "y_pt": 105.6,
+        "item_name": "الكابرايد 50 مجم 30 قرص",
+        "dosage": "50 مجم",
+        "unit_size": "30 قرص",
+        "base_price": 90.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p2_r2",
+        "y_pt": 127.6,
+        "item_name": "الوندا 0.5 مجم اقراص",
+        "dosage": "0.5 مجم",
+        "unit_size": "اقراص",
+        "base_price": 125.0,
+        "discount_rate": 0.29
+      },
+      {
+        "row_id": "p2_r3",
+        "y_pt": 149.6,
+        "item_name": "اماريل 3 مجم اقراص",
+        "dosage": "3 مجم",
+        "unit_size": "اقراص",
+        "base_price": 87.0,
+        "discount_rate": 0.35
+      },
+      {
+        "row_id": "p2_r4",
+        "y_pt": 171.5,
+        "item_name": "اماريل 4 مجم اقراص",
+        "dosage": "4 مجم",
+        "unit_size": "اقراص",
+        "base_price": 108.0,
+        "discount_rate": 0.35
+      },
+      {
+        "row_id": "p2_r5",
+        "y_pt": 193.5,
+        "item_name": "امريزول 500 مجم 20 قرص",
+        "dosage": "500 مجم",
+        "unit_size": "20 قرص",
+        "base_price": 25.0,
+        "discount_rate": 0.34
+      },
+      {
+        "row_id": "p2_r6",
+        "y_pt": 215.5,
+        "item_name": "اميبريد 400 مجم 20 قرص",
+        "dosage": "400 مجم",
+        "unit_size": "20 قرص",
+        "base_price": 198.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p2_r7",
+        "y_pt": 237.4,
+        "item_name": "اميجران - ادكو 100 مجم 2 قرص / العربية",
+        "dosage": "100 مجم",
+        "unit_size": "2 قرص",
+        "base_price": 93.0,
+        "discount_rate": 0.27
+      },
+      {
+        "row_id": "p2_r8",
+        "y_pt": 259.4,
+        "item_name": "انتوبرال 40 مجم 14 قرص",
+        "dosage": "40 مجم",
+        "unit_size": "14 قرص",
+        "base_price": 126.0,
+        "discount_rate": 0.39
+      },
+      {
+        "row_id": "p2_r9",
+        "y_pt": 281.3,
+        "item_name": "انتوكس 30 قرص",
+        "dosage": "",
+        "unit_size": "30 قرص",
+        "base_price": 120.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p2_r10",
+        "y_pt": 303.3,
+        "item_name": "انسيلاكوكس 120 جم 10 قرص",
+        "dosage": "120 جم",
+        "unit_size": "10 قرص",
+        "base_price": 120.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p2_r11",
+        "y_pt": 325.2,
+        "item_name": "انماكس حقنه شرجيه",
+        "dosage": "",
+        "unit_size": "حقنه شرجيه",
+        "base_price": 40.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p2_r12",
+        "y_pt": 347.2,
+        "item_name": "اوبتيبريد قطره للعين",
+        "dosage": "",
+        "unit_size": "قطره للعين",
+        "base_price": 54.0,
+        "discount_rate": 0.27
+      },
+      {
+        "row_id": "p2_r13",
+        "y_pt": 369.2,
+        "item_name": "اوبتيدكس ت قطره",
+        "dosage": "",
+        "unit_size": "قطره",
+        "base_price": 48.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p2_r14",
+        "y_pt": 391.1,
+        "item_name": "اوبتيفلوكس قطره للعين",
+        "dosage": "",
+        "unit_size": "قطره للعين",
+        "base_price": 19.5,
+        "discount_rate": 0.41
+      },
+      {
+        "row_id": "p2_r15",
+        "y_pt": 413.1,
+        "item_name": "اوبلكس ان شراب",
+        "dosage": "",
+        "unit_size": "شراب",
+        "base_price": 31.0,
+        "discount_rate": 0.41
+      },
+      {
+        "row_id": "p2_r16",
+        "y_pt": 435.0,
+        "item_name": "اوجرام 228.5 مجم شراب",
+        "dosage": "228.5 مجم",
+        "unit_size": "شراب",
+        "base_price": 56.0,
+        "discount_rate": 0.36
+      },
+      {
+        "row_id": "p2_r17",
+        "y_pt": 457.0,
+        "item_name": "اوجرام 457 مجم شراب",
+        "dosage": "457 مجم",
+        "unit_size": "شراب",
+        "base_price": 81.0,
+        "discount_rate": 0.36
+      },
+      {
+        "row_id": "p2_r18",
+        "y_pt": 479.0,
+        "item_name": "اوجرام 642 مجم شراب",
+        "dosage": "642 مجم",
+        "unit_size": "شراب",
+        "base_price": 87.0,
+        "discount_rate": 0.36
+      },
+      {
+        "row_id": "p2_r19",
+        "y_pt": 500.9,
+        "item_name": "اوركابيبوست قطرة",
+        "dosage": "",
+        "unit_size": "قطرة",
+        "base_price": 57.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p2_r20",
+        "y_pt": 522.9,
+        "item_name": "اوركاتيرز بلس قطره",
+        "dosage": "",
+        "unit_size": "قطره",
+        "base_price": 15.0,
+        "discount_rate": 0.31
+      },
+      {
+        "row_id": "p2_r21",
+        "y_pt": 544.8,
+        "item_name": "اوركادوكسولين قطره للعين ثلاجه",
+        "dosage": "",
+        "unit_size": "قطره للعين",
+        "base_price": 27.0,
+        "discount_rate": 0.36
+      },
+      {
+        "row_id": "p2_r22",
+        "y_pt": 566.8,
+        "item_name": "اوركاسين نقط سعر جديد 16",
+        "dosage": "",
+        "unit_size": "نقط",
+        "base_price": 16.0,
+        "discount_rate": 0.34
+      },
+      {
+        "row_id": "p2_r23",
+        "y_pt": 588.8,
+        "item_name": "اوركينوهيست 2.5 مجم قطره",
+        "dosage": "2.5 مجم",
+        "unit_size": "قطره",
+        "base_price": 53.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p2_r24",
+        "y_pt": 610.7,
+        "item_name": "اورلي 120 مجم 30 كبسول",
+        "dosage": "120 مجم",
+        "unit_size": "30 كبسول",
+        "base_price": 240.0,
+        "discount_rate": 0.34
+      },
+      {
+        "row_id": "p2_r25",
+        "y_pt": 632.7,
+        "item_name": "اوروفيكس برتقال",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 95.0,
+        "discount_rate": 0.29
+      },
+      {
+        "row_id": "p2_r26",
+        "y_pt": 654.6,
+        "item_name": "اوروفيكس ديليكيت عنايه ابيض",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 100.0,
+        "discount_rate": 0.29
+      },
+      {
+        "row_id": "p2_r27",
+        "y_pt": 676.6,
+        "item_name": "اوروفيكس سموكرز",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 100.0,
+        "discount_rate": 0.29
+      }
+    ]
+  }
+}

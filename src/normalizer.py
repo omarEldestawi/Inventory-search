@@ -16,11 +16,9 @@ ILLEGAL_CHARACTERS_RE = re.compile(
 
 
 def strip_illegal_characters(text: str) -> str:
-    """Removes non-printable ASCII control characters and surrogate code points after decoding custom catalog glyphs."""
+    """Removes non-printable ASCII control characters and surrogate code points."""
     if not text:
         return ""
-    if 'decode_custom_catalog_glyphs' in globals():
-        text = decode_custom_catalog_glyphs(text)
     return ILLEGAL_CHARACTERS_RE.sub("", str(text))
 
 EASTERN_ARABIC_DIGITS = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
@@ -352,43 +350,29 @@ def normalize_ocr_split_medication_names(text: str) -> str:
     return t
 
 def decode_custom_catalog_glyphs(text: str) -> str:
-    """Decodes custom ERP font encodings (ArwaSoft Greek, Al-Hadaba/OrgaSoft Aboriginal/Runic, and ArwaSoft 2026 8-bit glyphs) back into standard Arabic letters."""
+    """Decodes custom ERP font encodings (ArwaSoft Greek, Al-Hadaba/OrgaSoft Aboriginal/Runic, and legacy control-byte streams) back into standard Arabic letters without corrupting ordinary punctuation or digits."""
     if not text or not isinstance(text, str):
         return ""
     t = str(text)
-    
-    # 1. ArwaSoft 2026 byte / control character encoding
-    if any(ord(c) < 32 for c in t) or any(c in t for c in ['%', '*', '!', ':', '@', '#', '$']):
-        # Map 0 to ف only when adjacent to non-digits (not within pure numbers)
-        t = re.sub(r'(?<![0-9])0(?![0-9])|(?<=[^\s0-9])0|0(?=[^\s0-9])', 'ف', t)
-        t = re.sub(r'(?<![0-9])3(?![0-9])|(?<=[^\s0-9])3|3(?=[^\s0-9])', 'ت', t)
-        for glyph, arabic_char in ARWASOFT_2026_CHAR_MAP.items():
-            if glyph in t:
-                t = t.replace(glyph, arabic_char)
 
-    # 2. Custom catalog ligatures
+    # 1. Legacy control-character fallback: only active when actual non-whitespace ASCII control bytes
+    # (0x01..0x1F excluding \n, \r, \t) are present in raw un-repaired text streams.
+    # Never replaces \n, digits (0, 3), or ordinary punctuation (%, *, #, $, -, !, :, @) in normal text.
+    if any(0x01 <= ord(c) < 0x20 and c not in ('\n', '\r', '\t') for c in t):
+        for glyph, arabic_char in ARWASOFT_2026_CHAR_MAP.items():
+            if len(glyph) == 1 and 0x01 <= ord(glyph) < 0x20 and glyph not in ('\n', '\r', '\t'):
+                if glyph in t:
+                    t = t.replace(glyph, arabic_char)
+
+    # 2. Custom catalog ligatures (Canadian Aboriginal / Runic)
     for lig, rep in CUSTOM_CATALOG_LIGATURE_MAP.items():
         if lig in t:
             t = t.replace(lig, rep)
 
-    # 3. Custom catalog glyphs (Greek and Canadian Aboriginal)
+    # 3. Custom catalog glyphs (Greek and Canadian Aboriginal / Runic)
     for glyph, arabic_char in CUSTOM_CATALOG_GLYPH_MAP.items():
         if glyph in t:
             t = t.replace(glyph, arabic_char)
-
-    # 4. ArwaSoft common token replacements
-    if 'تكاب' in t:
-        t = t.replace('تكاب', 'باكت')
-    if 'ريمك' in t:
-        t = t.replace('ريمك', 'كريم')
-    if 'ولك' in t:
-        t = t.replace('ولك', 'كبسول')
-    if 'راصك' in t:
-        t = t.replace('راصك', 'اقراص')
-    if 'اق راص' in t:
-        t = t.replace('اق راص', 'اقراص')
-    if 'م ج' in t:
-        t = t.replace('م ج', 'مج')
 
     t = normalize_ocr_split_medication_names(t)
     return t
@@ -677,9 +661,8 @@ def fix_spaced_and_reversed_digits(text: str) -> str:
     t = re.sub(rf'\b4\s+1\s*(?={pack_units})', '14 ', t)
     t = re.sub(rf'(\b{pack_units})\s*4\s+1\b', r'\1 14', t)
 
-    # Iteratively collapse remaining spaces between digits
-    while re.search(r'(?<=\d)\s+(?=\d)', t):
-        t = re.sub(r'(?<=\d)\s+(?=\d)', '', t)
+    # Collapse spaced single digits (e.g. "1 4 4" -> "144") without gluing separate multi-digit numbers (e.g. "50 20" or "10/10 30")
+    t = re.sub(r'(?<![\d/.,])(\d(?:\s+\d)+)(?![\d/.,])', lambda m: m.group(1).replace(' ', ''), t)
     return t
 
 def is_arabic_text_reversed(text: str) -> bool:
@@ -2261,14 +2244,18 @@ def is_catalog_noise(text: str) -> bool:
     # Explicit software vendor credits and page header/footer markers
     noise_keywords = [
         'اورجا سوفت', 'اروا سوفت', 'أورجا سوفت', 'أروا سوفت',
-        'لتجارة وتوزيع', 'توزيع الادوية', 'توزيع الأدوية', 'مخزن الفارس',
-        'تليفون', 'هاتف', 'موبايل', 'س.ت', 'ب.ض',
-        'سجل تجاري', 'بطاقة ضريبية', 'صفحة'
+        'لتجارة وتوزيع', 'توزيع الادوية', 'توزيع الأدوية', 'مخزن الفارس', 'مخزن سبيشيال',
+        'لتجارة الادويه', 'لتجارة الأدوية', 'للتجاره', 'للتجارة',
+        'تليفون', 'هاتف', 'موبايل',
+        'سجل تجاري', 'بطاقة ضريبية', 'صفحة',
+        'اجمالى الفاتورة', 'اجمالي الفاتورة', 'صافى الفاتورة', 'صافي الفاتورة',
+        'حساب الفاتورة', 'عدد الاصناف', 'عدد الأصناف', 'عدد الاصناف',
+        'ةروتافلا ىلامجا', 'ةروتافلا لامجا', 'ةروتافلا باsec', 'فافنصلاا ددع',
     ]
     t_lower = t.lower()
     if any(k in t_lower for k in noise_keywords):
         return True
-    if re.search(r'(?:^|[\s:/\-])(?:فاكس|page)(?:$|[\s:/\-\d])', t_lower):
+    if re.search(r'(?:^|[\s:/\-])(?:فاكس|page|س\.ت|ب\.ض)(?:$|[\s:/\-\d])', t_lower):
         return True
     # Telephone / hotline numbers (e.g. 010..., 011..., 012..., 015..., 02..., 040...)
     if re.search(r'(?:01[0-9]{9}|0[2-5][0-9]{7,8})', t.translate(EASTERN_ARABIC_DIGITS)):
@@ -2302,18 +2289,26 @@ def parse_dosage_and_pack(item_name: str):
     text = re.sub(r'([a-zA-Z\u0600-\u06FF])(\d+)', r'\1 \2', text)
     text = re.sub(r'(\d+)([a-zA-Z\u0600-\u06FF])', r'\1 \2', text)
     
+    # Normalize leading decimal points before strength digits (e.g. ".4 مجم" -> "0.4 مجم", ".25 مج" -> "0.25 مج")
+    text = re.sub(
+        r'(?<![\d\w])\.(\d+\s*(?:mg|gm|g|ml|mcg|iu|مكج|مجم|مج|جم|مل|ميكروجرام|وحدة|%))',
+        r'0.\1',
+        text,
+        flags=re.IGNORECASE,
+    )
+
     # Preserve decimal periods between digits while sanitizing other punctuation
     text = re.sub(r'(?<!\d)\.|\.(?!\d)', ' ', text)
     text = re.sub(r'[^\w\s\.]', ' ', text)
     normalized = re.sub(r'\s+', ' ', text).strip().lower()
     
-    strength_pattern = r'(\d+(?:\.\d+)?\s*(?:mg|gm|g|ml|mcg|iu|مجم|مج|جم|مل|ميكروجرام|وحدة))'
+    strength_pattern = r'(\d+(?:\.\d+)?\s*(?:mg|gm|g|ml|mcg|iu|مكج|مجم|مج|جم|مل|ميكروجرام|وحدة))'
     strength_match = re.search(strength_pattern, normalized, re.IGNORECASE)
     if strength_match:
         dosage = strength_match.group(1).replace(' ', '')
     else:
         # Check reversed/prefix unit notation (e.g. "مج 25" -> "25مج")
-        strength_pattern_rev = r'((?:mg|gm|g|ml|mcg|iu|مجم|مج|جم|مل|ميكروجرام|وحدة)\s*\d+(?:\.\d+)?)'
+        strength_pattern_rev = r'((?:mg|gm|g|ml|mcg|iu|مكج|مجم|مج|جم|مل|ميكروجرام|وحدة)\s*\d+(?:\.\d+)?)'
         rev_match = re.search(strength_pattern_rev, normalized, re.IGNORECASE)
         if rev_match:
             parts = re.findall(r'\d+(?:\.\d+)?|[a-zA-Z\u0600-\u06ff]+', rev_match.group(1))

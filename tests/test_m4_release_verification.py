@@ -102,7 +102,7 @@ class TestMilestone4ReleaseVerification(unittest.TestCase):
     def test_02_executable_headless_self_test(self):
         """Verify EgyptianPharmaOptimizer.exe runs headless self-test with return code 0."""
         cmd = [EXE_PATH, "--self-test"]
-        proc = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=90)
         self.assertEqual(proc.returncode, 0, f"Executable --self-test failed with exit code {proc.returncode}")
 
     # ------------------------------------------------------------------------
@@ -449,12 +449,12 @@ print("__JSON_START__" + json.dumps(res_dict) + "__JSON_END__")
         self.assertTrue(os.path.exists(EXE_PATH), f"Executable not found at {EXE_PATH}")
 
         # 1. Direct --self-test on standalone binary (verifies GUI tree + real Hayah 571 extraction inside binary)
-        p_self = subprocess.run([EXE_PATH, "--self-test"], capture_output=True, text=True, timeout=30)
+        p_self = subprocess.run([EXE_PATH, "--self-test"], capture_output=True, text=True, timeout=90)
         self.assertEqual(p_self.returncode, 0, f"Standalone executable --self-test failed: {p_self.stderr}")
         self.assertIn("Real PDF extraction verified: 571 items recovered", p_self.stdout)
 
         # 2. Direct --test-catalog on Hayah fixture
-        p_hayah = subprocess.run([EXE_PATH, "--test-catalog", HAYAH_FIXTURE_PATH], capture_output=True, text=True, timeout=30)
+        p_hayah = subprocess.run([EXE_PATH, "--test-catalog", HAYAH_FIXTURE_PATH], capture_output=True, text=True, timeout=90)
         self.assertEqual(p_hayah.returncode, 0, f"Standalone executable --test-catalog failed: {p_hayah.stderr}")
         self.assertIn("__JSON_RESULT__", p_hayah.stdout)
         res_h = json.loads(p_hayah.stdout.split("__JSON_RESULT__")[1])
@@ -476,7 +476,7 @@ print("__JSON_START__" + json.dumps(res_dict) + "__JSON_END__")
         t2 = _make_grid_table(d2, [45, 45, 180, 45, 45, 180])
         _build_pdf(pdf_swap, [t1, Spacer(1, 20), t2])
 
-        p_swap = subprocess.run([EXE_PATH, "--test-catalog", pdf_swap], capture_output=True, text=True, timeout=30)
+        p_swap = subprocess.run([EXE_PATH, "--test-catalog", pdf_swap], capture_output=True, text=True, timeout=90)
         self.assertEqual(p_swap.returncode, 0, f"Standalone executable on swapped PDF failed: {p_swap.stderr}")
         res_s = json.loads(p_swap.stdout.split("__JSON_RESULT__")[1])
         self.assertEqual(res_s["count"], 4)

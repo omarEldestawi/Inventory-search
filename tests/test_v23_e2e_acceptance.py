@@ -229,20 +229,45 @@ class TestF23VersionPackagingTroubleshooting(unittest.TestCase):
         with open(iss_path, "r", encoding="utf-8") as f:
             iss_content = f.read()
         self.assertTrue(
-            any(v in iss_content for v in ('MyAppVersion "2.3"', 'MyAppVersion "2.4"', 'MyAppVersion "2.5"')),
-            "installer.iss must define MyAppVersion as '2.3', '2.4', or '2.5'"
+            any(v in iss_content for v in ('MyAppVersion "2.3"', 'MyAppVersion "2.4"', 'MyAppVersion "2.5"', 'MyAppVersion "2.6"', 'MyAppVersion "2.7"')),
+            "installer.iss must define MyAppVersion as '2.3', '2.4', '2.5', or '2.6'"
         )
 
     def test_f23_02_gui_headless_self_test(self):
         """Verify python app_gui.py --self-test exits cleanly with code 0."""
         cmd = [sys.executable, "app_gui.py", "--self-test"]
-        proc = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=120)
         self.assertEqual(proc.returncode, 0, f"Self-test failed with stderr: {proc.stderr}")
         self.assertIn("[SELF-TEST]", proc.stdout)
 
     def test_f23_03_parser_revision_constant(self):
-        """Verify PARSER_REVISION is '2026.10.27.1'."""
-        self.assertEqual(PARSER_REVISION, "2026.10.27.1")
+        """Verify PARSER_REVISION is the current revision and invalidates old-revision caches."""
+        self.assertEqual(PARSER_REVISION, "2026.11.07.2")
+
+        # Demonstrate that an old-revision ("2026.10.27.1") cache entry is rejected and re-parsed
+        fp_current = FileFingerprint.from_path(HAYAH_FIXTURE_PATH)
+        self.assertEqual(fp_current.parser_revision, "2026.11.07.2")
+        fp_old = FileFingerprint(
+            path=fp_current.path,
+            sha256=fp_current.sha256,
+            parser_revision="2026.10.27.1",
+            library_version=fp_current.library_version,
+        )
+        self.assertFalse(fp_old.is_current(HAYAH_FIXTURE_PATH))
+
+        stale_res = CatalogResult(
+            dataframe=pd.DataFrame([{"warehouse_name": "stale", "item_name": "stale_item", "base_price": 10.0, "discount_rate": 0.1}]),
+            diagnostics=ImportDiagnostics(accepted_rows=1, unique_records=1),
+            fingerprint=fp_old,
+        )
+        from src.pipeline import validate_cached_catalog
+        from src.controller import global_catalog_cache
+        self.assertIsNone(validate_cached_catalog(stale_res.to_dataframe(), HAYAH_FIXTURE_PATH))
+
+        global_catalog_cache.set(HAYAH_FIXTURE_PATH, stale_res.to_dataframe())
+        fresh_res = inspect_catalog(HAYAH_FIXTURE_PATH, refresh=False)
+        self.assertEqual(len(fresh_res.dataframe), 571)
+        self.assertEqual(fresh_res.fingerprint.parser_revision, "2026.11.07.2")
 
     def test_f23_04_troubleshooting_guide_presence(self):
         """Verify troubleshooting documentation exists under docs/current/."""

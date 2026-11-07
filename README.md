@@ -1,8 +1,18 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 2.6 (Production Windows Release)  
+**Version:** 2.7 (Pre-Release / In Preparation)  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
+
+---
+
+## 🌟 What's New in Version 2.7 (Pre-Release)
+
+- 🔒 **OCR Strength Source Fidelity & Safeguards (`src/catalog_recovery.py`, `src/ocr_engine.py`)**: Eliminates heuristic strength alterations, ratio guessing, and trailing digit truncation. Uncertain combinations and spaced decimal strengths are preserved without fabrication and safely quarantined from automatic procurement pending clinical verification.
+- 📐 **Coordinate-Driven Numeric Token Assignment**: Field assignment in OCR recovery utilizes strict cell/column horizontal boundaries, resolving numeric collisions when price and discount values coincide or when adjacent catalog item codes are present.
+- 🏷️ **Lifecycle Distinctions for Unknown Discounts (`src/pipeline.py`, `src/controller.py`)**: Preserves missing or unverified discounts as `None`/unknown throughout cache, export, and allocation rather than defaulting to `0.0`. Differentiates "offer found, discount unverified" from "out of stock" without changing core search algorithms.
+- ⚡ **Reusable OCR Worker Architecture**: Persistent background OCR worker process with bounding-box caching, eliminating per-crop process startup overhead and accelerating catalog analysis.
+- 🛡️ **Zero Search/Allocation Drift Guarantee**: Core search, ranking, matching, and clinical allocation algorithms (`src/allocator.py`, `src/pharma_matcher.py`) remain strictly unchanged and verified byte-for-byte.
 
 ---
 
@@ -69,7 +79,7 @@ An intelligent, automated procurement optimization desktop application designed 
 ### Option 1: Standalone Windows Installer (Recommended)
 1. Download or locate the setup file:
    ```text
-   dist_installer/EgyptianPharmaOptimizer_Setup_v2.6.exe
+   dist_installer/EgyptianPharmaOptimizer_Setup_v2.7.exe
    ```
 2. Double-click to install. It creates a desktop shortcut and Start Menu entry.
 3. No Python, C++ runtimes, or external AI models need to be installed.

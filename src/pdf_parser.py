@@ -9,9 +9,17 @@ import re
 import logging
 import unicodedata
 from typing import Optional, List, Dict, Any, Tuple, Union
+import cv2
 import pymupdf
 import pandas as pd
 import numpy as np
+
+try:
+    from .image_table_detector import ImageTableDetector
+    from .ocr_engine import ArabicOCREngine
+except ImportError:
+    from image_table_detector import ImageTableDetector
+    from ocr_engine import ArabicOCREngine
 
 try:
     from .normalizer import (
@@ -70,6 +78,15 @@ try:
         ImportDiagnostics,
         CatalogResult,
         METADATA_KEY,
+        build_source_id,
+    )
+    from .pdf_font_decoder import (
+        inspect_and_repair_pdf_fonts,
+        assess_pdf_page,
+        extract_page_chars,
+        reconstruct_cell_text_from_chars,
+        reconstruct_rtl_line_from_chars,
+        has_suspicious_characters,
     )
 except ImportError:
     from catalog_reader import (
@@ -91,6 +108,15 @@ except ImportError:
         ImportDiagnostics,
         CatalogResult,
         METADATA_KEY,
+        build_source_id,
+    )
+    from pdf_font_decoder import (
+        inspect_and_repair_pdf_fonts,
+        assess_pdf_page,
+        extract_page_chars,
+        reconstruct_cell_text_from_chars,
+        reconstruct_rtl_line_from_chars,
+        has_suspicious_characters,
     )
 
 logger = logging.getLogger("PDFCatalogParser")
@@ -454,8 +480,14 @@ class PDFCatalogParser:
         """Translates custom font glyphs (ArwaSoft Greek, Al-Hadhaba Runic/Aboriginal) to standard Arabic."""
         return decode_custom_catalog_glyphs(text)
 
-    def __init__(self, pdf_path: Optional[str] = None, warehouse_name: Optional[str] = None):
+    def __init__(
+        self,
+        pdf_path: Optional[str] = None,
+        warehouse_name: Optional[str] = None,
+        ocr_engine: Optional[str] = None,
+    ):
         self.pdf_path = pdf_path
+        self.ocr_engine = ocr_engine
         if pdf_path:
             raw_name = warehouse_name or os.path.splitext(os.path.basename(pdf_path))[0]
             self.warehouse_name = normalize_vendor_name(raw_name)
@@ -635,7 +667,9 @@ class PDFCatalogParser:
         raw_accepted_count = 0
         doc = None
         try:
-            doc = pymupdf.open(self.pdf_path)
+            raw_doc = pymupdf.open(self.pdf_path)
+            doc, font_diagnostics = inspect_and_repair_pdf_fonts(raw_doc)
+            has_any_repaired_font = any(fd.repaired for fd in font_diagnostics.values())
 
             if len(doc) > 0:
                 p0_text = unicodedata.normalize('NFKD', doc[0].get_text("text")[:400])
@@ -648,6 +682,9 @@ class PDFCatalogParser:
                         self.warehouse_name = 'زهرة فارم'
                 elif 'الهضبة' in p0_dec or 'الهضبه' in p0_dec or '645-769-533' in p0_text or '01201999050' in p0_text:
                     self.warehouse_name = 'مخزن الهضبة فارم'
+                elif 'العابد' in p0_dec or '0504675813' in p0_text:
+                    if not re.search(r'[\u0600-\u06ff]', self.warehouse_name) or 'العابد' in self.warehouse_name:
+                        self.warehouse_name = 'مخزن العابد'
                 self._doc_first_num_is_price = self._detect_page_header_price_first(doc[0])
             
             # Check if this catalog uses whitespace block layout (e.g. Mega Farm)
@@ -657,27 +694,14 @@ class PDFCatalogParser:
             base_fname = os.path.basename(self.pdf_path)
             is_sina = 'سينا' in self.warehouse_name or 'سينا' in base_fname
             is_dar_fouad = 'دار الفؤاد' in self.warehouse_name or 'دار الفؤاد' in base_fname
-            is_arwasoft_dual = self._is_arwasoft_dual_column_catalog(doc)
             is_arwasoft_2col = (
                 any(k in base_fname for k in ['ادم جمله', 'بيرفكت فارم', 'رواد الدوا', 'الدولية الحديثة', 'الدوليه الحديثه']) or
                 any(k in self.warehouse_name for k in ['ادم', 'بيرفكت فارم', 'رواد الدواء', 'الدولية الحديثة'])
             )
             
-            if is_arwasoft_dual:
+            if is_block_layout:
                 for page_idx, page in enumerate(doc):
-                    dual_items = self._extract_arwasoft_dual_column_items(page, page_idx)
-                    items.extend(dual_items)
-                    raw_accepted_count += len(dual_items)
-                    self._page_diagnostics.append(
-                        PageDiagnostics(
-                            page=page_idx + 1,
-                            strategy="arwasoft_dual_column",
-                            accepted_rows=len(dual_items),
-                            groups=[GroupDiagnostics(group=0, strategy="arwasoft_dual_column", candidate_rows=len(dual_items), accepted_rows=len(dual_items))]
-                        )
-                    )
-            elif is_block_layout:
-                for page_idx, page in enumerate(doc):
+                    assessment = assess_pdf_page(page, page_idx, font_diagnostics)
                     block_items = self._process_page_blocks(page)
                     items.extend(block_items)
                     raw_accepted_count += len(block_items)
@@ -686,11 +710,84 @@ class PDFCatalogParser:
                             page=page_idx + 1,
                             strategy="blocks",
                             accepted_rows=len(block_items),
-                            groups=[GroupDiagnostics(group=0, strategy="blocks", candidate_rows=len(block_items), accepted_rows=len(block_items))]
+                            groups=[GroupDiagnostics(group=0, strategy="blocks", candidate_rows=len(block_items), accepted_rows=len(block_items))],
+                            page_classification=assessment.classification,
+                            selected_method=assessment.selected_method,
+                            assessment_reasons=assessment.reasons,
+                            font_repaired=assessment.font_repaired,
                         )
                     )
             else:
                 for page_idx, page in enumerate(doc):
+                    assessment = assess_pdf_page(page, page_idx, font_diagnostics)
+
+                    # Route pure raster / scanned image pages to ImageTableDetector + ArabicOCREngine
+                    if getattr(assessment, "mode", "") == "pure_raster" or getattr(assessment, "classification", "") == "pure_raster":
+                        try:
+                            pix = page.get_pixmap(dpi=150)
+                            img_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                            if pix.n == 4:
+                                img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)
+
+                            detector = ImageTableDetector()
+                            scale_to_pt = 72.0 / 150.0
+                            r_accepted, r_diags, r_issues = detector.extract_table_records(
+                                img_np,
+                                page_idx=page_idx,
+                                warehouse_name=self.warehouse_name,
+                                table_idx=0,
+                                scale_to_pt=scale_to_pt,
+                                ocr_engine_preference=getattr(self, "ocr_engine", None) or "primary",
+                                pdf_page=page,
+                            )
+                            page_items = []
+                            if r_accepted:
+                                page_items.extend(r_accepted)
+                                raw_accepted_count += len(r_accepted)
+
+                            raster_grp = GroupDiagnostics(
+                                group=0,
+                                strategy="raster_image_table_detector",
+                                candidate_rows=len(r_diags),
+                                accepted_rows=len(r_accepted),
+                                rejected_rows=len([d for d in r_diags if d.outcome != "accepted"]),
+                                unprocessed_rows=0,
+                                rows=r_diags if r_diags else [],
+                            )
+                            if len(r_accepted) == 0:
+                                region_diag = RowDiagnostic(
+                                    page=page_idx + 1,
+                                    table=0,
+                                    group=0,
+                                    row=None,
+                                    outcome="rejected",
+                                    reason="image_only_page_requires_review",
+                                    bbox=list(page.rect),
+                                    raw_cells=["[image_only_page]"],
+                                    is_region_issue=True,
+                                    source_id=f"p{page_idx + 1}_t0_region",
+                                )
+                                raster_grp.rows = [region_diag]
+
+                            self._page_diagnostics.append(
+                                PageDiagnostics(
+                                    page=page_idx + 1,
+                                    strategy="raster_image_table_detector",
+                                    expected_count_known=bool(len(r_accepted) > 0),
+                                    accepted_rows=len(r_accepted),
+                                    groups=[raster_grp],
+                                    page_classification="image_only",
+                                    selected_method="raster_table_ocr",
+                                    assessment_reasons=assessment.reasons,
+                                    font_repaired=False,
+                                )
+                            )
+                            items.extend(page_items)
+                            continue
+                        except Exception as exc:
+                            logger.error(f"Failed OCR table extraction on page {page_idx + 1}: {exc}")
+
+                    page_chars = extract_page_chars(page) if (has_any_repaired_font or assessment.font_repaired) else None
                     page_items = []
                     page_hdr_order = self._detect_page_header_price_first(page)
                     if page_hdr_order is not None:
@@ -764,13 +861,20 @@ class PDFCatalogParser:
                                         and groups
                                         and any(g.is_valid for g in groups)
                                     )
+                                    is_repaired_single_table = bool(
+                                        page_chars is not None
+                                        and len(t.rows) >= 2
+                                        and t_num_cols >= 3
+                                        and groups
+                                        and any(g.is_valid for g in groups)
+                                    )
 
-                                    if has_multi_groups or has_est_multi_groups or is_single_row_structural:
+                                    if has_multi_groups or has_est_multi_groups or is_single_row_structural or is_repaired_single_table:
                                         est_geom_to_pass = self._established_geometry if is_layout_compat else None
                                         est_groups_to_pass = self._established_groups if (est_geom_to_pass is not None) else None
 
                                         p_items, new_geom, new_groups, t_diag = parse_structural_table(
-                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self, table_idx=t_idx
+                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self, table_idx=t_idx, page_chars=page_chars
                                         )
 
                                         if has_multi_groups or (new_groups and any(g.is_valid for g in new_groups)):
@@ -783,16 +887,22 @@ class PDFCatalogParser:
                                         table_items.extend(p_items)
                                         raw_accepted_count += len(p_items)
 
-                                        # Incorporate group diagnostics with unambiguous table-indexed provenance
+                                        # Incorporate group diagnostics with unambiguous (page, table, group, row) provenance
                                         for g_diag in t_diag.groups:
                                             grp_idx_on_page = len(table_groups)
+                                            g_col_idx = g_diag.group
                                             g_diag.group = grp_idx_on_page
-                                            g_diag.strategy = f"structural_table_t{t_idx}"
+                                            g_diag.strategy = f"structural_table_t{t_idx}_g{g_col_idx}"
                                             for r_diag in g_diag.rows:
-                                                r_diag.group = grp_idx_on_page
+                                                r_diag.group = g_col_idx
                                                 r_diag.table = t_idx
-                                                if not r_diag.source_id or r_diag.source_id.startswith("p"):
-                                                    r_diag.source_id = f"p{page_idx + 1}_t{t_idx}_r{r_diag.row}" if r_diag.row is not None else f"p{page_idx + 1}_t{t_idx}_region"
+                                                r_diag.source_id = build_source_id(
+                                                    page=page_idx + 1,
+                                                    table=t_idx,
+                                                    group=g_col_idx,
+                                                    row=r_diag.row,
+                                                    is_region_issue=r_diag.is_region_issue or (r_diag.row is None),
+                                                )
                                             table_groups.append(g_diag)
 
                                         if not t_diag.expected_count_known:
@@ -803,7 +913,7 @@ class PDFCatalogParser:
                             # Legacy extraction for remaining tables not handled structurally
                             remaining_tables = [t for t in filtered_tables if t not in structural_tables]
                             if remaining_tables:
-                                stitched_tables = self._stitch_contiguous_tables(remaining_tables)
+                                stitched_tables = self._stitch_contiguous_tables(remaining_tables, page_chars=page_chars)
                                 for rem_idx, table_data in enumerate(stitched_tables):
                                     if table_data and len(table_data) >= 1:
                                         t_items = self._process_table(table_data)
@@ -848,6 +958,50 @@ class PDFCatalogParser:
                                         grp_idx_on_page = len(table_groups)
                                         legacy_accepted = len(t_items)
                                         header_offset = 1 if (len(table_data) > 1 and any(is_genuine_header_cell(c) for c in table_data[0] if c)) else 0
+                                        # Also skip banner + header rows in 2-col ArwaSoft tables where row 0 is banner and row 1 is header
+                                        if (
+                                            header_offset == 0
+                                            and len(table_data) > 2
+                                            and any(is_genuine_header_cell(c) for c in table_data[1] if c)
+                                        ):
+                                            header_offset = 2
+                                        elif (
+                                            header_offset == 0
+                                            and len(table_data) > 1
+                                            and table_data[0]
+                                        ):
+                                            row0_joined_raw = " ".join(str(c) for c in table_data[0] if c)
+                                            row0_norm = unicodedata.normalize("NFKD", row0_joined_raw)
+                                            is_2col_banner_row0 = (
+                                                len(table_data[0]) == 2
+                                                and bool(table_data[0][1])
+                                                and "\n" in str(table_data[0][1])
+                                                and len(table_data) > 3
+                                                and all(
+                                                    len(r) >= 2 and not r[1]
+                                                    for r in table_data[2 : min(6, len(table_data))]
+                                                )
+                                            )
+                                            if (
+                                                is_2col_banner_row0
+                                                or any(
+                                                    kw in row0_norm or kw in row0_norm[::-1]
+                                                    for kw in (
+                                                        "السجل التجارى",
+                                                        "السجل التجاري",
+                                                        "محافظة",
+                                                        "محافظه",
+                                                        "أصناف المخزن",
+                                                        "اصناف المخزن",
+                                                        "لتجارة وتوزيع",
+                                                        "ت س",
+                                                        "س ت",
+                                                    )
+                                                )
+                                                or is_catalog_noise(row0_norm)
+                                            ):
+                                                header_offset = 1
+
                                         legacy_candidates = max(legacy_accepted, len(table_data) - header_offset)
                                         legacy_rejected = max(0, legacy_candidates - legacy_accepted)
 
@@ -871,7 +1025,8 @@ class PDFCatalogParser:
                                                 r_bbox = list(rem_bbox)
 
                                             row_str = " ".join(str(c) for c in row_cells if c)
-                                            clean_row = re.sub(r'[\s\W_]+', '', row_str).lower()
+                                            row_norm_str = normalize_arabic_text(row_str)
+                                            clean_row = re.sub(r'[\s\W_]+', '', row_norm_str).lower()
                                             clean_row_rev = clean_row[::-1]
 
                                             matched_item = None
@@ -883,7 +1038,8 @@ class PDFCatalogParser:
                                                 for it_idx, it in enumerate(t_items):
                                                     if it_idx in used_item_indices:
                                                         continue
-                                                    clean_it_name = re.sub(r'[\s\W_]+', '', it.get("item_name", "")).lower()
+                                                    it_norm_str = it.get("normalized_name") or normalize_arabic_text(it.get("item_name", ""))
+                                                    clean_it_name = re.sub(r'[\s\W_]+', '', it_norm_str).lower()
                                                     if clean_it_name and (clean_it_name in clean_row or clean_row in clean_it_name or clean_it_name in clean_row_rev or clean_row_rev in clean_it_name):
                                                         matched_item = it
                                                         used_item_indices.add(it_idx)
@@ -902,17 +1058,46 @@ class PDFCatalogParser:
                                                     source_id=f"p{page_idx + 1}_t{rem_idx}_r{r_i}",
                                                 ))
                                             else:
+                                                rej_name = ""
+                                                rej_p = 0.0
+                                                rej_d = 0.0
+                                                rej_reason = "legacy_parsing_rejection"
+                                                if len(row_cells) >= 3:
+                                                    hdr_row = [str(c).strip() if c else "" for c in table_data[0]] if header_offset > 0 else ["" for _ in row_cells]
+                                                    n_idx, p_idx, d_idx, _ = self._find_column_indices(hdr_row, table_data[header_offset:])
+                                                    if n_idx is not None and n_idx < len(row_cells) and row_cells[n_idx]:
+                                                        rej_name = str(row_cells[n_idx]).strip()
+                                                    if p_idx is not None and p_idx < len(row_cells) and row_cells[p_idx]:
+                                                        rej_p = self._extract_raw_float(row_cells[p_idx])
+                                                    if d_idx is not None and d_idx < len(row_cells) and row_cells[d_idx]:
+                                                        raw_d_cell = str(row_cells[d_idx]).strip()
+                                                        raw_d_val = self._extract_raw_float(raw_d_cell)
+                                                        rej_d = parse_discount(raw_d_cell)
+                                                        if rej_d == 0.0 and raw_d_val > 85.0:
+                                                            rej_d = round(raw_d_val / 100.0, 4)
+                                                            rej_reason = f"invalid_discount_{rej_d}"
+                                                        elif rej_d <= 0.0 and not is_explicit_zero_discount(raw_d_cell):
+                                                            rej_reason = f"invalid_discount_{rej_d}"
+                                                    if (rej_p <= 0.0 or rej_p >= 10000.0) and rej_reason == "legacy_parsing_rejection":
+                                                        rej_reason = f"invalid_price_{rej_p}"
+                                                rej_item_dict = {
+                                                    "warehouse_name": self.warehouse_name,
+                                                    "item_name": rej_name,
+                                                    "base_price": rej_p,
+                                                    "discount_rate": rej_d,
+                                                } if rej_name else None
                                                 legacy_rows.append(RowDiagnostic(
                                                     page=page_idx + 1,
                                                     table=rem_idx,
                                                     group=grp_idx_on_page,
                                                     row=r_i,
                                                     outcome="rejected",
-                                                    reason="legacy_parsing_rejection",
+                                                    reason=rej_reason,
                                                     bbox=r_bbox,
                                                     raw_cells=row_cells,
-                                                    item_name="",
+                                                    item_name=rej_name,
                                                     source_id=f"p{page_idx + 1}_t{rem_idx}_r{r_i}",
+                                                    item=rej_item_dict,
                                                 ))
 
                                         legacy_grp = GroupDiagnostics(
@@ -943,15 +1128,19 @@ class PDFCatalogParser:
                                         accepted_rows=page_accepted,
                                         groups=table_groups,
                                         errors=table_errors,
+                                        page_classification=assessment.classification,
+                                        selected_method=assessment.selected_method,
+                                        assessment_reasons=assessment.reasons,
+                                        font_repaired=assessment.font_repaired,
                                     )
                                 )
                         
-                        # Dynamically detect 2-column ArwaSoft pages where PyMuPDF only found the left table (Xmax <= 315)
+                        # Dynamically detect 2-column ArwaSoft pages from geometry where PyMuPDF only found the left table (Xmax <= 315)
                         is_page_arwasoft_2col = is_arwasoft_2col or (
                             not is_cure and not is_makramy and not is_sina and not is_dar_fouad and
                             tables is not None and len(tables.tables) > 0 and
                             all(t.bbox[2] <= 315 for t in tables.tables) and
-                            ('اروى سوفت' in page.get_text("text") or 'أصناف المخزن' in page_top_text)
+                            any(t.bbox[0] < 60 and len(t.rows) >= 5 for t in tables.tables)
                         )
 
                         # Fallback for 3-column ArwaSoft row-rectangle pages (e.g. Zahra Pharm / تحديث زهره.pdf),
@@ -983,17 +1172,18 @@ class PDFCatalogParser:
                                 )
                                 if len(fb_items) == 0:
                                     page_text = page.get_text("text").strip()
-                                    if len(page_text) > 50 and not is_catalog_noise(page_text):
+                                    if (len(page_text) > 50 and not is_catalog_noise(page_text)) or assessment.classification == "image_only":
                                         expected_known = False
+                                        reason_code = "image_only_page_requires_review" if assessment.classification == "image_only" else "unmapped_page_content"
                                         region_diag = RowDiagnostic(
                                             page=page_idx + 1,
                                             table=0,
                                             group=0,
                                             row=None,
                                             outcome="rejected",
-                                            reason="unmapped_page_content",
+                                            reason=reason_code,
                                             bbox=list(page.rect),
-                                            raw_cells=[page_text[:200]],
+                                            raw_cells=[page_text[:200] if page_text else "[image_only_page]"],
                                             is_region_issue=True,
                                             source_id=f"p{page_idx + 1}_t0_region",
                                         )
@@ -1005,6 +1195,10 @@ class PDFCatalogParser:
                                         expected_count_known=expected_known,
                                         accepted_rows=len(fb_items),
                                         groups=[fallback_grp],
+                                        page_classification=assessment.classification,
+                                        selected_method=assessment.selected_method,
+                                        assessment_reasons=assessment.reasons,
+                                        font_repaired=assessment.font_repaired,
                                     )
                                 )
                             
@@ -1029,20 +1223,27 @@ class PDFCatalogParser:
                                     )
                                     self._page_diagnostics[page_idx].accepted_rows += len(right_items)
                         elif is_page_arwasoft_2col:
-                            right_items = self._extract_arwasoft_right_column(page)
-                            if right_items:
+                            right_items, right_rows_diag = self._extract_arwasoft_right_column(
+                                page, page_idx=page_idx, page_chars=page_chars, return_diagnostics=True
+                            )
+                            if right_items or right_rows_diag:
                                 page_items.extend(right_items)
                                 raw_accepted_count += len(right_items)
                                 covered_bboxes.append((315.0, 80.0, 600.0, 790.0))
                                 if len(self._page_diagnostics) > page_idx:
+                                    r_cand = len(right_rows_diag) if right_rows_diag else len(right_items)
+                                    r_acc = len(right_items)
+                                    r_rej = max(0, r_cand - r_acc)
                                     self._page_diagnostics[page_idx].groups.append(
                                         GroupDiagnostics(
                                             group=1,
                                             strategy="arwasoft_right_column",
-                                            candidate_rows=len(right_items),
-                                            accepted_rows=len(right_items),
-                                            rejected_rows=0,
+                                            candidate_rows=r_cand,
+                                            accepted_rows=r_acc,
+                                            rejected_rows=r_rej,
                                             unprocessed_rows=0,
+                                            bbox=[315.0, 80.0, 585.0, 790.0],
+                                            rows=right_rows_diag,
                                         )
                                     )
                                     self._page_diagnostics[page_idx].accepted_rows += len(right_items)
@@ -1217,6 +1418,11 @@ class PDFCatalogParser:
                 from catalog_recovery import run_automatic_recovery
             res = run_automatic_recovery(res, pdf_path=self.pdf_path)
             df = res.dataframe
+
+        if len(df) > 0 and 'warehouse_name' in df.columns:
+            empty_wh = (df['warehouse_name'].astype(str).str.strip() == '') | df['warehouse_name'].isna()
+            if empty_wh.any():
+                df.loc[empty_wh, 'warehouse_name'] = self.warehouse_name
 
         meta = CatalogImportMetadata(
             diagnostics=res.diagnostics,
@@ -1625,7 +1831,8 @@ class PDFCatalogParser:
                                 price_val, discount_val = self._sanity_check_item_price_and_discount(
                                     item_name, price_val, discount_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
                                 )
-                                if is_catalog_noise(item_name) or discount_val <= 0.0 or discount_val > 0.85 or price_val <= 0.0 or price_val >= 10000.0:
+                                has_susp, _ = has_suspicious_characters(item_name)
+                                if has_susp or is_catalog_noise(item_name) or discount_val <= 0.0 or discount_val > 0.85 or price_val <= 0.0 or price_val >= 10000.0:
                                     continue
                                 norm_name = normalize_arabic_text(item_name)
                                 dosage, unit_size = parse_dosage_and_pack(item_name)
@@ -1772,14 +1979,17 @@ class PDFCatalogParser:
                     else:
                         item_name = fix_arabic_bidi_if_needed(decoded_sub_name, force_reverse=False)
                     norm_name = normalize_arabic_text(item_name)
-                    if is_catalog_noise(norm_name) or is_catalog_noise(item_name):
+                    has_susp, _ = has_suspicious_characters(item_name)
+                    if has_susp or is_catalog_noise(norm_name) or is_catalog_noise(item_name):
                         continue
 
                     raw_p_num = self._extract_raw_float(sub_price_str)
                     raw_d_num = self._extract_raw_float(sub_disc_str)
-                    price_val, discount_val = self._sanity_check_item_price_and_discount(
-                        item_name, price_val, discount_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
-                    )
+                    has_explicit_disc_marker = ('%' in str(sub_disc_str)) or is_explicit_zero_discount(sub_disc_str)
+                    if not getattr(self, "_last_explicit_hdr_both", False) and not has_explicit_disc_marker:
+                        price_val, discount_val = self._sanity_check_item_price_and_discount(
+                            item_name, price_val, discount_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
+                        )
                     dosage, unit_size = parse_dosage_and_pack(item_name)
 
                     # Support explicit zero discount ("صافي" / net pricing)
@@ -1827,6 +2037,7 @@ class PDFCatalogParser:
                 stock_idx = idx
 
         explicit_hdr_both = (discount_idx is not None and price_idx is not None)
+        self._last_explicit_hdr_both = explicit_hdr_both
 
         # Data-driven fallback if headers are missing or unreadable
         if sample_rows and (name_idx is None or discount_idx is None or price_idx is None):
@@ -1916,8 +2127,8 @@ class PDFCatalogParser:
                 if best_alt is not None and best_alt_score > 0:
                     price_idx = best_alt
 
-        # Sanity check: detect and correct switched Price and Discount columns
-        if discount_idx is not None and price_idx is not None and discount_idx != price_idx and sample_rows:
+        # Sanity check: detect and correct switched Price and Discount columns ONLY when explicit headers do not establish both roles
+        if not explicit_hdr_both and discount_idx is not None and price_idx is not None and discount_idx != price_idx and sample_rows:
             col_records = []
             for row in sample_rows[:30]:
                 if discount_idx < len(row) and price_idx < len(row):
@@ -1933,7 +2144,7 @@ class PDFCatalogParser:
                         col_records.append((d_raw, p_raw, n_prev))
             if col_records and self._should_swap_price_and_discount(
                 col_records,
-                header_first_is_price=False if explicit_hdr_both else None
+                header_first_is_price=None
             ):
                 price_idx, discount_idx = discount_idx, price_idx
 
@@ -2489,68 +2700,128 @@ class PDFCatalogParser:
 
         return extracted
 
-    def _extract_arwasoft_right_column(self, page) -> list:
+    def _extract_arwasoft_right_column(
+        self,
+        page,
+        page_idx: int = 0,
+        page_chars: Optional[List[Dict[str, Any]]] = None,
+        return_diagnostics: bool = False,
+    ):
         """
         Extracts right-column items from ArwaSoft 2-column accounting layouts
-        (e.g. Adam Farm, Perfect Farm, Rowad Al-Dawaa, Al-Dawlia Al-Haditha) where
+        (e.g. Adam Farm, Perfect Farm, Rowad Al-Dawaa, Al-Dawlia Al-Haditha, Al-Hadaba 2026) where
         PyMuPDF table detection only picks up the left column.
-        Groups words by vertical Y proximity (threshold <= 6.0 pt) for X >= 300,
+        Groups words/chars by vertical Y proximity for X >= 300,
         applies batch + per-item Price/Discount sanity checks, and routes through _parse_price.
         """
-        words = page.get_text("words")
-        # Right column bounds: X from 300 to 585, Y from 88 to 795
-        col_words = [w for w in words if w[0] >= 300 and 88 < w[1] < 795]
-        if not col_words:
-            return []
-
-        y_groups = []
-        for w in sorted(col_words, key=lambda x: x[1]):
-            matched = False
-            for grp in y_groups:
-                if abs(grp[0][1] - w[1]) <= 6.0:
-                    grp.append(w)
-                    matched = True
-                    break
-            if not matched:
-                y_groups.append([w])
-
-        # First pass: collect candidate rows (c0_str, c1_str, raw_name) for column-level sanity check
         candidate_rows = []
         batch_records = []
-        for grp in y_groups:
-            sorted_x = sorted(grp, key=lambda x: x[0])
-            c0_words = [w for w in sorted_x if 300 <= w[0] < 345]
-            c1_words = [w for w in sorted_x if 345 <= w[0] < 395]
-            name_words = [w for w in sorted_x if w[0] >= 395]
 
-            if not c0_words or not c1_words or not name_words:
-                continue
+        if page_chars is not None:
+            col_chars = [
+                c for c in page_chars
+                if c["bbox"][0] >= 300 and 88.0 < ((c["bbox"][1] + c["bbox"][3]) / 2.0) < 790.0
+            ]
+            if not col_chars:
+                return ([], []) if return_diagnostics else []
+            y_lines = []
+            for c in sorted(col_chars, key=lambda x: (x["bbox"][1] + x["bbox"][3]) / 2.0):
+                yc = (c["bbox"][1] + c["bbox"][3]) / 2.0
+                placed = False
+                for ln in y_lines:
+                    if abs(ln["yc"] - yc) <= 4.5:
+                        ln["chars"].append(c)
+                        ln["yc"] = sum((x["bbox"][1] + x["bbox"][3]) / 2.0 for x in ln["chars"]) / len(ln["chars"])
+                        placed = True
+                        break
+                if not placed:
+                    y_lines.append({"yc": yc, "chars": [c]})
 
-            c0_str = c0_words[0][4]
-            c1_str = c1_words[0][4]
+            for ln in sorted(y_lines, key=lambda x: x["yc"]):
+                l_chars = ln["chars"]
+                c0_chars = [c for c in l_chars if 300 <= c["bbox"][0] < 345]
+                c1_chars = [c for c in l_chars if 345 <= c["bbox"][0] < 395]
+                name_chars = [c for c in l_chars if c["bbox"][0] >= 395]
+                if not c0_chars or not c1_chars or not name_chars:
+                    continue
+                c0_str = reconstruct_rtl_line_from_chars(c0_chars)
+                c1_str = reconstruct_rtl_line_from_chars(c1_chars)
+                raw_name = reconstruct_rtl_line_from_chars(name_chars)
+                if not c0_str or not c1_str or not raw_name:
+                    continue
+                if any(kw in raw_name for kw in ["إسم", "الصنف", "السعر", "الخصم"]) or is_catalog_noise(raw_name) or len(raw_name) < 2:
+                    continue
+                decoded_name = decode_custom_catalog_glyphs(raw_name)
+                item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
+                v0 = self._extract_raw_float(c0_str)
+                v1 = self._extract_raw_float(c1_str)
+                r_bbox = [
+                    min(c["bbox"][0] for c in l_chars),
+                    min(c["bbox"][1] for c in l_chars),
+                    max(c["bbox"][2] for c in l_chars),
+                    max(c["bbox"][3] for c in l_chars),
+                ]
+                candidate_rows.append((c0_str, c1_str, v0, v1, item_name, r_bbox))
+                if v0 > 0.0 and v1 > 0.0:
+                    batch_records.append((v0, v1, item_name))
+        else:
+            words = page.get_text("words")
+            # Right column bounds: X from 300 to 585, Y from 88 to 795
+            col_words = [w for w in words if w[0] >= 300 and 88 < w[1] < 795]
+            if not col_words:
+                return ([], []) if return_diagnostics else []
 
-            # Reconstruct RTL word order and stitch adjacent sub-word glyph fragments
-            name_words_rtl = sorted(name_words, key=lambda x: x[0], reverse=True)
-            name_parts = []
-            for idx, nw in enumerate(name_words_rtl):
-                if idx > 0 and (name_words_rtl[idx - 1][0] - nw[2]) <= 1.5:
-                    name_parts[-1] += nw[4]
-                else:
-                    name_parts.append(nw[4])
-            raw_name = unicodedata.normalize('NFKD', " ".join(name_parts).strip())
-            raw_name = fix_arwasoft_arabic_numbers(raw_name)
-            if is_catalog_noise(raw_name) or len(raw_name) < 2:
-                continue
+            y_groups = []
+            for w in sorted(col_words, key=lambda x: x[1]):
+                matched = False
+                for grp in y_groups:
+                    if abs(grp[0][1] - w[1]) <= 6.0:
+                        grp.append(w)
+                        matched = True
+                        break
+                if not matched:
+                    y_groups.append([w])
 
-            item_name = fix_arabic_bidi_if_needed(raw_name)
-            v0 = self._extract_raw_float(c0_str)
-            v1 = self._extract_raw_float(c1_str)
-            candidate_rows.append((c0_str, c1_str, v0, v1, item_name))
-            if v0 > 0.0 and v1 > 0.0:
-                batch_records.append((v0, v1, item_name))
+            for grp in y_groups:
+                sorted_x = sorted(grp, key=lambda x: x[0])
+                c0_words = [w for w in sorted_x if 300 <= w[0] < 345]
+                c1_words = [w for w in sorted_x if 345 <= w[0] < 395]
+                name_words = [w for w in sorted_x if w[0] >= 395]
+
+                if not c0_words or not c1_words or not name_words:
+                    continue
+
+                c0_str = c0_words[0][4]
+                c1_str = c1_words[0][4]
+
+                # Reconstruct RTL word order and stitch adjacent sub-word glyph fragments
+                name_words_rtl = sorted(name_words, key=lambda x: x[0], reverse=True)
+                name_parts = []
+                for idx, nw in enumerate(name_words_rtl):
+                    if idx > 0 and (name_words_rtl[idx - 1][0] - nw[2]) <= 1.5:
+                        name_parts[-1] += nw[4]
+                    else:
+                        name_parts.append(nw[4])
+                raw_name = unicodedata.normalize('NFKD', " ".join(name_parts).strip())
+                raw_name = fix_arwasoft_arabic_numbers(raw_name)
+                if is_catalog_noise(raw_name) or len(raw_name) < 2:
+                    continue
+
+                item_name = fix_arabic_bidi_if_needed(raw_name)
+                v0 = self._extract_raw_float(c0_str)
+                v1 = self._extract_raw_float(c1_str)
+                r_bbox = [
+                    min(w[0] for w in grp),
+                    min(w[1] for w in grp),
+                    max(w[2] for w in grp),
+                    max(w[3] for w in grp),
+                ]
+                candidate_rows.append((c0_str, c1_str, v0, v1, item_name, r_bbox))
+                if v0 > 0.0 and v1 > 0.0:
+                    batch_records.append((v0, v1, item_name))
 
         if not candidate_rows:
-            return []
+            return ([], []) if return_diagnostics else []
 
         first_is_price = self._should_swap_price_and_discount(
             batch_records,
@@ -2558,7 +2829,8 @@ class PDFCatalogParser:
         )
 
         items = []
-        for c0_str, c1_str, v0, v1, item_name in candidate_rows:
+        row_diags: List[RowDiagnostic] = []
+        for r_idx, (c0_str, c1_str, v0, v1, item_name, r_bbox) in enumerate(candidate_rows, start=1):
             if first_is_price:
                 p_val = self._parse_price(c0_str)
                 disc_val = parse_discount(c1_str)
@@ -2571,20 +2843,51 @@ class PDFCatalogParser:
             p_val, disc_val = self._sanity_check_item_price_and_discount(
                 item_name, p_val, disc_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
             )
-            if 0 < disc_val <= 0.85 and 0 < p_val < 10000.0:
-                norm_name = normalize_arabic_text(item_name)
+            has_susp, susp_reasons = has_suspicious_characters(item_name)
+            norm_name = normalize_arabic_text(item_name)
+            if not has_susp and 0 < disc_val <= 0.85 and 0 < p_val < 10000.0 and len(norm_name) >= 2:
                 dosage, unit_size = parse_dosage_and_pack(item_name)
-                if len(norm_name) >= 2:
-                    items.append({
-                        'warehouse_name': self.warehouse_name,
-                        'item_name': item_name,
-                        'normalized_name': norm_name,
-                        'dosage': dosage,
-                        'unit_size': unit_size,
-                        'base_price': p_val,
-                        'discount_rate': disc_val,
-                        'stock_status': True
-                    })
+                items.append({
+                    'warehouse_name': self.warehouse_name,
+                    'item_name': item_name,
+                    'normalized_name': norm_name,
+                    'dosage': dosage,
+                    'unit_size': unit_size,
+                    'base_price': p_val,
+                    'discount_rate': disc_val,
+                    'stock_status': True
+                })
+                row_diags.append(
+                    RowDiagnostic(
+                        page=page_idx + 1,
+                        table=1,
+                        group=0,
+                        row=r_idx,
+                        outcome="accepted",
+                        bbox=r_bbox,
+                        raw_cells=[c0_str, c1_str, item_name],
+                        item_name=item_name,
+                        source_id=build_source_id(page=page_idx + 1, table=1, group=0, row=r_idx),
+                    )
+                )
+            else:
+                rej_reason = f"suspicious_characters_{susp_reasons[0]}" if has_susp else "right_column_validation_rejected"
+                row_diags.append(
+                    RowDiagnostic(
+                        page=page_idx + 1,
+                        table=1,
+                        group=0,
+                        row=r_idx,
+                        outcome="rejected",
+                        reason=rej_reason,
+                        bbox=r_bbox,
+                        raw_cells=[c0_str, c1_str, item_name],
+                        item_name=item_name,
+                        source_id=build_source_id(page=page_idx + 1, table=1, group=0, row=r_idx),
+                    )
+                )
+        if return_diagnostics:
+            return items, row_diags
         return items
 
     def _extract_makramy_columns(self, page) -> list:
@@ -2634,33 +2937,73 @@ class PDFCatalogParser:
                 })
         return items
 
-    def _stitch_contiguous_tables(self, tables_list: list) -> list:
+    def _stitch_contiguous_tables(
+        self,
+        tables_list: list,
+        page_chars: Optional[List[Dict[str, Any]]] = None,
+    ) -> list:
         """
         Detects when a page produces multiple contiguous table objects where len(table_data) == 1
         and bounding box X-bounds match (e.g. El-Qemma Xmin ~ 61, Xmax ~ 534).
         Stitches these single rows into coherent multi-row tables.
+        When `page_chars` is provided (from font-repaired pages), reconstructs merged single-cell
+        rows directly from character coordinates so wrapped lines and RTL/LTR runs stay intact.
         """
         if not tables_list:
             return []
+
+        def _extract_table_rows(t_obj):
+            raw_rows = t_obj.extract() if hasattr(t_obj, 'extract') else t_obj
+            if not page_chars or not hasattr(t_obj, 'rows') or not raw_rows:
+                return raw_rows
+            reconstructed = []
+            for r_idx, r_cells in enumerate(raw_rows):
+                non_empty = [str(c).strip() for c in r_cells if c is not None and str(c).strip()]
+                if (
+                    len(non_empty) == 1
+                    and r_idx < len(t_obj.rows)
+                    and hasattr(t_obj.rows[r_idx], 'bbox')
+                    and t_obj.rows[r_idx].bbox
+                ):
+                    rb = t_obj.rows[r_idx].bbox
+                    # Check if this is a left-half ArwaSoft table (x0 ~ 31, x1 ~ 303)
+                    if rb[0] < 60 and 280 <= rb[2] <= 315 and (rb[3] - rb[1]) < 35:
+                        d_s = reconstruct_cell_text_from_chars(page_chars, (rb[0], rb[1], 75.0, rb[3]))
+                        p_s = reconstruct_cell_text_from_chars(page_chars, (75.0, rb[1], 128.0, rb[3]))
+                        n_s = reconstruct_cell_text_from_chars(page_chars, (128.0, rb[1], rb[2], rb[3]))
+                        if d_s and p_s and n_s:
+                            new_row = list(r_cells)
+                            new_row[0] = f"{d_s} {p_s} {n_s}"
+                            reconstructed.append(new_row)
+                            continue
+                reconstructed.append(r_cells)
+            return reconstructed
         
         extracted_tables = []
         i = 0
         while i < len(tables_list):
             t_curr = tables_list[i]
-            d_curr = t_curr.extract() if hasattr(t_curr, 'extract') else t_curr
+            d_curr = _extract_table_rows(t_curr)
             if d_curr and len(d_curr) == 1:
                 col_cnt = len(d_curr[0])
                 b_curr = getattr(t_curr, 'bbox', None)
+                b_last = b_curr
                 stitched_rows = list(d_curr)
                 j = i + 1
                 while j < len(tables_list):
                     t_next = tables_list[j]
-                    d_next = t_next.extract() if hasattr(t_next, 'extract') else t_next
+                    d_next = _extract_table_rows(t_next)
                     b_next = getattr(t_next, 'bbox', None)
                     if (d_next and len(d_next) == 1 and len(d_next[0]) == col_cnt):
-                        if b_curr and b_next:
-                            if abs(b_next[0] - b_curr[0]) < 10.0 and abs(b_next[2] - b_curr[2]) < 10.0:
+                        if b_curr and b_next and b_last:
+                            v_gap = b_next[1] - b_last[3]
+                            if (
+                                abs(b_next[0] - b_curr[0]) < 10.0
+                                and abs(b_next[2] - b_curr[2]) < 10.0
+                                and -20.0 <= v_gap <= 30.0
+                            ):
                                 stitched_rows.extend(d_next)
+                                b_last = b_next
                                 j += 1
                             else:
                                 break
@@ -2938,16 +3281,14 @@ class PDFCatalogParser:
 
     def parse_ocr(self, progress_callback=None) -> pd.DataFrame:
         """
-        [ARCHIVED / DEPRECATED - FAILED OCR FEATURE (2026-10-25)]
-        The RapidOCR + RapidTable pipeline has been archived (see `archive/failed_ocr_feature/README_FAILED_OCR.md`)
-        because its Chinese/English ONNX recognition model lacks Arabic character support and never worked on
-        Arabic pharmaceutical catalogs.
-        Delegates directly to the digital vector & coordinate parser (`self.parse()`).
+        Unified Arabic OCR and digital vector extraction pipeline (v2.6).
+        Routes pure_vector pages to TrueType/CMap vector parsing, mixed_vector pages
+        to hybrid digital/OCR recovery, and pure_raster pages to ImageTableDetector + ArabicOCREngine.
         """
         self.last_error = None
         if progress_callback:
             try:
-                progress_callback(0.1, "جاري قراءة الكتالوج رقمياً...")
+                progress_callback(0.1, "جاري فحص صفحات الكتالوج وتحديد نوع الاستخراج...")
             except Exception:
                 pass
         df = self.parse()
@@ -2955,7 +3296,7 @@ class PDFCatalogParser:
             self.last_error = f"No catalog items found in PDF ({os.path.basename(self.pdf_path or '')})."
         if progress_callback:
             try:
-                progress_callback(1.0, f"اكتملت القراءة: تم العثور على {len(df)} صنف.")
+                progress_callback(1.0, f"اكتملت القراءة: تم استخراج {len(df)} صنف.")
             except Exception:
                 pass
         return df

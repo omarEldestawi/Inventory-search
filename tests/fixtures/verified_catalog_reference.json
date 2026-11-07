@@ -1,0 +1,405 @@
+{
+  "schema_version": "1.1",
+  "description": "Manually verified ground-truth reference rows from visual PDF page renders (150 DPI PNG inspection) for Egyptian pharmaceutical catalog regression testing.",
+  "catalogs": {
+    "el_abed": {
+      "default_paths": [
+        "C:/Users/omart/Downloads/العابد نقدي الخميس.pdf"
+      ],
+      "sha256": "29b623808518ad267dd329910e08983e8acfb1c1fef1275594f62938e3e1daf3",
+      "expected_pages": 6,
+      "expected_total_rows": 230,
+      "expected_status": "complete",
+      "verified_rows": [
+        {
+          "index": 0,
+          "page": 1,
+          "source_id": "p1_t0_g0_r1",
+          "code": "105439",
+          "item_name": "# ابيدون 125 مل شراب",
+          "base_price": 35.0,
+          "discount_rate": 0.41,
+          "dosage": "125مل",
+          "category": "page_1_punctuation_hash"
+        },
+        {
+          "index": 1,
+          "page": 1,
+          "source_id": "p1_t0_g0_r2",
+          "code": "109552",
+          "item_name": "ابيفيناك 75 مج 3 امبول",
+          "base_price": 36.0,
+          "discount_rate": 0.38,
+          "dosage": "75مج",
+          "unit_size": "3امبول",
+          "category": "page_1_standard"
+        },
+        {
+          "index": 6,
+          "page": 1,
+          "source_id": "p1_t0_g0_r7",
+          "code": "107373",
+          "item_name": ".ادويفلام 50 20 كبسوله",
+          "base_price": 42.0,
+          "discount_rate": 0.39,
+          "unit_size": "20كبسول",
+          "category": "separate_strength_and_pack_numbers"
+        },
+        {
+          "index": 12,
+          "page": 1,
+          "source_id": "p1_t0_g0_r13",
+          "code": "107144",
+          "item_name": "ال كارنيتين 20 كبسوله*ميباكو",
+          "base_price": 72.0,
+          "discount_rate": 0.34,
+          "unit_size": "20كبسول",
+          "category": "punctuation_asterisk_preserve"
+        },
+        {
+          "index": 16,
+          "page": 1,
+          "source_id": "p1_t0_g0_r17",
+          "code": "701197",
+          "item_name": "الزميندا 20 مجم 21 قرص",
+          "base_price": 93.0,
+          "discount_rate": 0.355,
+          "dosage": "20مجم",
+          "unit_size": "21قرص",
+          "category": "decimal_discount"
+        },
+        {
+          "index": 20,
+          "page": 1,
+          "source_id": "p1_t0_g0_r21",
+          "code": "706579",
+          "item_name": "اماجلوست 30/2 مجم اقراص",
+          "base_price": 93.0,
+          "discount_rate": 0.26,
+          "category": "ratio_strength"
+        },
+        {
+          "index": 25,
+          "page": 1,
+          "source_id": "p1_t0_g0_r26",
+          "code": "108310",
+          "item_name": "# اميولانت ان 120 مل شراب.ض",
+          "base_price": 60.0,
+          "discount_rate": 0.32,
+          "dosage": "120مل",
+          "category": "tax_suffix_not_catalog_noise"
+        },
+        {
+          "index": 35,
+          "page": 1,
+          "source_id": "p1_t0_g0_r36",
+          "code": "103168",
+          "item_name": "# اوتريفين نقط 1% 15 مل كبار",
+          "base_price": 24.0,
+          "discount_rate": 0.38,
+          "dosage": "15مل",
+          "category": "percentage_punctuation_preserve"
+        },
+        {
+          "index": 36,
+          "page": 1,
+          "source_id": "p1_t0_g0_r37",
+          "code": "107402",
+          "item_name": "# اوجمنتين 1 جم 14*قرص",
+          "base_price": 210.0,
+          "discount_rate": 0.25,
+          "dosage": "1جم",
+          "unit_size": "14قرص",
+          "category": "asterisk_and_pack_size"
+        },
+        {
+          "index": 42,
+          "page": 2,
+          "source_id": "p2_t0_g0_r3",
+          "code": "700730",
+          "item_name": "# اومنيك اوكاز .4 مجم 30 قرص مستورد",
+          "base_price": 282.0,
+          "discount_rate": 0.25,
+          "dosage": "0.4مجم",
+          "unit_size": "30قرص",
+          "category": "leading_decimal_strength"
+        },
+        {
+          "index": 46,
+          "page": 2,
+          "source_id": "p2_t0_g0_r7",
+          "code": "712789",
+          "item_name": "ايموكسكلاف 642.9 مج 75 مل شراب",
+          "base_price": 73.0,
+          "discount_rate": 0.34,
+          "dosage": "642.9مج",
+          "category": "decimal_strength"
+        },
+        {
+          "index": 60,
+          "page": 2,
+          "source_id": "p2_t0_g0_r21",
+          "code": "108611",
+          "item_name": "*# $ بلافيكس 75 مج* 28 قرص",
+          "base_price": 311.0,
+          "discount_rate": 0.30,
+          "dosage": "75مج",
+          "unit_size": "28قرص",
+          "category": "multiple_symbols_preserve"
+        },
+        {
+          "index": 98,
+          "page": 3,
+          "source_id": "p3_t0_g0_r19",
+          "code": "701708",
+          "item_name": "#ديبوبن 1.2 جم فيال المهن",
+          "base_price": 25.0,
+          "discount_rate": 0.29,
+          "dosage": "1.2جم",
+          "category": "page_3_decimal_gram"
+        },
+        {
+          "index": 123,
+          "page": 4,
+          "source_id": "p4_t0_g0_r4",
+          "code": "711588",
+          "item_name": "زيروفازيت 10/10 30 قرص",
+          "base_price": 216.0,
+          "discount_rate": 0.285,
+          "unit_size": "30قرص",
+          "category": "page_4_ratio_and_pack"
+        },
+        {
+          "index": 175,
+          "page": 5,
+          "source_id": "p5_t0_g0_r16",
+          "code": "706028",
+          "item_name": "# كاندلكان بلس 12.5/32 مج 14 قرص",
+          "base_price": 102.0,
+          "discount_rate": 0.31,
+          "unit_size": "14قرص",
+          "category": "page_5_decimal_ratio"
+        },
+        {
+          "index": 209,
+          "page": 6,
+          "source_id": "p6_t0_g0_r10",
+          "code": "716276",
+          "item_name": "لينجالابس بلس 1000/2.5/12.5 مجم اقراص",
+          "base_price": 300.0,
+          "discount_rate": 0.36,
+          "dosage": "12.5مجم",
+          "category": "page_6_three_part_ratio"
+        },
+        {
+          "index": 226,
+          "page": 6,
+          "source_id": "p6_t0_g0_r27",
+          "code": "107739",
+          "item_name": ". #وان الفا 0.25 مكج 30 كبسوله",
+          "base_price": 108.0,
+          "discount_rate": 0.26,
+          "dosage": "0.25مكج",
+          "unit_size": "30كبسول",
+          "category": "page_6_mcg_decimal"
+        },
+        {
+          "index": 229,
+          "page": 6,
+          "source_id": "p6_t0_g0_r30",
+          "code": "707071",
+          "item_name": "# يورونيميا امبول",
+          "base_price": 275.0,
+          "discount_rate": 0.29,
+          "category": "page_6_last_row"
+        }
+      ]
+    },
+    "hadaba_dual": {
+      "default_paths": [
+        "C:/Users/omart/Downloads/2طباعه مزدوجه.pdf",
+        "input/catalogs/مخزن_الهضبة_طباعة_مزدوجة.pdf"
+      ],
+      "sha256": "00e4204f61443beeba3d2274e869d3ed46a8da520625a982ee8fd6e7597a1d39",
+      "expected_pages": 13,
+      "expected_total_rows": 1253,
+      "expected_status": "complete",
+      "verified_rows": [
+        {
+          "index": 0,
+          "page": 1,
+          "column_half": "left",
+          "item_name": "ابتاميل 1 لبن جديد باكت 4",
+          "base_price": 440.0,
+          "discount_rate": 0.13,
+          "category": "left_col_wrapped_multiline"
+        },
+        {
+          "index": 1,
+          "page": 1,
+          "column_half": "left",
+          "item_name": "ابتاميل 3 لبن باكت 4 جديد",
+          "base_price": 440.0,
+          "discount_rate": 0.10,
+          "category": "left_col_wrapped_multiline_2"
+        },
+        {
+          "index": 13,
+          "page": 1,
+          "column_half": "left",
+          "item_name": "اتروزمب 10/10 مج اقراص باكت 50",
+          "base_price": 228.0,
+          "discount_rate": 0.37,
+          "dosage": "10مج",
+          "category": "left_col_ratio"
+        },
+        {
+          "index": 32,
+          "page": 1,
+          "column_half": "left",
+          "item_name": "ارتيكسيبان 2.5 مج اقراص ج",
+          "base_price": 426.0,
+          "discount_rate": 0.38,
+          "dosage": "2.5مج",
+          "category": "left_col_decimal_strength"
+        },
+        {
+          "index": 47,
+          "page": 1,
+          "column_half": "left",
+          "item_name": "استيكان 20 مج اقراص ج / باكت 60",
+          "base_price": 106.0,
+          "discount_rate": 0.38,
+          "dosage": "20مج",
+          "category": "left_col_last_row_page_1"
+        },
+        {
+          "index": 48,
+          "page": 1,
+          "column_half": "right",
+          "item_name": "استين 20 مجم اقراص جديد",
+          "base_price": 46.0,
+          "discount_rate": 0.37,
+          "dosage": "20مجم",
+          "category": "right_col_first_row_page_1"
+        },
+        {
+          "index": 49,
+          "page": 1,
+          "column_half": "right",
+          "item_name": "اسيتاباكس 14 كيس",
+          "base_price": 94.5,
+          "discount_rate": 0.32,
+          "category": "right_col_decimal_price"
+        },
+        {
+          "index": 56,
+          "page": 1,
+          "column_half": "right",
+          "item_name": "افيروثيازيد 20/12.5/5 اقراص / باكت 28",
+          "base_price": 93.0,
+          "discount_rate": 0.31,
+          "category": "right_col_three_part_ratio"
+        },
+        {
+          "index": 58,
+          "page": 1,
+          "column_half": "right",
+          "item_name": "اكريتين .25 % كريم / باكت 96",
+          "base_price": 38.0,
+          "discount_rate": 0.32,
+          "category": "right_col_leading_decimal_percent"
+        },
+        {
+          "index": 59,
+          "page": 1,
+          "column_half": "right",
+          "item_name": "اكريتين 0.5% كريم / باكت 96",
+          "base_price": 43.0,
+          "discount_rate": 0.32,
+          "category": "right_col_zero_decimal_percent"
+        },
+        {
+          "index": 97,
+          "page": 2,
+          "column_half": "left",
+          "item_name": "الوكيتا شامبو عادي / باكت 28",
+          "base_price": 219.0,
+          "discount_rate": 0.36,
+          "category": "page_2_left_col_start"
+        },
+        {
+          "index": 483,
+          "page": 5,
+          "item_name": "جليفلوزميت 1000/12.5 مج قرص",
+          "base_price": 288.0,
+          "discount_rate": 0.33,
+          "dosage": "12.5مج",
+          "category": "page_5_ratio_decimal"
+        },
+        {
+          "index": 693,
+          "page": 8,
+          "item_name": "سوكابريكسام 5/1.25 مج اقراص",
+          "base_price": 153.0,
+          "discount_rate": 0.365,
+          "dosage": "1.25مج",
+          "category": "page_8_ratio_and_decimal_discount"
+        },
+        {
+          "index": 1069,
+          "page": 11,
+          "item_name": "لينجالابس بلس 1000/2.5/12.5 اقراص",
+          "base_price": 300.0,
+          "discount_rate": 0.36,
+          "category": "page_11_three_part_ratio"
+        },
+        {
+          "index": 1220,
+          "page": 13,
+          "item_name": "وان الفا .25 مج اقراص / باكت 100",
+          "base_price": 108.0,
+          "discount_rate": 0.27,
+          "dosage": "0.25مج",
+          "category": "page_13_leading_decimal_strength"
+        },
+        {
+          "index": 1252,
+          "page": 13,
+          "column_half": "right",
+          "item_name": "يونيلوكسام 750 مج اقراص",
+          "base_price": 86.0,
+          "discount_rate": 0.42,
+          "dosage": "750مج",
+          "category": "page_13_final_row"
+        }
+      ]
+    },
+    "regression_catalogs": [
+      {
+        "path": "tests/fixtures/hayah_shibin.pdf",
+        "sha256": "96eb3e1b24ff235b4d0a693d66e52a7e7dc980e6cde93109a2b7a02cc4e3bfc3",
+        "expected_rows": 571,
+        "expected_status": "complete"
+      },
+      {
+        "path": "input/catalogs/شركة مخزن الدولية الحديثة للادوية.pdf",
+        "sha256": "7dac8c526613d12175b7a1f98a423dc14559931bba5be3f0f3e678937ef1cb00",
+        "expected_rows": 529,
+        "expected_status": "complete"
+      },
+      {
+        "path": "input/catalogs/تحديث زهره.pdf",
+        "sha256": "b8d0b48dbaa1f8617568aaeda21df8ef0f4ec655ac09c42b4178e51c5e570c36",
+        "expected_rows": 1167,
+        "expected_status": "complete"
+      },
+      {
+        "path": "input/catalogs/السلام شبين نقدي.pdf",
+        "sha256": "f62b4afe9c8f223079e111bf62c9f4a1a8ce401b884d8006eee7945f52a7fbd7",
+        "expected_rows": 191,
+        "expected_status": "complete"
+      }
+    ]
+  }
+}

@@ -242,12 +242,10 @@ class TestAdversarialChallenger1(unittest.TestCase):
 
     def test_adv_03b_vulnerability_disjoint_banner_stitching_across_page(self):
         """
-        Adversarial Vulnerability Probe:
-        When a top banner and bottom banner share column count and horizontal bounds,
-        _stitch_contiguous_tables stitches them across the entire page height without
-        checking vertical proximity. If one banner contains a hotline/phone number
-        (e.g. Hotline: 19999), _is_likely_catalog_table misidentifies it as a catalog price,
-        falsely registering rejected rows and demoting page status to 'partial'.
+        Regression Test (Disjoint Banner Exclusion):
+        When a top banner and bottom banner share column count and horizontal bounds on opposite ends
+        of a page separated by a catalog table, _stitch_contiguous_tables must not stitch them across
+        the vertical gap, and neither banner may contaminate extracted items or review issues.
         """
         pdf_path = os.path.join(self.temp_dir, "adv03b_banner_stitch.pdf")
 
@@ -273,13 +271,22 @@ class TestAdversarialChallenger1(unittest.TestCase):
         df = parser.parse()
 
         self.assertEqual(len(df), 2)
-        diag = _get_diagnostics(df)
+        by_name = {row["item_name"]: row for _, row in df.iterrows()}
+        self.assertIn("Aspirin Protect 100 mg", by_name)
+        self.assertEqual(float(by_name["Aspirin Protect 100 mg"]["base_price"]), 20.0)
+        self.assertAlmostEqual(float(by_name["Aspirin Protect 100 mg"]["discount_rate"]), 0.10, places=4)
+        self.assertIn("Concor 5 mg", by_name)
+        self.assertEqual(float(by_name["Concor 5 mg"]["base_price"]), 45.0)
+        self.assertAlmostEqual(float(by_name["Concor 5 mg"]["discount_rate"]), 0.15, places=4)
 
-        # Empirically verify the defect: stitched non-catalog banners falsely generate rejected rows
-        self.assertGreater(
-            diag.rejected_rows, 0,
-            "Defect verified: Disjoint banners stitched across vertical height produced spurious rejected rows."
-        )
+        for banner_tok in ("Shibin El-Kom", "Hotline", "19999", "Cash on Delivery"):
+            self.assertFalse(any(banner_tok in nm for nm in by_name))
+
+        diag = _get_diagnostics(df)
+        self.assertEqual(diag.accepted_rows, 2)
+        self.assertEqual(diag.rejected_rows, 0)
+        self.assertEqual(diag.unresolved_region_count, 0)
+        self.assertEqual(diag.status, "complete")
 
     # =========================================================================
     # R2: Headerless Continuation, Single-Row Tables, & Mixed Headers
@@ -484,12 +491,12 @@ class TestAdversarialChallenger1(unittest.TestCase):
 
     def test_adv_08b_vulnerability_single_row_outlier_swaps_whole_legacy_table(self):
         """
-        Adversarial Vulnerability Probe:
-        In legacy extraction (_find_column_indices & _should_swap_price_and_discount),
-        when a table has 1 group (3 cols) with explicit headers ['Disc', 'Price', 'Item Name'],
-        if a single row contains an extreme discount (e.g. '95%' and '80.00'), the swap detector
-        swaps the Price and Discount columns for the entire table based on that single row,
-        treating '95' as price and '80' as discount (80%), while invalidating genuine zero discounts.
+        Regression Test (Explicit Headers Never Swap Price and Discount):
+        When a table has explicit headers ['Disc', 'Price', 'Item Name'], an outlier row
+        with ['95%', '80.00', 'Excessive Discount Drug'] must NOT swap Price and Discount
+        for either the table or the individual row. 'Panadol Zero Disc' (0%, 50.00) is accepted,
+        and 'Excessive Discount Drug' is held for review with its unswapped source values preserved
+        (base_price=80.0, discount_rate=0.95).
         """
         pdf_path = os.path.join(self.temp_dir, "adv08b_swap_probe.pdf")
 
@@ -504,12 +511,28 @@ class TestAdversarialChallenger1(unittest.TestCase):
         parser = PDFCatalogParser(pdf_path, warehouse_name="Legacy Swap Warehouse")
         df = parser.parse()
 
-        # Verify the defect: Excessive Discount Drug was accepted with swapped price 95.0 and discount 0.8
         self.assertEqual(len(df), 1)
         accepted_item = df.iloc[0]
-        self.assertEqual(accepted_item['item_name'], 'Excessive Discount Drug')
-        self.assertEqual(accepted_item['base_price'], 95.0)
-        self.assertEqual(accepted_item['discount_rate'], 0.8)
+        self.assertEqual(accepted_item['item_name'], 'Panadol Zero Disc')
+        self.assertEqual(float(accepted_item['base_price']), 50.0)
+        self.assertEqual(float(accepted_item['discount_rate']), 0.0)
+
+        res = CatalogResult.from_dataframe(df)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.diagnostics.accepted_rows, 1)
+        self.assertEqual(res.diagnostics.rejected_rows, 1)
+        self.assertEqual(res.diagnostics.status, "partial")
+        self.assertTrue(res.diagnostics.requires_acknowledgment)
+
+        unresolved = [iss for iss in res.review_issues if not iss.resolved]
+        self.assertEqual(len(unresolved), 1)
+        iss = unresolved[0]
+        self.assertEqual(iss.raw_cells, ['95%', '80.00', 'Excessive Discount Drug'])
+        self.assertEqual(iss.rejection_reason, "invalid_discount_0.95")
+        self.assertIsNotNone(iss.item)
+        self.assertEqual(iss.item["item_name"], "Excessive Discount Drug")
+        self.assertEqual(float(iss.item["base_price"]), 80.0)
+        self.assertAlmostEqual(float(iss.item["discount_rate"]), 0.95, places=4)
 
     def test_adv_09_zero_price_and_negative_price_rejection(self):
         """Stress: Prices <= 0 or >= 10,000 must be rejected and result in partial status."""

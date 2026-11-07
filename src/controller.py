@@ -311,12 +311,51 @@ def classify_files(file_paths: list[str]) -> dict[str, list[str]]:
     return categorized
 
 
+DEFAULT_OCR_MODEL_VERSION = "rapidocr_arabic_ppocrv3_v1"
+DEFAULT_RECOVERY_CONFIG_HASH = "v26_bounded_default"
+
+
 class CatalogCache:
     """Thread-safe in-memory cache for parsed catalog DataFrames with fingerprint validation."""
     def __init__(self):
         self._cache: Dict[str, pd.DataFrame] = {}
         self._fingerprints: Dict[str, FileFingerprint] = {}
         self._lock = threading.Lock()
+        self.current_parser_revision: str = PARSER_REVISION
+        self.current_ocr_model_version: str = DEFAULT_OCR_MODEL_VERSION
+        self.current_recovery_config_hash: str = DEFAULT_RECOVERY_CONFIG_HASH
+
+    def set_active_versions(
+        self,
+        ocr_model_version: Optional[str] = None,
+        recovery_config_hash: Optional[str] = None,
+        parser_revision: Optional[str] = None,
+    ) -> None:
+        """
+        Updates active engine versions and invalidates all cached entries whose
+        fingerprints do not match the new versions.
+        """
+        with self._lock:
+            if ocr_model_version is not None:
+                self.current_ocr_model_version = str(ocr_model_version)
+            if recovery_config_hash is not None:
+                self.current_recovery_config_hash = str(recovery_config_hash)
+            if parser_revision is not None:
+                self.current_parser_revision = str(parser_revision)
+            self._invalidate_mismatched_versions_locked()
+
+    def _invalidate_mismatched_versions_locked(self) -> None:
+        stale_keys = []
+        for k, fp in self._fingerprints.items():
+            if (
+                getattr(fp, "parser_revision", None) != self.current_parser_revision
+                or getattr(fp, "ocr_model_version", None) != self.current_ocr_model_version
+                or getattr(fp, "recovery_config_hash", None) != self.current_recovery_config_hash
+            ):
+                stale_keys.append(k)
+        for k in stale_keys:
+            self._cache.pop(k, None)
+            self._fingerprints.pop(k, None)
 
     def get(self, file_path: str) -> Optional[pd.DataFrame]:
         if not file_path or not isinstance(file_path, str):
@@ -327,7 +366,22 @@ class CatalogCache:
             if df is None:
                 return None
             fp = self._fingerprints.get(norm)
-            if fp is not None and not fp.is_current(norm):
+            if fp is None or not fp.is_current(norm):
+                self._cache.pop(norm, None)
+                self._fingerprints.pop(norm, None)
+                return None
+            # Validate fingerprint versions against current active configuration
+            if (
+                getattr(fp, "parser_revision", None) != self.current_parser_revision
+                or getattr(fp, "ocr_model_version", None) != self.current_ocr_model_version
+                or getattr(fp, "recovery_config_hash", None) != self.current_recovery_config_hash
+            ):
+                self._cache.pop(norm, None)
+                self._fingerprints.pop(norm, None)
+                return None
+            # Validate through validate_cached_catalog
+            verified = validate_cached_catalog(df, norm)
+            if verified is None:
                 self._cache.pop(norm, None)
                 self._fingerprints.pop(norm, None)
                 return None
@@ -335,11 +389,26 @@ class CatalogCache:
             out.attrs = dict(df.attrs)
             return out
 
-    def set(self, file_path: str, df: pd.DataFrame):
+    def set(self, file_path: str, df: pd.DataFrame, force: bool = False):
         if not file_path or not isinstance(file_path, str):
             return
         with self._lock:
             norm = os.path.normpath(os.path.abspath(file_path))
+            # Universal Degradation Guard: reject degraded replacements unless forced
+            if not force and norm in self._cache:
+                existing_df = self._cache[norm]
+                if existing_df is not None and not existing_df.empty:
+                    prev_res = validate_cached_catalog(existing_df, norm)
+                    new_res = CatalogResult.from_dataframe(df) if (df is not None and not df.empty) else None
+                    if prev_res is not None and is_replacement_quality_degraded(prev_res, new_res):
+                        prev_status = getattr(prev_res, "status", getattr(getattr(prev_res, "diagnostics", None), "status", "unknown"))
+                        logger.info(
+                            f"CatalogCache.set: Rejected degraded replacement for '{norm}' "
+                            f"(prev_status={prev_status}, prev_items={len(prev_res.dataframe)}); "
+                            f"preserving known-good entry."
+                        )
+                        return
+
             if df is not None:
                 stored = df.copy(deep=True)
                 stored.attrs = dict(df.attrs)
@@ -383,6 +452,15 @@ class CatalogCache:
                     verified = validate_cached_catalog(v, k)
                     if verified is None:
                         invalid_keys.append(k)
+                    else:
+                        fp = self._fingerprints.get(k)
+                        if (
+                            fp is None
+                            or getattr(fp, "parser_revision", None) != self.current_parser_revision
+                            or getattr(fp, "ocr_model_version", None) != self.current_ocr_model_version
+                            or getattr(fp, "recovery_config_hash", None) != self.current_recovery_config_hash
+                        ):
+                            invalid_keys.append(k)
                 else:
                     fp = self._fingerprints.get(k)
                     if fp is not None and not fp.is_current(k):
@@ -403,11 +481,13 @@ class CatalogCache:
 global_catalog_cache = CatalogCache()
 
 
-def inspect_catalog(catalog_file: str, refresh: bool = False) -> CatalogResult:
+def inspect_catalog(catalog_file: str, refresh: bool = False, include_corrections: bool = True) -> CatalogResult:
     """
     Result-oriented catalog inspection entry point.
     Returns a structured CatalogResult containing the 8-column DataFrame,
     ImportDiagnostics, and FileFingerprint.
+    Applies the Universal Degradation Guard: if a refresh or re-parse degrades
+    quality compared to a previously verified result, preserves the known-good result.
     """
     empty_cols = [
         'warehouse_name', 'item_name', 'normalized_name', 'dosage',
@@ -431,21 +511,16 @@ def inspect_catalog(catalog_file: str, refresh: bool = False) -> CatalogResult:
             fingerprint=None,
         )
 
-    if refresh:
-        global_catalog_cache.remove(norm)
-    else:
-        cached_df = global_catalog_cache.get(norm)
-        if cached_df is not None:
-            cached_res = validate_cached_catalog(cached_df, norm)
-            if cached_res is not None:
-                return cached_res
-            else:
-                # Absent, malformed, relative-path, or unverified cache:
-                # treat as cache miss, evict stale entry and trigger full parse
-                global_catalog_cache.remove(norm)
+    # Universal Degradation Guard: inspect known-good cached entry before refresh or re-parse
+    prev_cached = global_catalog_cache.get(norm)
+    prev_res = validate_cached_catalog(prev_cached, norm) if prev_cached is not None else None
+
+    if not refresh and prev_res is not None:
+        if include_corrections or getattr(prev_res.fingerprint, "corrections_revision", 0) == 0:
+            return prev_res
 
     is_nested = getattr(_inspect_in_progress, "active", False)
-    if not is_nested:
+    if include_corrections and not is_nested:
         try:
             if has_persisted_corrections(norm):
                 _inspect_in_progress.active = True
@@ -533,8 +608,143 @@ def inspect_catalog(catalog_file: str, refresh: bool = False) -> CatalogResult:
         res = CatalogResult(dataframe=res.dataframe, diagnostics=res.diagnostics, fingerprint=fp)
         df = res.to_dataframe()
 
+    # Universal Degradation Guard: If re-inspection produced a degraded result, preserve known-good!
+    if prev_res is not None and is_replacement_quality_degraded(prev_res, res):
+        prev_status = getattr(prev_res, "status", getattr(getattr(prev_res, "diagnostics", None), "status", "unknown"))
+        new_status = getattr(res, "status", getattr(getattr(res, "diagnostics", None), "status", "unknown"))
+        logger.warning(
+            f"Re-inspection for '{fname}' resulted in degraded quality "
+            f"(prev_items={len(prev_res.dataframe)}, prev_status={prev_status}; "
+            f"new_items={len(res.dataframe)}, new_status={new_status}). "
+            f"Universal Degradation Guard: preserving known-good verified result."
+        )
+        global_catalog_cache.set(norm, prev_res.to_dataframe(), force=True)
+        return prev_res
+
     global_catalog_cache.set(norm, df)
     return res
+
+
+def is_replacement_quality_degraded(
+    prev_res: Optional[CatalogResult],
+    new_res: Optional[CatalogResult],
+) -> bool:
+    """
+    Determines whether a newly parsed CatalogResult degrades quality compared to a
+    previously verified cached CatalogResult.
+    Evaluates diagnostic completeness status, rejected/unprocessed/unresolved issue counts,
+    and parser error counts rather than relying on row count alone.
+    """
+    if prev_res is None or prev_res.dataframe is None or prev_res.dataframe.empty:
+        return False
+    if new_res is None or new_res.dataframe is None or new_res.dataframe.empty:
+        return True
+
+    status_rank = {"complete": 3, "partial": 2, "unverified": 1, "failed": 0}
+    prev_status = getattr(prev_res, "status", getattr(getattr(prev_res, "diagnostics", None), "status", "unverified"))
+    new_status = getattr(new_res, "status", getattr(getattr(new_res, "diagnostics", None), "status", "unverified"))
+    prev_rank = status_rank.get(prev_status, 1)
+    new_rank = status_rank.get(new_status, 1)
+
+    if new_rank < prev_rank:
+        return True
+    if new_rank > prev_rank:
+        return False
+
+    prev_diag = getattr(prev_res, "diagnostics", None)
+    new_diag = getattr(new_res, "diagnostics", None)
+    if prev_diag is not None and new_diag is not None:
+        prev_defects = (
+            getattr(prev_diag, "rejected_rows", 0)
+            + getattr(prev_diag, "unprocessed_rows", 0)
+            + getattr(prev_diag, "unresolved_region_count", 0)
+            + len(getattr(prev_diag, "errors", []))
+        )
+        new_defects = (
+            getattr(new_diag, "rejected_rows", 0)
+            + getattr(new_diag, "unprocessed_rows", 0)
+            + getattr(new_diag, "unresolved_region_count", 0)
+            + len(getattr(new_diag, "errors", []))
+        )
+        if new_defects > prev_defects:
+            return True
+        if new_defects < prev_defects:
+            return False
+
+    # When defect counts and status ranks are equal, check if row count dropped
+    if len(new_res.dataframe) < len(prev_res.dataframe):
+        return True
+
+    return False
+
+
+def merge_catalog_results_without_duplication(
+    base_res: Optional[CatalogResult],
+    incremental_res: Optional[CatalogResult],
+) -> CatalogResult:
+    """
+    Merges incremental recovery or resumed pass results into a base CatalogResult without row duplication.
+    Supports resuming interrupted recovery passes without duplicating rows.
+    Matches rows by source_id or (normalized_name, round(base_price, 2)), preserving existing verified rows.
+    """
+    if base_res is None or base_res.dataframe is None:
+        if incremental_res is not None:
+            return incremental_res
+        empty_cols = [
+            'warehouse_name', 'item_name', 'normalized_name', 'dosage',
+            'unit_size', 'base_price', 'discount_rate', 'stock_status'
+        ]
+        return CatalogResult(
+            dataframe=pd.DataFrame(columns=empty_cols),
+            diagnostics=ImportDiagnostics(),
+            fingerprint=None,
+        )
+    if incremental_res is None or incremental_res.dataframe is None or incremental_res.dataframe.empty:
+        return base_res
+
+    base_df = base_res.dataframe.copy(deep=True)
+    inc_df = incremental_res.dataframe.copy(deep=True)
+
+    existing_keys = set()
+    if not base_df.empty and "normalized_name" in base_df.columns and "base_price" in base_df.columns:
+        for _, r in base_df.iterrows():
+            n = str(r["normalized_name"]).strip()
+            p = round(float(r["base_price"]), 2) if pd.notna(r["base_price"]) else 0.0
+            existing_keys.add((n, p))
+
+    new_rows = []
+    if not inc_df.empty:
+        for _, r in inc_df.iterrows():
+            n = str(r.get("normalized_name", "")).strip()
+            p = round(float(r.get("base_price", 0.0)), 2) if pd.notna(r.get("base_price")) else 0.0
+            if (n, p) not in existing_keys:
+                existing_keys.add((n, p))
+                new_rows.append(r)
+
+    if new_rows:
+        merged_df = pd.concat([base_df, pd.DataFrame(new_rows)], ignore_index=True)
+    else:
+        merged_df = base_df
+
+    # Merge review issues & update diagnostics
+    merged_issues = dict(base_res.issues_by_source_id)
+    for sid, iss in incremental_res.issues_by_source_id.items():
+        if sid not in merged_issues or (iss.resolved and not merged_issues[sid].resolved):
+            merged_issues[sid] = iss
+
+    import copy
+    merged_diag = copy.deepcopy(base_res.diagnostics)
+    if merged_diag is not None:
+        merged_diag.accepted_rows = len(merged_df)
+        merged_diag.unique_records = len(merged_df)
+
+    return CatalogResult(
+        dataframe=merged_df,
+        diagnostics=merged_diag or base_res.diagnostics,
+        fingerprint=base_res.fingerprint or incremental_res.fingerprint,
+        review_issues=list(merged_issues.values()),
+        issues_by_source_id=merged_issues,
+    )
 
 
 def refresh_catalog(catalog_file: str) -> CatalogResult:
@@ -612,18 +822,23 @@ def reread_catalog_with_ocr(catalog_file: str, progress_callback=None) -> tuple[
             from normalizer import normalize_vendor_name
         df = parse_excel_catalog(norm_path, normalize_vendor_name(w_raw))
 
-    # Non-degradation safety: if OCR yielded valid items, accept them directly.
-    # Only fall back to previously cached items if OCR returned 0 items and cached entry is valid.
+    # Non-degradation safety: preserve known-good cached results when re-reading fails or degrades quality.
+    # Evaluate diagnostic completeness and defect counts rather than row count alone.
     prev_cached = global_catalog_cache.get(norm_path)
-    if not df.empty:
-        logger.info(f"OCR successfully extracted {len(df)} items for {fname}")
-    elif prev_cached is not None and not prev_cached.empty:
-        verified_prev = validate_cached_catalog(prev_cached, norm_path)
-        if verified_prev is not None:
-            logger.info(f"OCR returned 0 items; preserving {len(prev_cached)} previously cached items for {fname}")
-            df = verified_prev.to_dataframe()
-        else:
-            global_catalog_cache.remove(norm_path)
+    verified_prev = validate_cached_catalog(prev_cached, norm_path) if (prev_cached is not None and not prev_cached.empty) else None
+    new_res = CatalogResult.from_dataframe(df) if not df.empty else None
+
+    if verified_prev is not None and is_replacement_quality_degraded(verified_prev, new_res):
+        prev_status = getattr(verified_prev, "status", getattr(getattr(verified_prev, "diagnostics", None), "status", "unknown"))
+        logger.info(
+            f"Re-read degraded quality or returned 0 items; preserving known-good cached result "
+            f"({len(verified_prev.dataframe)} items, status={prev_status}) for {fname}"
+        )
+        df = verified_prev.to_dataframe()
+    elif not df.empty:
+        logger.info(f"Successfully extracted {len(df)} items for {fname}")
+    elif prev_cached is not None:
+        global_catalog_cache.remove(norm_path)
 
     if df.empty and last_err:
         raise RuntimeError(last_err)

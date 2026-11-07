@@ -1,0 +1,262 @@
+{
+  "untouched_raster_catalog_page3": {
+    "source_file": "tests/fixtures/untouched_raster_page3.pdf",
+    "description": "Generated raster PDF rendered at 150 DPI RGB from untouched wholesaler catalog page 3 (test1/سبيشيال فارما.pdf). Independently transcribed reference rows directly from source layout.",
+    "page_index": 2,
+    "total_rows": 28,
+    "verified_rows": [
+      {
+        "row_id": "p3_r0",
+        "y_pt": 76.1,
+        "item_name": "اوروفيكس موز اصفر",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 95.0,
+        "discount_rate": 0.29
+      },
+      {
+        "row_id": "p3_r1",
+        "y_pt": 98.0,
+        "item_name": "اوفلام 50 مجم 20 قرص",
+        "dosage": "50مجم",
+        "unit_size": "20 قرص",
+        "base_price": 72.0,
+        "discount_rate": 0.36
+      },
+      {
+        "row_id": "p3_r2",
+        "y_pt": 120.0,
+        "item_name": "اوكيوجارد 30 كبسول",
+        "dosage": "",
+        "unit_size": "30 كبسول",
+        "base_price": 120.0,
+        "discount_rate": 0.30
+      },
+      {
+        "row_id": "p3_r3",
+        "y_pt": 142.0,
+        "item_name": "اوكيوجارد ال اكس برطمان",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 160.0,
+        "discount_rate": 0.28
+      },
+      {
+        "row_id": "p3_r4",
+        "y_pt": 163.9,
+        "item_name": "اولابكس 10 مجم 30 قرص",
+        "dosage": "10مجم",
+        "unit_size": "30 قرص",
+        "base_price": 234.0,
+        "discount_rate": 0.23
+      },
+      {
+        "row_id": "p3_r5",
+        "y_pt": 185.9,
+        "item_name": "اولابكس 5 مجم 30 قرص",
+        "dosage": "5مجم",
+        "unit_size": "30 قرص",
+        "base_price": 160.0,
+        "discount_rate": 0.26
+      },
+      {
+        "row_id": "p3_r6",
+        "y_pt": 207.8,
+        "item_name": "اوميجا بريس 20 مجم 30 قرص",
+        "dosage": "20مجم",
+        "unit_size": "30 قرص",
+        "base_price": 411.0,
+        "discount_rate": 0.30
+      },
+      {
+        "row_id": "p3_r7",
+        "y_pt": 229.8,
+        "item_name": "اوميز 40 مجم 10 كبسول",
+        "dosage": "40مجم",
+        "unit_size": "10 كبسول",
+        "base_price": 130.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p3_r8",
+        "y_pt": 251.8,
+        "item_name": "اوندالينز 4 مجم سريع الذوبان",
+        "dosage": "4مجم",
+        "unit_size": "",
+        "base_price": 160.0,
+        "discount_rate": 0.31
+      },
+      {
+        "row_id": "p3_r9",
+        "y_pt": 273.7,
+        "item_name": "ايرستابكس تريو 5 / 40 / 12.5 مجم اقراص",
+        "dosage": "12.5مجم",
+        "unit_size": "اقراص",
+        "base_price": 144.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p3_r10",
+        "y_pt": 295.7,
+        "item_name": "ايرستابكس كو 10 / 40 مجم اقراص",
+        "dosage": "40مجم",
+        "unit_size": "اقراص",
+        "base_price": 165.0,
+        "discount_rate": 0.31
+      },
+      {
+        "row_id": "p3_r11",
+        "y_pt": 317.6,
+        "item_name": "ايسوبتن اس ار 240 مجم 30 قرص",
+        "dosage": "240مجم",
+        "unit_size": "30 قرص",
+        "base_price": 170.0,
+        "discount_rate": 0.29
+      },
+      {
+        "row_id": "p3_r12",
+        "y_pt": 339.6,
+        "item_name": "ايفيبرونت شراب",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 57.0,
+        "discount_rate": 0.39
+      },
+      {
+        "row_id": "p3_r13",
+        "y_pt": 361.6,
+        "item_name": "ايوبروست نقط للعين ثلاجه",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 81.0,
+        "discount_rate": 0.30
+      },
+      {
+        "row_id": "p3_r14",
+        "y_pt": 383.5,
+        "item_name": "باروكسيتين 25 مجم سي ار 30 قرص",
+        "dosage": "25مجم",
+        "unit_size": "30 قرص",
+        "base_price": 105.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p3_r15",
+        "y_pt": 405.5,
+        "item_name": "بانتولوك 40 مجم 14 كبسول",
+        "dosage": "40مجم",
+        "unit_size": "14 كبسول",
+        "base_price": 102.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p3_r16",
+        "y_pt": 427.4,
+        "item_name": "بايولجام 60 / 100 مجم 8 قرص",
+        "dosage": "100مجم",
+        "unit_size": "8 قرص",
+        "base_price": 192.0,
+        "discount_rate": 0.52
+      },
+      {
+        "row_id": "p3_r17",
+        "y_pt": 449.4,
+        "item_name": "برافوتين 14 كيس",
+        "dosage": "",
+        "unit_size": "14 كيس",
+        "base_price": 205.0,
+        "discount_rate": 0.31
+      },
+      {
+        "row_id": "p3_r18",
+        "y_pt": 471.4,
+        "item_name": "برافوتين 30 كيس",
+        "dosage": "",
+        "unit_size": "30 كيس",
+        "base_price": 405.0,
+        "discount_rate": 0.31
+      },
+      {
+        "row_id": "p3_r19",
+        "y_pt": 493.3,
+        "item_name": "بروتوفكس 40 مجم 14 كبسول",
+        "dosage": "40مجم",
+        "unit_size": "14 كبسول",
+        "base_price": 116.0,
+        "discount_rate": 0.43
+      },
+      {
+        "row_id": "p3_r20",
+        "y_pt": 515.3,
+        "item_name": "بروتي كير شامبو",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 190.0,
+        "discount_rate": 0.31
+      },
+      {
+        "row_id": "p3_r21",
+        "y_pt": 537.2,
+        "item_name": "بروجيست 100 مجم كبسول",
+        "dosage": "100مجم",
+        "unit_size": "كبسول",
+        "base_price": 110.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p3_r22",
+        "y_pt": 559.2,
+        "item_name": "بروجيست 200 مجم 30 كبسول",
+        "dosage": "200مجم",
+        "unit_size": "30 كبسول",
+        "base_price": 246.0,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p3_r23",
+        "y_pt": 581.2,
+        "item_name": "بروفين 400 مجم اقراص",
+        "dosage": "400مجم",
+        "unit_size": "اقراص",
+        "base_price": 78.0,
+        "discount_rate": 0.35
+      },
+      {
+        "row_id": "p3_r24",
+        "y_pt": 603.1,
+        "item_name": "بروموفلام قطره",
+        "dosage": "",
+        "unit_size": "",
+        "base_price": 52.5,
+        "discount_rate": 0.33
+      },
+      {
+        "row_id": "p3_r25",
+        "y_pt": 625.1,
+        "item_name": "برونتو بلس 20 قرص",
+        "dosage": "",
+        "unit_size": "20 قرص",
+        "base_price": 40.0,
+        "discount_rate": 0.41
+      },
+      {
+        "row_id": "p3_r26",
+        "y_pt": 647.0,
+        "item_name": "برونتوجيست 200 مجم 30 لبوس ثلاجة",
+        "dosage": "200مجم",
+        "unit_size": "30 لبوس",
+        "base_price": 192.0,
+        "discount_rate": 0.32
+      },
+      {
+        "row_id": "p3_r27",
+        "y_pt": 669.0,
+        "item_name": "بريجناكير بلس 30 قرص",
+        "dosage": "",
+        "unit_size": "30 قرص",
+        "base_price": 350.0,
+        "discount_rate": 0.31
+      }
+    ]
+  }
+}

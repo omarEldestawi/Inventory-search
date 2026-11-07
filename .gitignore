@@ -32,6 +32,7 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+tmp/
 .tmp.driveupload/
 .pytest_cache/
 

@@ -1,0 +1,347 @@
+{
+  "schema_version": "2.6.2",
+  "description": "Independently audited ground-truth reference dataset directly from scanned source image (archive/diagnostics/test_scanned_sample.pdf / 150 DPI render) for Arabic OCR regression.",
+  "scanned_catalog": {
+    "relative_path": "archive/diagnostics/test_scanned_sample.pdf",
+    "sha256": "8ee9c84918e95dfeb6feff057e0081d6d31ba207efb672fe31e073c683b7ff46",
+    "expected_pages": 1,
+    "expected_page_mode": "pure_raster",
+    "total_rows": 26,
+    "verified_rows": [
+      {
+        "index": 0,
+        "row_id": "p1_r0",
+        "y_pt": 275.0,
+        "item_name": "ابو ليبتيس جيل",
+        "dosage": "",
+        "unit_size": "جيل",
+        "base_price": 65.0,
+        "discount_rate": 0.25,
+        "code": "105121"
+      },
+      {
+        "index": 1,
+        "row_id": "p1_r1",
+        "y_pt": 321.1,
+        "item_name": "ابيدون شراب",
+        "dosage": "",
+        "unit_size": "شراب",
+        "base_price": 35.0,
+        "discount_rate": 0.41,
+        "code": "105439"
+      },
+      {
+        "index": 2,
+        "row_id": "p1_r2",
+        "y_pt": 367.7,
+        "item_name": "اتور 10 مجم 7 قرص",
+        "dosage": "10 مجم",
+        "unit_size": "7 قرص",
+        "base_price": 45.0,
+        "discount_rate": 0.33,
+        "code": "107623"
+      },
+      {
+        "index": 3,
+        "row_id": "p1_r3",
+        "y_pt": 412.8,
+        "item_name": "اتور 40 مجم 10 قرص",
+        "dosage": "40 مجم",
+        "unit_size": "10 قرص",
+        "base_price": 106.0,
+        "discount_rate": 0.33,
+        "code": "109988"
+      },
+      {
+        "index": 4,
+        "row_id": "p1_r4",
+        "y_pt": 459.1,
+        "item_name": "اتورستات 10 مجم 14 قرص",
+        "dosage": "10 مجم",
+        "unit_size": "14 قرص",
+        "base_price": 56.0,
+        "discount_rate": 0.34,
+        "code": "107617"
+      },
+      {
+        "index": 5,
+        "row_id": "p1_r5",
+        "y_pt": 504.9,
+        "item_name": "اتورستات 40 مجم 14 قرص",
+        "dosage": "40 مجم",
+        "unit_size": "14 قرص",
+        "base_price": 76.0,
+        "discount_rate": 0.38,
+        "code": "110875"
+      },
+      {
+        "index": 6,
+        "row_id": "p1_r6",
+        "y_pt": 550.8,
+        "item_name": "اتورستات 80 مجم 10 قرص",
+        "dosage": "80 مجم",
+        "unit_size": "10 قرص",
+        "base_price": 64.0,
+        "discount_rate": 0.33,
+        "code": "110785"
+      },
+      {
+        "index": 7,
+        "row_id": "p1_r7",
+        "y_pt": 596.1,
+        "item_name": "اتوريزا 10 / 10 مجم اقراص",
+        "dosage": "10 / 10 مجم",
+        "unit_size": "اقراص",
+        "base_price": 166.0,
+        "discount_rate": 0.33,
+        "code": "709666"
+      },
+      {
+        "index": 8,
+        "row_id": "p1_r8",
+        "y_pt": 641.8,
+        "item_name": "اجركس 75 مجم اقراص",
+        "dosage": "75 مجم",
+        "unit_size": "اقراص",
+        "base_price": 27.0,
+        "discount_rate": 0.30,
+        "code": "100224"
+      },
+      {
+        "index": 9,
+        "row_id": "p1_r9",
+        "y_pt": 687.9,
+        "item_name": "اربيبركس 20 مجم اقراص",
+        "dosage": "20 مجم",
+        "unit_size": "اقراص",
+        "base_price": 132.0,
+        "discount_rate": 0.34,
+        "code": "708170"
+      },
+      {
+        "index": 10,
+        "row_id": "p1_r10",
+        "y_pt": 733.9,
+        "item_name": "ارتيكسيبان 2.5 مجم 30 قرص",
+        "dosage": "2.5 مجم",
+        "unit_size": "30 قرص",
+        "base_price": 426.0,
+        "discount_rate": 0.36,
+        "code": "713508"
+      },
+      {
+        "index": 11,
+        "row_id": "p1_r11",
+        "y_pt": 779.0,
+        "item_name": "ارتيكسيبان 5 مجم 30 قرص",
+        "dosage": "5 مجم",
+        "unit_size": "30 قرص",
+        "base_price": 444.0,
+        "discount_rate": 0.36,
+        "code": "713509"
+      },
+      {
+        "index": 12,
+        "row_id": "p1_r12",
+        "y_pt": 825.1,
+        "item_name": "ارجينافكت 10 مجم 20 قرص",
+        "dosage": "10 مجم",
+        "unit_size": "20 قرص",
+        "base_price": 96.0,
+        "discount_rate": 0.33,
+        "code": "709292"
+      },
+      {
+        "index": 13,
+        "row_id": "p1_r13",
+        "y_pt": 870.7,
+        "item_name": "اركوكسيا 120 مجم اقراص",
+        "dosage": "120 مجم",
+        "unit_size": "اقراص",
+        "base_price": 137.0,
+        "discount_rate": 0.21,
+        "code": "701986"
+      },
+      {
+        "index": 14,
+        "row_id": "p1_r14",
+        "y_pt": 914.8,
+        "item_name": "اريك اقراص",
+        "dosage": "",
+        "unit_size": "اقراص",
+        "base_price": 144.0,
+        "discount_rate": 0.76,
+        "code": "101416"
+      },
+      {
+        "index": 15,
+        "row_id": "p1_r15",
+        "y_pt": 959.8,
+        "item_name": "افازير قطره",
+        "dosage": "",
+        "unit_size": "قطره",
+        "base_price": 28.0,
+        "discount_rate": 0.34,
+        "code": "107878"
+      },
+      {
+        "index": 16,
+        "row_id": "p1_r16",
+        "y_pt": 1008.2,
+        "item_name": "افيفافاسك 10/160 مجم 28 قرص",
+        "dosage": "10/160 مجم",
+        "unit_size": "28 قرص",
+        "base_price": 140.0,
+        "discount_rate": 0.35,
+        "code": "706519"
+      },
+      {
+        "index": 17,
+        "row_id": "p1_r17",
+        "y_pt": 1054.1,
+        "item_name": "افيفافاسك 5/160 مجم 28 قرص",
+        "dosage": "5/160 مجم",
+        "unit_size": "28 قرص",
+        "base_price": 124.0,
+        "discount_rate": 0.36,
+        "code": "706520"
+      },
+      {
+        "index": 18,
+        "row_id": "p1_r18",
+        "y_pt": 1098.2,
+        "item_name": "اكتومثرين لوسيون",
+        "dosage": "",
+        "unit_size": "لوسيون",
+        "base_price": 55.0,
+        "discount_rate": 0.20,
+        "code": "101512"
+      },
+      {
+        "index": 19,
+        "row_id": "p1_r19",
+        "y_pt": 1145.3,
+        "item_name": "اكساميد 100 مجم اقراص",
+        "dosage": "100 مجم",
+        "unit_size": "اقراص",
+        "base_price": 144.0,
+        "discount_rate": 0.27,
+        "code": "714213"
+      },
+      {
+        "index": 20,
+        "row_id": "p1_r20",
+        "y_pt": 1190.9,
+        "item_name": "اكساميد 20 مجم اقراص",
+        "dosage": "20 مجم",
+        "unit_size": "اقراص",
+        "base_price": 106.0,
+        "discount_rate": 0.27,
+        "code": "110815"
+      },
+      {
+        "index": 21,
+        "row_id": "p1_r21",
+        "y_pt": 1237.2,
+        "item_name": "اكسفورج 5/ 160 مجم اقراص",
+        "dosage": "5/ 160 مجم",
+        "unit_size": "اقراص",
+        "base_price": 218.0,
+        "discount_rate": 0.31,
+        "code": "712989"
+      },
+      {
+        "index": 22,
+        "row_id": "p1_r22",
+        "y_pt": 1283.3,
+        "item_name": "اكسفورج اتش تي سي 5/ 160 مجم اقراص",
+        "dosage": "5/ 160 مجم",
+        "unit_size": "اقراص",
+        "base_price": 270.0,
+        "discount_rate": 0.26,
+        "code": "111171"
+      },
+      {
+        "index": 23,
+        "row_id": "p1_r23",
+        "y_pt": 1327.2,
+        "item_name": "ال كارنتين بلس كبسول",
+        "dosage": "",
+        "unit_size": "كبسول",
+        "base_price": 116.0,
+        "discount_rate": 0.32,
+        "code": "713773"
+      },
+      {
+        "index": 24,
+        "row_id": "p1_r24",
+        "y_pt": 1372.3,
+        "item_name": "البوثيل لبوس",
+        "dosage": "",
+        "unit_size": "لبوس",
+        "base_price": 64.0,
+        "discount_rate": 0.33,
+        "code": "111596"
+      },
+      {
+        "index": 25,
+        "row_id": "p1_r25",
+        "y_pt": 1419.8,
+        "item_name": "البيندازول 400 مجم 6 قرص",
+        "dosage": "400 مجم",
+        "unit_size": "6 قرص",
+        "base_price": 46.0,
+        "discount_rate": 0.27,
+        "code": "708299"
+      }
+    ],
+    "rejected_rows": [
+      {
+        "raw_text": "مخزن سبيشيال لتجاره الادويه بالاسكندريه",
+        "reason": "metadata_banner_header"
+      }
+    ]
+  },
+  "heldout_adversarial_suite": {
+    "ocr_numeric_corruption_cases": [
+      { "name": "اتور 1 مجم 71 قرص", "price": 45.0, "discount": 0.33, "expected_rejection": "suspicious_pack_size" },
+      { "name": "اتور 1 مجم 1 قرص", "price": 106.0, "discount": 0.33, "expected_rejection": "suspicious_ocr_strength" },
+      { "name": "اتورستات 1 مجم 41 قرص", "price": 56.0, "discount": 0.34, "expected_rejection": "suspicious_pack_size" },
+      { "name": "اتورستات 4 مجم 41 قرص", "price": 76.0, "discount": 0.38, "expected_rejection": "suspicious_pack_size" },
+      { "name": "اتورستات 8 مجم 1 قرص", "price": 64.0, "discount": 0.33, "expected_rejection": "suspicious_ocr_strength" },
+      { "name": "اجركس 57 مجم اقراص", "price": 27.0, "discount": 0.30, "expected_rejection": "suspicious_ocr_strength" },
+      { "name": "اركوكسيا 21 مجم اقراص", "price": 137.0, "discount": 0.21, "expected_rejection": "suspicious_ocr_strength" },
+      { "name": "افيفافاسك 8/61 مجم 82 قرص", "price": 140.0, "discount": 0.35, "expected_rejection": "suspicious_pack_size" },
+      { "name": "افيفافاسك 6/62 مجم 82 قرص", "price": 124.0, "discount": 0.36, "expected_rejection": "suspicious_pack_size" },
+      { "name": "اكساميد 1 مجم اقراص", "price": 144.0, "discount": 0.27, "expected_rejection": "suspicious_ocr_strength" },
+      { "name": "اكساميد 2 مجم اقراص", "price": 106.0, "discount": 0.27, "expected_rejection": "suspicious_ocr_strength" },
+      { "name": "البيندازول 4 مجم 6 قرص", "price": 46.0, "discount": 0.27, "expected_rejection": "suspicious_ocr_strength" }
+    ],
+    "price_boundary_cases": [
+      { "name": "بانادول اقراص", "price": 0.0, "discount": 0.20, "expected_valid": false },
+      { "name": "بانادول اقراص", "price": -5.0, "discount": 0.20, "expected_valid": false },
+      { "name": "بانادول اقراص", "price": 10000.0, "discount": 0.20, "expected_valid": false },
+      { "name": "بانادول اقراص", "price": 15000.0, "discount": 0.20, "expected_valid": false },
+      { "name": "بانادول اقراص", "price": "NaN", "discount": 0.20, "expected_valid": false },
+      { "name": "بانادول اقراص", "price": "Inf", "discount": 0.20, "expected_valid": false }
+    ],
+    "discount_boundary_cases": [
+      { "name": "كونكور 5 مجم", "price": 45.0, "discount": -0.05, "expected_valid": false },
+      { "name": "كونكور 5 مجم", "price": 45.0, "discount": 0.86, "expected_valid": false },
+      { "name": "كونكور 5 مجم", "price": 45.0, "discount": 1.05, "expected_valid": false },
+      { "name": "كونكور 5 مجم", "price": 45.0, "discount": "NaN", "expected_valid": false },
+      { "name": "كونكور 5 مجم", "price": 45.0, "discount": "Inf", "expected_valid": false }
+    ],
+    "header_and_noise_names": [
+      { "name": "", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "   ", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "---", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "...", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "الصنف", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "الكود", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "الخصم", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "السعر", "price": 50.0, "discount": 0.20, "expected_valid": false },
+      { "name": "مخزن سبيشيال للتجاره", "price": 50.0, "discount": 0.20, "expected_valid": false }
+    ]
+  }
+}

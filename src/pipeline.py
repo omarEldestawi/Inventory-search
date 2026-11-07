@@ -21,7 +21,7 @@ try:
     from .excel_parser import load_purchase_order
     from .allocator import MedicineAllocator, evaluate_above_average_discounts
     from .report_generator import ArabicExcelReportGenerator
-    from .normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
+    from .normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack, normalize_arabic_text
     from .average_discounts import load_average_discounts_file, resolve_default_avg_discounts_path
     from .catalog_diagnostics import (
         FileFingerprint,
@@ -37,7 +37,7 @@ except ImportError:
     from excel_parser import load_purchase_order
     from allocator import MedicineAllocator, evaluate_above_average_discounts
     from report_generator import ArabicExcelReportGenerator
-    from normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack
+    from normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack, normalize_arabic_text
     from average_discounts import load_average_discounts_file, resolve_default_avg_discounts_path
     from catalog_diagnostics import (
         FileFingerprint,
@@ -385,6 +385,16 @@ def validate_cached_catalog(
     if not getattr(fp, "parser_revision", None) or not getattr(fp, "library_version", None):
         return None
 
+    expected_ocr = "rapidocr_arabic_ppocrv3_v1"
+    fp_ocr = getattr(fp, "ocr_model_version", None)
+    if fp_ocr is not None and fp_ocr != expected_ocr:
+        return None
+
+    expected_rec = "v26_bounded_default"
+    fp_rec = getattr(fp, "recovery_config_hash", None)
+    if fp_rec is not None and fp_rec != expected_rec:
+        return None
+
     try:
         if not fp.is_current(norm_expected):
             return None
@@ -487,8 +497,23 @@ def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
     clean_df['dosage'] = [e[0] for e in entities]
     clean_df['unit_size'] = [e[1] for e in entities]
 
+    def _safe_excel_discount(val):
+        if pd.isna(val) or val is None or not str(val).strip():
+            return None
+        s = str(val).strip()
+        try:
+            from .catalog_reader import is_explicit_zero_discount
+        except ImportError:
+            from catalog_reader import is_explicit_zero_discount
+        if is_explicit_zero_discount(s):
+            return 0.0
+        d = parse_discount(s)
+        if d == 0.0 and not is_explicit_zero_discount(s):
+            return None
+        return d
+
     clean_df['base_price'] = pd.to_numeric(raw_df[price_col], errors='coerce').fillna(0.0) if price_col else 0.0
-    clean_df['discount_rate'] = raw_df[disc_col].apply(parse_discount) if disc_col else 0.0
+    clean_df['discount_rate'] = raw_df[disc_col].apply(_safe_excel_discount) if disc_col else None
     clean_df['stock_status'] = True
 
     # Filter out empty, header, or noise rows
@@ -497,6 +522,107 @@ def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
     clean_df = clean_df[~clean_df['item_name'].str.lower().isin(noise_values)]
     
     return clean_df.reset_index(drop=True)
+
+
+def _build_consolidated_inventory(
+    all_catalogs: list[pd.DataFrame],
+    allow_partial_imports: bool = False,
+    accepted_tokens: Optional[set[str]] = None,
+) -> pd.DataFrame:
+    """
+    Consolidates parsed catalog DataFrames into a single inventory DataFrame fed to MedicineAllocator.
+
+    STRICT PROCUREMENT EXCLUSION INVARIANT:
+    - Every unverified, uncertain, or unresolved row is strictly excluded from procurement:
+      * Rows marked with RowDiagnostic(outcome in ('rejected', 'unprocessed'))
+      * Rows marked with ReviewIssue where resolved is False
+      * Regions in unresolved_region_count
+    - Strict validation filters:
+      * Clinical price limits: base_price in (0.0, 10000.0]
+      * Discount limits: discount_rate in [0.0, 0.85]
+      * Medicine name: non-empty, non-noise
+      * Stock status: in-stock
+    - If any catalog produces 0 valid items, or if the consolidated inventory is empty,
+      blocks procurement execution cleanly with PipelineExecutionError.
+    """
+    if not all_catalogs:
+        raise PipelineExecutionError(
+            "Failed to extract valid catalog items from any of the provided catalog file(s)."
+        )
+
+    accepted_tokens_set = accepted_tokens or set()
+    verified_catalogs: list[pd.DataFrame] = []
+    noise_values = {'nan', 'none', '', 'null', 'صنف', 'الصنف', 'اسم الصنف', 'البيان', 'item', 'name'}
+
+    for cat_df in all_catalogs:
+        if cat_df is None or cat_df.empty:
+            continue
+
+        clean = cat_df.copy(deep=True)
+        res = CatalogResult.from_dataframe(cat_df)
+
+        if res is not None:
+            # Check partial import acknowledgment
+            if res.diagnostics is not None and res.diagnostics.requires_acknowledgment:
+                tok = res.acknowledgment_token
+                if not allow_partial_imports and tok not in accepted_tokens_set:
+                    summary_str = res.diagnostics.summary()
+                    raise PipelineExecutionError(
+                        f"Partial catalog import detected ({summary_str}). "
+                        f"Explicit acknowledgment is required before procurement (token: {tok}).",
+                        diagnostics={"acknowledgment_token": tok, **res.diagnostics.to_dict()},
+                    )
+
+            # Strictly exclude any rejected or unresolved source_ids
+            excluded_sids = set()
+            if res.diagnostics is not None:
+                for p in res.diagnostics.pages:
+                    for g in p.groups:
+                        for r in g.rows:
+                            if r.outcome in ("rejected", "unprocessed") and r.source_id:
+                                excluded_sids.add(r.source_id)
+            for iss in getattr(res, "review_issues", []):
+                if not getattr(iss, "resolved", False) and getattr(iss, "source_id", None):
+                    excluded_sids.add(iss.source_id)
+
+            if excluded_sids and "source_id" in clean.columns:
+                clean = clean[~clean["source_id"].isin(excluded_sids)]
+
+        # Strict field validation
+        if "item_name" in clean.columns:
+            clean = clean[clean["item_name"].astype(str).str.strip().str.len() > 1]
+            clean = clean[~clean["item_name"].astype(str).str.strip().str.lower().isin(noise_values)]
+
+        if "base_price" in clean.columns:
+            clean["base_price"] = pd.to_numeric(clean["base_price"], errors="coerce")
+            clean = clean[(clean["base_price"] > 0.0) & (clean["base_price"] <= 10000.0)]
+
+        if "discount_rate" in clean.columns:
+            clean["discount_rate"] = pd.to_numeric(clean["discount_rate"], errors="coerce")
+            # Strict procurement safeguard (outside search algorithm):
+            # Unknown discounts (NaN/None) cannot be safely procured when evaluating purchase orders,
+            # as determining net purchase price would require assuming an unsupported discount or silently defaulting to 0.0.
+            # Such items are safely excluded from consolidated procurement inventory, causing allocator to route them to out-of-stock.
+            clean = clean[clean["discount_rate"].notna() & (clean["discount_rate"] >= 0.0) & (clean["discount_rate"] <= 0.85)]
+
+        if "stock_status" in clean.columns:
+            clean = clean[clean["stock_status"].fillna(True).astype(bool)]
+
+        if not clean.empty:
+            verified_catalogs.append(clean)
+
+    if not verified_catalogs:
+        raise PipelineExecutionError(
+            "Consolidated catalog inventory contains 0 valid items. Procurement execution blocked."
+        )
+
+    consolidated = pd.concat(verified_catalogs, ignore_index=True)
+    if consolidated.empty:
+        raise PipelineExecutionError(
+            "Consolidated catalog inventory contains 0 valid items. Procurement execution blocked."
+        )
+
+    return consolidated
 
 
 def run_procurement_pipeline(
@@ -724,12 +850,11 @@ def run_procurement_pipeline(
                 all_catalogs.append(df_cat)
                 diagnostics["catalogs_processed"] += 1
 
-        if not all_catalogs:
-            raise RuntimeError(
-                f"Failed to extract valid catalog items from any of the {catalog_count} provided catalog file(s)."
-            )
-
-        consolidated_inventory = pd.concat(all_catalogs, ignore_index=True)
+        consolidated_inventory = _build_consolidated_inventory(
+            all_catalogs,
+            allow_partial_imports=allow_partial_imports,
+            accepted_tokens=accepted_tokens,
+        )
         diagnostics["total_catalog_items"] = len(consolidated_inventory)
         unique_wh = len(consolidated_inventory['warehouse_name'].unique())
         
@@ -809,7 +934,35 @@ def run_procurement_pipeline(
         allocator = MedicineAllocator(consolidated_inventory, avg_discounts_df=avg_discounts_df)
         results = allocator.allocate_order(buying_list)
 
+        # Reporting layer distinction: distinguish "offer found, discount unverified" from "out of stock"
+        # Rows with unknown discounts were safely excluded from consolidated_inventory to protect procurement.
+        # Annotate out_of_stock items that had catalog offers with unverified discounts.
+        unverified_discount_names = set()
+        for cat_df in all_catalogs:
+            if "item_name" in cat_df.columns and "discount_rate" in cat_df.columns:
+                unverified_mask = cat_df["discount_rate"].isna()
+                for nm in cat_df.loc[unverified_mask, "item_name"].dropna().astype(str):
+                    clean_nm = nm.strip().lower()
+                    if clean_nm:
+                        unverified_discount_names.add(clean_nm)
+                        norm_nm = normalize_arabic_text(clean_nm)
+                        if norm_nm:
+                            unverified_discount_names.add(norm_nm)
+
+        unverified_offer_count = 0
+        oos_df = results.get("out_of_stock")
+        if isinstance(oos_df, pd.DataFrame) and not oos_df.empty:
+            for idx in oos_df.index:
+                req = str(oos_df.loc[idx, "اسم الصنف المطلوب"]).strip().lower()
+                norm_req = normalize_arabic_text(req)
+                if req in unverified_discount_names or norm_req in unverified_discount_names:
+                    oos_df.loc[idx, "حالة التوفر"] = "عرض متاح ولكن الخصم غير مؤكد (مستبعد للأمان)"
+                    oos_df.loc[idx, "ملاحظات المتابعة والبحث"] = "تم العثور على الصنف في الكتالوج ولكن نسبة الخصم غير مؤكدة، تم استبعاده لضمان الأمان المالي."
+                    unverified_offer_count += 1
+
         kpis = results.get('kpis', {})
+        kpis['unverified_discount_items'] = unverified_offer_count
+        diagnostics['unverified_discount_items'] = unverified_offer_count
         matched = kpis.get('matched_items', 0)
         total_req = kpis.get('total_items', len(buying_list))
         _notify(0.85, f"اكتمل التوزيع: تم تخصيص {matched} من {total_req} صنف بنجاح.")

@@ -32,6 +32,10 @@ try:
         RowDiagnostic,
         SourceIdentity,
         METADATA_KEY,
+        find_legacy_source_id_candidates,
+        is_ambiguous_legacy_source_id,
+        resolve_compatible_source_id,
+        source_id_matches,
     )
     from .catalog_reader import (
         CatalogImportMetadata,
@@ -54,6 +58,10 @@ except ImportError:
         RowDiagnostic,
         SourceIdentity,
         METADATA_KEY,
+        find_legacy_source_id_candidates,
+        is_ambiguous_legacy_source_id,
+        resolve_compatible_source_id,
+        source_id_matches,
     )
     from catalog_reader import (
         CatalogImportMetadata,
@@ -95,6 +103,7 @@ class CatalogCorrectionService:
         self._catalog_result: Optional[CatalogResult] = None
         self._base_catalog_result: Optional[CatalogResult] = None
         self._field_corrections: Dict[str, Dict[str, Any]] = {}
+        self._excluded_rows: Dict[str, str] = {}
         self._table_mappings: Dict[int, Dict[str, int]] = {}
 
         fname = os.path.basename(self.catalog_path)
@@ -125,7 +134,7 @@ class CatalogCorrectionService:
             except ImportError:
                 from controller import inspect_catalog
 
-            res = inspect_catalog(self.catalog_path, refresh=refresh)
+            res = inspect_catalog(self.catalog_path, refresh=refresh, include_corrections=False)
             if res is not None:
                 return res
         except Exception as exc:
@@ -259,11 +268,24 @@ class CatalogCorrectionService:
                     base_res=base_res,
                 )
 
+            # Apply manual row exclusions
+            for source_id, excl_reason in self._excluded_rows.items():
+                current_df, issues = self._apply_row_exclusion_internal(
+                    source_id=source_id,
+                    reason=excl_reason,
+                    df=current_df,
+                    issues=issues,
+                    base_res=base_res,
+                )
+
             # Reconcile diagnostics accounting
             updated_diag = copy.deepcopy(base_res.diagnostics)
             unresolved_regions = sum(
                 1 for iss in issues.values()
-                if not iss.resolved and iss.identity and iss.identity.is_region_issue
+                if not iss.resolved and (
+                    (iss.identity and iss.identity.is_region_issue)
+                    or iss.provenance == "ambiguous_legacy_migration"
+                )
             )
             updated_diag.unresolved_region_count = unresolved_regions
 
@@ -457,7 +479,44 @@ class CatalogCorrectionService:
             raise ValueError(f"Invalid field correction: {err}")
 
         with self._lock:
+            for k in [k for k in self._excluded_rows if source_id_matches(k, source_id)]:
+                self._excluded_rows.pop(k, None)
+            for k in [k for k in self._field_corrections if k != source_id and source_id_matches(k, source_id)]:
+                self._field_corrections.pop(k, None)
             self._field_corrections[source_id] = dict(field_updates)
+            self._catalog_result = None
+            return self.get_refreshed_catalog_result()
+
+    def exclude_row(
+        self, source_id: str, reason: str = "manual_exclusion"
+    ) -> CatalogResult:
+        """
+        Explicitly excludes a candidate or accepted row from procurement,
+        marking its review issue resolved with provenance='manual_exclusion'.
+        """
+        if not source_id:
+            raise ValueError("source_id is required to exclude a row.")
+        with self._lock:
+            for k in [k for k in self._field_corrections if source_id_matches(k, source_id)]:
+                self._field_corrections.pop(k, None)
+            for k in [k for k in self._excluded_rows if k != source_id and source_id_matches(k, source_id)]:
+                self._excluded_rows.pop(k, None)
+            self._excluded_rows[source_id] = str(reason or "manual_exclusion")
+            self._catalog_result = None
+            return self.get_refreshed_catalog_result()
+
+    def revert_correction(self, source_id: str) -> CatalogResult:
+        """
+        Reverts a single row's saved field correction or manual exclusion back
+        to its original extracted state without wiping other corrections.
+        """
+        if not source_id:
+            raise ValueError("source_id is required to revert a correction.")
+        with self._lock:
+            for k in [k for k in self._field_corrections if source_id_matches(k, source_id)]:
+                self._field_corrections.pop(k, None)
+            for k in [k for k in self._excluded_rows if source_id_matches(k, source_id)]:
+                self._excluded_rows.pop(k, None)
             self._catalog_result = None
             return self.get_refreshed_catalog_result()
 
@@ -468,6 +527,7 @@ class CatalogCorrectionService:
         with self._lock:
             self._table_mappings.clear()
             self._field_corrections.clear()
+            self._excluded_rows.clear()
             self._catalog_result = None
             if os.path.isfile(self.catalog_path):
                 self._base_catalog_result = None
@@ -629,6 +689,29 @@ class CatalogCorrectionService:
 
         return updated_df, issues
 
+    @staticmethod
+    def _collect_all_known_source_ids(
+        df: pd.DataFrame,
+        issues: Dict[str, ReviewIssue],
+        base_res: Optional[CatalogResult],
+    ) -> List[str]:
+        known: List[str] = []
+        if base_res and base_res.diagnostics:
+            for p in getattr(base_res.diagnostics, "pages", []):
+                for g in getattr(p, "groups", []):
+                    for r in getattr(g, "rows", []):
+                        sid = getattr(r, "source_id", "")
+                        if sid and sid not in known:
+                            known.append(sid)
+        if "_source_id" in df.columns:
+            for sid in df["_source_id"].dropna().tolist():
+                if isinstance(sid, str) and sid and sid not in known:
+                    known.append(sid)
+        for sid in issues.keys():
+            if isinstance(sid, str) and sid and sid not in known:
+                known.append(sid)
+        return known
+
     def _apply_field_correction_internal(
         self,
         source_id: str,
@@ -642,13 +725,30 @@ class CatalogCorrectionService:
         if base_res is None:
             base_res = getattr(self, "_base_catalog_result", None)
 
-        # Update or create issue
-        if source_id in issues:
-            issue = issues[source_id]
+        all_known_ids = self._collect_all_known_source_ids(updated_df, issues, base_res)
+        if is_ambiguous_legacy_source_id(source_id, all_known_ids):
+            candidates = find_legacy_source_id_candidates(source_id, all_known_ids)
+            issues[source_id] = ReviewIssue(
+                source_id=source_id,
+                raw_cells=candidates,
+                bbox=None,
+                rejection_reason="ambiguous_legacy_correction_requires_review",
+                resolved=False,
+                provenance="ambiguous_legacy_migration",
+                item=dict(field_updates),
+            )
+            return updated_df, issues
+
+        # Update or create issue (including backward compatibility with unambiguous legacy 3-part source_id)
+        eff_issue_id = resolve_compatible_source_id(source_id, issues.keys())
+        if eff_issue_id in issues:
+            issue = issues[eff_issue_id]
             issue.resolved = True
             issue.provenance = "manual_correction"
             issue.item = dict(field_updates)
             issue.rejection_reason = ""
+            if eff_issue_id != source_id:
+                issues[source_id] = issue
         else:
             # Check diagnostics for coordinates and raw cells
             raw_cells = []
@@ -657,7 +757,7 @@ class CatalogCorrectionService:
                 for p in getattr(base_res.diagnostics, "pages", []):
                     for g in getattr(p, "groups", []):
                         for r in getattr(g, "rows", []):
-                            if getattr(r, "source_id", "") == source_id:
+                            if source_id_matches(getattr(r, "source_id", ""), source_id, available_ids=all_known_ids):
                                 raw_cells = list(getattr(r, "raw_cells", []))
                                 bbox = getattr(r, "bbox", None)
                                 break
@@ -681,9 +781,10 @@ class CatalogCorrectionService:
         # Multi-layer stable row matching
         target_idx = None
 
-        # Strategy 1: Match on internal _source_id column if present
+        # Strategy 1: Match on internal _source_id column if present (exact or compatible unambiguous legacy alias)
         if "_source_id" in updated_df.columns:
-            mask = (updated_df["_source_id"] == source_id)
+            eff_df_id = resolve_compatible_source_id(source_id, all_known_ids)
+            mask = (updated_df["_source_id"] == source_id) | (updated_df["_source_id"] == eff_df_id)
             if mask.any():
                 target_idx = updated_df.index[mask][0]
 
@@ -692,7 +793,7 @@ class CatalogCorrectionService:
             for p in getattr(base_res.diagnostics, "pages", []):
                 for g in getattr(p, "groups", []):
                     for r in getattr(g, "rows", []):
-                        if getattr(r, "source_id", "") == source_id:
+                        if source_id_matches(getattr(r, "source_id", ""), source_id, available_ids=all_known_ids):
                             orig_name = getattr(r, "item_name", "")
                             if orig_name and "item_name" in updated_df.columns:
                                 mask = (updated_df["item_name"] == orig_name)
@@ -705,8 +806,8 @@ class CatalogCorrectionService:
                     break
 
         # Strategy 3: Match on prior issue item name
-        if target_idx is None and source_id in issues:
-            prev_item = issues[source_id].item or {}
+        if target_idx is None and eff_issue_id in issues:
+            prev_item = issues[eff_issue_id].item or {}
             prev_name = prev_item.get("item_name")
             if prev_name and "item_name" in updated_df.columns:
                 mask = (updated_df["item_name"] == prev_name)
@@ -722,7 +823,7 @@ class CatalogCorrectionService:
                 if getattr(r, "outcome", "") == "accepted"
             ]
             for idx_acc, r in enumerate(accepted_diag_rows):
-                if getattr(r, "source_id", "") == source_id:
+                if source_id_matches(getattr(r, "source_id", ""), source_id, available_ids=all_known_ids):
                     if idx_acc < len(updated_df):
                         target_idx = updated_df.index[idx_acc]
                     break
@@ -745,6 +846,72 @@ class CatalogCorrectionService:
             if "_source_id" in updated_df.columns:
                 row_dict["_source_id"] = source_id
             updated_df = pd.concat([updated_df, pd.DataFrame([row_dict])], ignore_index=True)
+
+        return updated_df, issues
+
+    def _apply_row_exclusion_internal(
+        self,
+        source_id: str,
+        reason: str,
+        df: pd.DataFrame,
+        issues: Dict[str, ReviewIssue],
+        base_res: Optional[CatalogResult] = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, ReviewIssue]]:
+        """Removes an excluded row from the active DataFrame and marks its issue resolved as manual_exclusion."""
+        updated_df = df.copy(deep=True)
+        if base_res is None:
+            base_res = getattr(self, "_base_catalog_result", None)
+
+        all_known_ids = self._collect_all_known_source_ids(updated_df, issues, base_res)
+        if is_ambiguous_legacy_source_id(source_id, all_known_ids):
+            candidates = find_legacy_source_id_candidates(source_id, all_known_ids)
+            issues[source_id] = ReviewIssue(
+                source_id=source_id,
+                raw_cells=candidates,
+                bbox=None,
+                rejection_reason="ambiguous_legacy_correction_requires_review",
+                resolved=False,
+                provenance="ambiguous_legacy_migration",
+                item=None,
+            )
+            return updated_df, issues
+
+        if "_source_id" in updated_df.columns:
+            eff_df_id = resolve_compatible_source_id(source_id, all_known_ids)
+            mask = (updated_df["_source_id"] == source_id) | (updated_df["_source_id"] == eff_df_id)
+            if mask.any():
+                updated_df = updated_df.loc[~mask].reset_index(drop=True)
+
+        eff_issue_id = resolve_compatible_source_id(source_id, issues.keys())
+        if eff_issue_id in issues:
+            issue = issues[eff_issue_id]
+            issue.resolved = True
+            issue.provenance = "manual_exclusion"
+            issue.rejection_reason = reason or "manual_exclusion"
+            if eff_issue_id != source_id:
+                issues[source_id] = issue
+        else:
+            raw_cells = []
+            bbox = None
+            if base_res and base_res.diagnostics:
+                for p in getattr(base_res.diagnostics, "pages", []):
+                    for g in getattr(p, "groups", []):
+                        for r in getattr(g, "rows", []):
+                            if source_id_matches(getattr(r, "source_id", ""), source_id, available_ids=all_known_ids):
+                                raw_cells = list(getattr(r, "raw_cells", []))
+                                bbox = getattr(r, "bbox", None)
+                                break
+                    if raw_cells:
+                        break
+            issues[source_id] = ReviewIssue(
+                source_id=source_id,
+                raw_cells=raw_cells,
+                bbox=bbox,
+                rejection_reason=reason or "manual_exclusion",
+                resolved=True,
+                provenance="manual_exclusion",
+                item=None,
+            )
 
         return updated_df, issues
 

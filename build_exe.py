@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-PyInstaller Bundler for Egyptian Pharma Procurement Optimizer.
-Bundles CustomTkinter, PyMuPDF, RapidFuzz, SQLite Medication DB, and assets.
-(Note: Legacy RapidOCR / RapidTable / ONNX runtime bundling removed after OCR feature was archived as FAILED.)
+PyInstaller Bundler for Egyptian Pharma Procurement Optimizer (v2.7).
+Bundles CustomTkinter, PyMuPDF, RapidFuzz, SQLite Medication DB, Arabic OCR ONNX models, and assets.
 """
 import os
 import sys
@@ -58,6 +57,14 @@ def build():
         "--name", "EgyptianPharmaOptimizer",
         "--icon", "assets/app.ico" if os.path.exists("assets/app.ico") else "NONE",
         "--collect-all", "customtkinter",
+        "--collect-all", "onnxruntime",
+        "--collect-all", "cv2",
+        "--collect-all", "rapidfuzz",
+        "--collect-all", "pymupdf",
+        "--collect-all", "openpyxl",
+        "--collect-all", "numpy",
+        "--collect-all", "PIL",
+        "--collect-all", "rapidocr_onnxruntime",
         "--hidden-import", "customtkinter",
         "--hidden-import", "PIL._tkinter_finder",
         "--hidden-import", "openpyxl",
@@ -67,14 +74,29 @@ def build():
         "--hidden-import", "rapidfuzz",
         "--hidden-import", "google",
         "--hidden-import", "sqlite3",
-        "--hidden-import", "src.medication_db",
-        "--hidden-import", "src.average_discounts",
-        "--hidden-import", "src.updater",
-        "--hidden-import", "src.catalog_diagnostics",
-        "--hidden-import", "src.catalog_reader",
+        "--hidden-import", "onnxruntime",
+        "--hidden-import", "cv2",
+        "--hidden-import", "src.ocr_engine",
+        "--hidden-import", "src.image_table_detector",
         "--hidden-import", "src.catalog_recovery",
+        "--hidden-import", "src.pdf_font_decoder",
+        "--hidden-import", "src.catalog_diagnostics",
         "--hidden-import", "src.catalog_corrections",
         "--hidden-import", "src.catalog_service",
+        "--hidden-import", "src.controller",
+        "--hidden-import", "src.pipeline",
+        "--hidden-import", "src.allocator",
+        "--hidden-import", "src.medication_db",
+        "--hidden-import", "src.catalog_reader",
+        "--hidden-import", "src.average_discounts",
+        "--hidden-import", "src.updater",
+        "--hidden-import", "src.pharma_matcher",
+        "--hidden-import", "src.report_generator",
+        "--hidden-import", "src.normalizer",
+        "--hidden-import", "src.pdf_parser",
+        "--hidden-import", "src.excel_parser",
+        "--hidden-import", "src.order_parser",
+        "--hidden-import", "src.gemini_matcher",
     ]
 
     for d in datas:
@@ -88,24 +110,33 @@ def build():
         print("PyInstaller build failed.")
         sys.exit(res.returncode)
 
-    # Ensure data/ and tests/fixtures/ are bundled directly for standalone runs
-    out_data = os.path.join("dist", "EgyptianPharmaOptimizer", "data")
-    if os.path.exists("data"):
-        os.makedirs(out_data, exist_ok=True)
-        for fname in os.listdir("data"):
-            src_f = os.path.join("data", fname)
-            dst_f = os.path.join(out_data, fname)
-            if os.path.isfile(src_f):
-                shutil.copy2(src_f, dst_f)
+    # Ensure assets/, data/, and tests/fixtures/ are bundled directly in dist root and _internal
+    dist_root = os.path.join("dist", "EgyptianPharmaOptimizer")
+    dist_internal = os.path.join(dist_root, "_internal")
 
-    out_fixtures = os.path.join("dist", "EgyptianPharmaOptimizer", "tests", "fixtures")
+    # 1. Assets (including assets/models/rec.onnx and dict.txt)
+    if os.path.exists("assets"):
+        shutil.copytree("assets", os.path.join(dist_root, "assets"), dirs_exist_ok=True)
+        if os.path.isdir(dist_internal):
+            shutil.copytree("assets", os.path.join(dist_internal, "assets"), dirs_exist_ok=True)
+
+    # 2. Data
+    if os.path.exists("data"):
+        shutil.copytree("data", os.path.join(dist_root, "data"), dirs_exist_ok=True)
+        if os.path.isdir(dist_internal):
+            shutil.copytree("data", os.path.join(dist_internal, "data"), dirs_exist_ok=True)
+
+    # 3. Tests / Fixtures
     if os.path.exists(os.path.join("tests", "fixtures")):
-        os.makedirs(out_fixtures, exist_ok=True)
-        for fname in os.listdir(os.path.join("tests", "fixtures")):
-            src_f = os.path.join("tests", "fixtures", fname)
-            dst_f = os.path.join(out_fixtures, fname)
-            if os.path.isfile(src_f):
-                shutil.copy2(src_f, dst_f)
+        shutil.copytree(os.path.join("tests", "fixtures"), os.path.join(dist_root, "tests", "fixtures"), dirs_exist_ok=True)
+        if os.path.isdir(dist_internal):
+            shutil.copytree(os.path.join("tests", "fixtures"), os.path.join(dist_internal, "tests", "fixtures"), dirs_exist_ok=True)
+
+    # 4. Source code directory
+    if os.path.exists("src"):
+        shutil.copytree("src", os.path.join(dist_root, "src"), dirs_exist_ok=True)
+        if os.path.isdir(dist_internal):
+            shutil.copytree("src", os.path.join(dist_internal, "src"), dirs_exist_ok=True)
 
     print("PyInstaller build succeeded. Output located at dist/EgyptianPharmaOptimizer/")
 

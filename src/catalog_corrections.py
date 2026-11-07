@@ -20,9 +20,85 @@ import hashlib
 import json
 import logging
 import os
+import re
+import sys
 import tempfile
 import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+
+def is_in_installation_dir(dir_path: str) -> bool:
+    """
+    Checks if a path is located inside the application installation directory,
+    such as Program Files, _internal, /Applications, macOS .app bundle, or frozen executable folder.
+    """
+    if not dir_path or not isinstance(dir_path, str):
+        return False
+
+    norm_target = os.path.normpath(os.path.abspath(dir_path))
+    try:
+        real_target = os.path.realpath(norm_target)
+    except Exception:
+        real_target = norm_target
+
+    targets_to_check = [norm_target, real_target, str(dir_path)]
+
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.normpath(os.path.dirname(sys.executable)).lower()
+        for t in [norm_target.lower(), real_target.lower()]:
+            if t == exe_dir or t.startswith(exe_dir + os.sep.lower()):
+                return True
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            norm_mei = os.path.normpath(os.path.abspath(meipass)).lower()
+            for t in [norm_target.lower(), real_target.lower()]:
+                if t == norm_mei or t.startswith(norm_mei + os.sep.lower()):
+                    return True
+
+    protected_parts = {
+        "_internal",
+        "program files",
+        "program files (x86)",
+        "commonprogramfiles",
+        "commonprogramfiles(x86)",
+    }
+    for t in targets_to_check:
+        parts = set(p.lower() for p in re.split(r"[\\/]", t) if p)
+        if any(p in protected_parts for p in parts):
+            return True
+        if any(part.endswith(".app") for part in parts):
+            return True
+
+    for pf in [
+        r":\program files",
+        r":/program files",
+        r":\windows",
+        r":/windows",
+        r":\programdata",
+        r":/programdata",
+    ]:
+        for t in [norm_target.lower(), real_target.lower(), str(dir_path).lower()]:
+            if pf in t:
+                return True
+
+    return False
+
+try:
+    from .catalog_diagnostics import (
+        is_ambiguous_legacy_source_id,
+        find_legacy_source_id_candidates,
+    )
+except ImportError:
+    try:
+        from catalog_diagnostics import (
+            is_ambiguous_legacy_source_id,
+            find_legacy_source_id_candidates,
+        )
+    except ImportError:
+        def is_ambiguous_legacy_source_id(source_id: str, available_ids: Any) -> bool:
+            return False
+        def find_legacy_source_id_candidates(source_id: str, available_ids: Any) -> list[str]:
+            return []
 
 logger = logging.getLogger("CatalogCorrections")
 
@@ -53,19 +129,33 @@ def get_corrections_dir(custom_dir: Optional[str] = None) -> str:
     """
     Resolves the canonical directory for storing catalog corrections.
     Resolution order:
-    1. custom_dir parameter
+    1. custom_dir parameter (rejected if inside installation directory)
     2. DEFAULT_CORRECTIONS_DIR (set via set_corrections_dir for test isolation)
-    3. EPO_CORRECTIONS_DIR environment variable
+    3. EPO_CORRECTIONS_DIR environment variable (rejected if inside installation directory)
     4. %LOCALAPPDATA%/EgyptianPharmaOptimizer/data/catalog_corrections
     """
     with _DIR_LOCK:
         if custom_dir:
-            return os.path.normpath(os.path.abspath(custom_dir))
+            norm_c = os.path.normpath(os.path.abspath(custom_dir))
+            if is_in_installation_dir(norm_c):
+                logger.warning(
+                    f"Rejected installation directory for corrections: {norm_c}. "
+                    f"Falling back to user-writable LOCALAPPDATA directory."
+                )
+            else:
+                return norm_c
         if DEFAULT_CORRECTIONS_DIR:
             return DEFAULT_CORRECTIONS_DIR
         env_dir = os.environ.get("EPO_CORRECTIONS_DIR")
         if env_dir:
-            return os.path.normpath(os.path.abspath(env_dir))
+            norm_e = os.path.normpath(os.path.abspath(env_dir))
+            if is_in_installation_dir(norm_e):
+                logger.warning(
+                    f"Rejected installation directory in EPO_CORRECTIONS_DIR: {norm_e}. "
+                    f"Falling back to user-writable LOCALAPPDATA directory."
+                )
+            else:
+                return norm_e
         local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         return os.path.normpath(
             os.path.join(local_app_data, "EgyptianPharmaOptimizer", "data", "catalog_corrections")
@@ -233,6 +323,11 @@ def save_corrections(
         raise ValueError(f"Could not compute SHA-256 for catalog file: {norm_path}")
 
     cdir = os.path.dirname(target_file)
+    if is_in_installation_dir(cdir):
+        raise PermissionError(
+            f"Protected installation directory write blocked: '{cdir}'. "
+            f"Corrections must be stored under user-writable %LOCALAPPDATA% directory."
+        )
     os.makedirs(cdir, exist_ok=True)
 
     canonical_path = os.path.normcase(os.path.realpath(norm_path))
@@ -262,6 +357,9 @@ def save_corrections(
                 corr_entry["updated_at"] = now_utc
             serialized_field_corr[sid] = corr_entry
 
+    raw_excluded = corrections_data.get("excluded_rows", {})
+    serialized_excluded = {str(k): str(v) for k, v in raw_excluded.items()} if isinstance(raw_excluded, dict) else {}
+
     payload: Dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "canonical_path": canonical_path,
@@ -271,6 +369,7 @@ def save_corrections(
         "updated_at_utc": now_utc,
         "table_mappings": serialized_mappings,
         "field_corrections": serialized_field_corr,
+        "excluded_rows": serialized_excluded,
         "manual_entries": corrections_data.get("manual_entries", []),
         "corrections": corrections_data.get("corrections", serialized_field_corr),
     }
@@ -368,6 +467,88 @@ def has_persisted_corrections(
     return get_corrections_revision(catalog_path, corrections_dir=corrections_dir) > 0
 
 
+def find_ambiguous_corrections(
+    corrections_doc: Dict[str, Any],
+    available_source_ids: Any,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Identifies any persisted corrections in `corrections_doc` whose source_id is an ambiguous
+    legacy 3-part ID ('p{P}_t{T}_r{R}') that could map to multiple distinct groups/tables.
+    Returns mapping of {source_id: {'candidates': list[str], 'data': Any, 'type': str}}.
+    """
+    if not corrections_doc or not isinstance(corrections_doc, dict):
+        return {}
+    ambiguous: Dict[str, Dict[str, Any]] = {}
+    f_corrs = corrections_doc.get("field_corrections", {})
+    if isinstance(f_corrs, dict):
+        for sid, val in f_corrs.items():
+            if is_ambiguous_legacy_source_id(sid, available_source_ids):
+                cands = find_legacy_source_id_candidates(sid, available_source_ids)
+                ambiguous[sid] = {"candidates": cands, "data": val, "type": "field_correction"}
+
+    excl = corrections_doc.get("excluded_rows", {})
+    if isinstance(excl, dict):
+        for sid, reason in excl.items():
+            if is_ambiguous_legacy_source_id(sid, available_source_ids):
+                cands = find_legacy_source_id_candidates(sid, available_source_ids)
+                ambiguous[sid] = {"candidates": cands, "data": reason, "type": "exclusion"}
+
+    return ambiguous
+
+
+def partition_corrections_by_ambiguity(
+    corrections_doc: Dict[str, Any],
+    available_source_ids: Any,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Partitions corrections in `corrections_doc` into (applicable_corrections, pending_review_issues).
+    Ambiguous legacy corrections are separated into pending review issues and never applied or guessed.
+    """
+    if not corrections_doc or not isinstance(corrections_doc, dict):
+        return {}, []
+
+    applicable = dict(corrections_doc)
+    applicable_fields: Dict[str, Any] = {}
+    pending_issues: List[Dict[str, Any]] = []
+
+    f_corrs = corrections_doc.get("field_corrections", {})
+    if isinstance(f_corrs, dict):
+        for sid, val in f_corrs.items():
+            if is_ambiguous_legacy_source_id(sid, available_source_ids):
+                cands = find_legacy_source_id_candidates(sid, available_source_ids)
+                pending_issues.append({
+                    "source_id": sid,
+                    "raw_cells": cands,
+                    "rejection_reason": "ambiguous_legacy_correction_requires_review",
+                    "resolved": False,
+                    "provenance": "ambiguous_legacy_migration",
+                    "item": dict(val) if isinstance(val, dict) else {},
+                })
+            else:
+                applicable_fields[sid] = val
+    applicable["field_corrections"] = applicable_fields
+
+    applicable_excl: Dict[str, Any] = {}
+    excl = corrections_doc.get("excluded_rows", {})
+    if isinstance(excl, dict):
+        for sid, reason in excl.items():
+            if is_ambiguous_legacy_source_id(sid, available_source_ids):
+                cands = find_legacy_source_id_candidates(sid, available_source_ids)
+                pending_issues.append({
+                    "source_id": sid,
+                    "raw_cells": cands,
+                    "rejection_reason": "ambiguous_legacy_correction_requires_review",
+                    "resolved": False,
+                    "provenance": "ambiguous_legacy_migration",
+                    "item": {"reason": reason},
+                })
+            else:
+                applicable_excl[sid] = reason
+    applicable["excluded_rows"] = applicable_excl
+
+    return applicable, pending_issues
+
+
 # -----------------------------------------------------------------------------
 # Dynamic Service & Fingerprint Wiring
 # -----------------------------------------------------------------------------
@@ -418,8 +599,8 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
                 FileFingerprint._orig_from_path = orig_from_path  # type: ignore
 
                 @classmethod
-                def from_path_with_corrections(cls: Any, path: str) -> Any:
-                    fp = orig_from_path(path)
+                def from_path_with_corrections(cls: Any, path: str, *args: Any, **kwargs: Any) -> Any:
+                    fp = orig_from_path(path, *args, **kwargs)
                     rev = get_corrections_revision(path)
                     object.__setattr__(fp, "corrections_revision", rev)
                     return fp
@@ -446,6 +627,8 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
         orig_init = service_cls.__init__
         orig_apply_field = service_cls.apply_field_correction
         orig_apply_table = service_cls.apply_table_column_mapping
+        orig_exclude_row = getattr(service_cls, "exclude_row", None)
+        orig_revert_corr = getattr(service_cls, "revert_correction", None)
         orig_reset = service_cls.reset_corrections
         orig_get_refreshed = service_cls.get_refreshed_catalog_result
 
@@ -464,6 +647,11 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
                                 k: v for k, v in val.items()
                                 if k in ("item_name", "base_price", "discount_rate", "stock_status", "name", "price", "discount", "stock")
                             }
+                    # Load excluded rows
+                    excl = doc.get("excluded_rows", {})
+                    if isinstance(excl, dict) and hasattr(self, "_excluded_rows"):
+                        for sid, reason in excl.items():
+                            self._excluded_rows[str(sid)] = str(reason)
                     # Load table mappings
                     t_maps = doc.get("table_mappings", {})
                     for tid, val in t_maps.items():
@@ -474,19 +662,21 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
             except Exception as exc:
                 logger.warning(f"Error loading persisted corrections in service __init__: {exc}")
 
-        def apply_field_correction_with_persistence(
-            self: Any, source_id: str, field_updates: Dict[str, Any]
-        ) -> Any:
-            res = orig_apply_field(self, source_id, field_updates)
+        def _persist_service_state(self: Any, res: Any) -> Any:
             try:
-                doc = save_corrections(
-                    self.catalog_path,
-                    {
-                        "field_corrections": self._field_corrections,
-                        "table_mappings": self._table_mappings,
-                    },
-                )
-                self.corrections_revision = int(doc.get("corrections_revision", 1))
+                if not self._field_corrections and not getattr(self, "_excluded_rows", {}) and not self._table_mappings:
+                    reset_corrections(self.catalog_path)
+                    self.corrections_revision = 0
+                else:
+                    doc = save_corrections(
+                        self.catalog_path,
+                        {
+                            "field_corrections": self._field_corrections,
+                            "excluded_rows": getattr(self, "_excluded_rows", {}),
+                            "table_mappings": self._table_mappings,
+                        },
+                    )
+                    self.corrections_revision = int(doc.get("corrections_revision", 1))
                 if res and getattr(res, "fingerprint", None):
                     object.__setattr__(res.fingerprint, "corrections_revision", self.corrections_revision)
                 if res and getattr(res, "dataframe", None) is not None:
@@ -494,9 +684,8 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
                     if isinstance(meta, dict):
                         meta["corrections_revision"] = self.corrections_revision
             except Exception as exc:
-                logger.warning(f"Error persisting field correction: {exc}")
+                logger.warning(f"Error persisting catalog correction state: {exc}")
 
-            # Evict from in-memory cache
             try:
                 try:
                     from .controller import global_catalog_cache
@@ -506,38 +695,30 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
             except Exception:
                 pass
             return res
+
+        def apply_field_correction_with_persistence(
+            self: Any, source_id: str, field_updates: Dict[str, Any]
+        ) -> Any:
+            res = orig_apply_field(self, source_id, field_updates)
+            return _persist_service_state(self, res)
 
         def apply_table_column_mapping_with_persistence(
             self: Any, table_id: int, mapping: Dict[str, int]
         ) -> Any:
             res = orig_apply_table(self, table_id, mapping)
-            try:
-                doc = save_corrections(
-                    self.catalog_path,
-                    {
-                        "field_corrections": self._field_corrections,
-                        "table_mappings": self._table_mappings,
-                    },
-                )
-                self.corrections_revision = int(doc.get("corrections_revision", 1))
-                if res and getattr(res, "fingerprint", None):
-                    object.__setattr__(res.fingerprint, "corrections_revision", self.corrections_revision)
-                if res and getattr(res, "dataframe", None) is not None:
-                    meta = res.dataframe.attrs.get("catalog_import")
-                    if isinstance(meta, dict):
-                        meta["corrections_revision"] = self.corrections_revision
-            except Exception as exc:
-                logger.warning(f"Error persisting table column mapping: {exc}")
+            return _persist_service_state(self, res)
 
-            try:
-                try:
-                    from .controller import global_catalog_cache
-                except ImportError:
-                    from controller import global_catalog_cache
-                global_catalog_cache.remove(self.catalog_path)
-            except Exception:
-                pass
-            return res
+        def exclude_row_with_persistence(
+            self: Any, source_id: str, reason: str = "manual_exclusion"
+        ) -> Any:
+            res = orig_exclude_row(self, source_id, reason=reason)
+            return _persist_service_state(self, res)
+
+        def revert_correction_with_persistence(
+            self: Any, source_id: str
+        ) -> Any:
+            res = orig_revert_corr(self, source_id)
+            return _persist_service_state(self, res)
 
         def reset_corrections_with_persistence(self: Any) -> Any:
             try:
@@ -576,6 +757,10 @@ def wire_catalog_correction_service(service_cls: Optional[Any] = None) -> None:
         service_cls.__init__ = init_with_persistence  # type: ignore
         service_cls.apply_field_correction = apply_field_correction_with_persistence  # type: ignore
         service_cls.apply_table_column_mapping = apply_table_column_mapping_with_persistence  # type: ignore
+        if orig_exclude_row is not None:
+            service_cls.exclude_row = exclude_row_with_persistence  # type: ignore
+        if orig_revert_corr is not None:
+            service_cls.revert_correction = revert_correction_with_persistence  # type: ignore
         service_cls.reset_corrections = reset_corrections_with_persistence  # type: ignore
         service_cls.get_refreshed_catalog_result = get_refreshed_with_persistence  # type: ignore
         service_cls._persistence_wired = True  # type: ignore

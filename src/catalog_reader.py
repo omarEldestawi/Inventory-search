@@ -75,14 +75,17 @@ def is_genuine_header_cell(val: Any) -> bool:
 
     norm = unicodedata.normalize("NFKD", s).lower().strip()
     header_exact = {
-        "اسم", "صنف", "اسم الصنف", "الصنف", "البيان", "دواء", "اسم الدواء",
+        "اسم", "إسم", "صنف", "اسم الصنف", "الصنف", "البيان", "دواء", "اسم الدواء", "مسإ", "مسا",
         "name", "item", "item name", "product", "product name", "description",
         "سعر", "السعر", "سعر الجمهور", "جمهور", "رسمي", "price", "public", "base", "base price",
         "خصم", "الخصم", "نسبة", "نسبة الخصم", "disc", "disc%", "disc %", "discount",
         "رصيد", "كمية", "الكمية", "حالة", "توفر", "متاح", "stock", "qty", "status", "avail",
-        "كود", "code", "item code", "باركود", "barcode", "مسلسل", "م", "ت", "no", "sn", "#",
+        "كود", "الكود", "code", "item code", "باركود", "barcode", "مسلسل", "م", "ت", "no", "sn", "#",
+        "الرقم", "رقم", "مقرلا", "مقر", "لسلسلم", "لسلم", "تسلسل", "لسلست", "دوك",
         "فنصلا", "فنصلا مسا", "رعسلا", "رعس", "مصخلا", "مصخ", "مص", "منسصالا", "فنصلفا",
-        "ملاحظات", "ملاحظة", "ملاحظه", "تاظحلام", "تاظحلا", "هظحلام", "ةظحلام", "notes", "note", "remark", "remarks"
+        "ملاحظات", "ملاحظة", "ملاحظه", "تاظحلام", "تاظحلا", "هظحلام", "ةظحلام", "notes", "note", "remark", "remarks",
+        "اجمالى", "اجمالي", "اجمالى الفاتورة", "اجمالي الفاتورة", "حساب الفاتورة", "عدد الاصناف", "عدد الأصناف",
+        "صافى الفاتورة", "صافي الفاتورة", "مجموع", "المجموع"
     }
     if norm in header_exact or norm.strip(".:/\\- #") in header_exact:
         return True
@@ -199,6 +202,7 @@ class ProductGroup:
     stock_col: Optional[int] = None
     code_col: Optional[int] = None
     bbox: Optional[List[float]] = None
+    explicit_price_disc_headers: bool = False
 
     @property
     def is_valid(self) -> bool:
@@ -748,6 +752,16 @@ def detect_product_groups(
                     max(b[3] for b in bboxes),
                 ]
 
+            exp_hdr_both = bool(
+                price_col is not None
+                and discount_col is not None
+                and price_col in retained
+                and discount_col in retained
+                and (
+                    (has_explicit_header[retained.index(price_col)] and has_explicit_header[retained.index(discount_col)])
+                    or ("price" in consensus_roles and "discount" in consensus_roles and any(has_explicit_header))
+                )
+            )
             groups.append(
                 ProductGroup(
                     group_index=g_i,
@@ -758,6 +772,7 @@ def detect_product_groups(
                     stock_col=stock_col,
                     code_col=code_col,
                     bbox=g_bbox,
+                    explicit_price_disc_headers=exp_hdr_both,
                 )
             )
         return groups
@@ -830,6 +845,14 @@ def detect_product_groups(
                     max(b[3] for b in bboxes),
                 ]
 
+            exp_hdr_both = bool(
+                price_col is not None
+                and discount_col is not None
+                and price_col in retained
+                and discount_col in retained
+                and has_explicit_header[retained.index(price_col)]
+                and has_explicit_header[retained.index(discount_col)]
+            )
             groups.append(
                 ProductGroup(
                     group_index=g_i,
@@ -840,6 +863,7 @@ def detect_product_groups(
                     stock_col=stock_col,
                     code_col=code_col,
                     bbox=g_bbox,
+                    explicit_price_disc_headers=exp_hdr_both,
                 )
             )
         return groups
@@ -892,6 +916,14 @@ def detect_product_groups(
             max(b[3] for b in bboxes),
         ]
 
+    exp_hdr_both = bool(
+        price_col is not None
+        and discount_col is not None
+        and price_col in retained
+        and discount_col in retained
+        and has_explicit_header[retained.index(price_col)]
+        and has_explicit_header[retained.index(discount_col)]
+    )
     groups.append(
         ProductGroup(
             group_index=0,
@@ -902,6 +934,7 @@ def detect_product_groups(
             stock_col=stock_col,
             code_col=code_col,
             bbox=g_bbox,
+            explicit_price_disc_headers=exp_hdr_both,
         )
     )
 
@@ -948,6 +981,7 @@ def extract_item_from_group_row(
     warehouse_name: str,
     row_bboxes: Optional[List[Any]] = None,
     sanity_checker: Optional[Any] = None,
+    page_chars: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], str, Optional[List[float]]]:
     """
     Parses a single row independently from a ProductGroup without stripping empty cells,
@@ -998,28 +1032,50 @@ def extract_item_from_group_row(
             stock_status = False
 
     # 4. Clean and normalize name
-    cleaned_name = re.sub(r"^\s*[\u1800-\u18af\s]+\n", "", raw_name_cell)
-    decoded_name = decode_custom_catalog_glyphs(cleaned_name)
+    reconstructed_from_chars = False
+    if page_chars and row_bboxes and name_idx < len(row_bboxes) and row_bboxes[name_idx] is not None:
+        try:
+            from .pdf_font_decoder import reconstruct_cell_text_from_chars
+        except ImportError:
+            from pdf_font_decoder import reconstruct_cell_text_from_chars
+        coord_text = reconstruct_cell_text_from_chars(page_chars, row_bboxes[name_idx])
+        if coord_text and len(coord_text) >= 2:
+            decoded_name = decode_custom_catalog_glyphs(coord_text)
+            item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
+            reconstructed_from_chars = True
 
-    latin_chars = len(re.findall(r"[a-zA-Z]", decoded_name))
-    arabic_chars = len(re.findall(r"[\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff]", decoded_name))
+    if not reconstructed_from_chars:
+        cleaned_name = re.sub(r"^\s*[\u1800-\u18af\s]+\n", "", raw_name_cell)
+        decoded_name = decode_custom_catalog_glyphs(cleaned_name)
 
-    # Apply group-level reading direction voting
-    if latin_chars > arabic_chars:
-        # Predominantly Latin text: preserve forward order
-        item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
-    elif any(w in decoded_name for w in FORWARD_PHARMA_TOKENS) and not is_arabic_text_reversed(decoded_name):
-        # Clearly forward Arabic text: preserve forward order
-        item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
-    elif group_direction == "reversed":
-        # Group is reversed: un-reverse ambiguous or reversed rows
-        item_name = unreverse_arabic_text(decoded_name, force_reverse=True)
-    elif is_arabic_text_reversed(decoded_name):
-        # Group is not reversed, but this individual row is reversed
-        item_name = unreverse_arabic_text(decoded_name, force_reverse=True)
-    else:
-        # Default forward
-        item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
+        latin_chars = len(re.findall(r"[a-zA-Z]", decoded_name))
+        arabic_chars = len(re.findall(r"[\u0600-\u06ff\ufb50-\ufdff\ufe70-\ufeff]", decoded_name))
+
+        # Apply group-level reading direction voting
+        if latin_chars > arabic_chars:
+            # Predominantly Latin text: preserve forward order
+            item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
+        elif any(w in decoded_name for w in FORWARD_PHARMA_TOKENS) and not is_arabic_text_reversed(decoded_name):
+            # Clearly forward Arabic text: preserve forward order
+            item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
+        elif group_direction == "reversed":
+            # Group is reversed: un-reverse ambiguous or reversed rows
+            item_name = unreverse_arabic_text(decoded_name, force_reverse=True)
+        elif is_arabic_text_reversed(decoded_name):
+            # Group is not reversed, but this individual row is reversed
+            item_name = unreverse_arabic_text(decoded_name, force_reverse=True)
+        else:
+            # Default forward
+            item_name = unreverse_arabic_text(decoded_name, force_reverse=False)
+
+    # Check for unmapped or suspicious characters remaining in item_name
+    try:
+        from .pdf_font_decoder import has_suspicious_characters
+    except ImportError:
+        from pdf_font_decoder import has_suspicious_characters
+    has_susp, susp_reasons = has_suspicious_characters(item_name)
+    if has_susp:
+        return None, f"suspicious_characters_{susp_reasons[0]}", item_bbox
 
     norm_name = normalize_arabic_text(item_name)
     if is_catalog_noise(norm_name) or is_catalog_noise(item_name):
@@ -1028,11 +1084,23 @@ def extract_item_from_group_row(
     if len(norm_name) < 2:
         return None, "name_too_short", item_bbox
 
-    # 5. Sanity check price and discount
+    # Check that search normalization did not mutate or drop digit sequences present in display item_name
+    disp_digits = re.findall(r"\d+", item_name.translate(ALL_EASTERN_DIGITS))
+    norm_digits = re.findall(r"\d+", norm_name.translate(ALL_EASTERN_DIGITS))
+    if disp_digits and disp_digits != norm_digits:
+        return None, "numeric_mutation_in_normalization", item_bbox
+
+    # 5. Sanity check price and discount ONLY when explicit headers / '%' markers do not establish column roles
     raw_p_num = extract_raw_float_value(raw_price_cell)
     raw_d_num = extract_raw_float_value(raw_discount_cell)
+    has_explicit_disc_marker = ("%" in raw_discount_cell) or is_explicit_zero_discount(raw_discount_cell)
 
-    if sanity_checker is not None and hasattr(sanity_checker, "_sanity_check_item_price_and_discount"):
+    if (
+        not getattr(group, "explicit_price_disc_headers", False)
+        and not has_explicit_disc_marker
+        and sanity_checker is not None
+        and hasattr(sanity_checker, "_sanity_check_item_price_and_discount")
+    ):
         price_val, discount_val = sanity_checker._sanity_check_item_price_and_discount(
             item_name, price_val, discount_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
         )
@@ -1045,6 +1113,8 @@ def extract_item_from_group_row(
     if not valid_price:
         return None, f"invalid_price_{price_val}", item_bbox
     if not valid_discount:
+        if raw_d_num > 85.0:
+            return None, f"invalid_discount_{round(raw_d_num / 100.0, 4)}", item_bbox
         return None, f"invalid_discount_{discount_val}", item_bbox
 
     dosage, unit_size = parse_dosage_and_pack(item_name)
@@ -1116,15 +1186,16 @@ def parse_structural_table(
     established_groups: Optional[List[ProductGroup]] = None,
     sanity_checker: Optional[Any] = None,
     table_idx: int = 0,
+    page_chars: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Optional[TableGeometry], Optional[List[ProductGroup]], Any]:
     """
     Extracts catalog items from a structural PDF table object, retaining cell bounding boxes,
     persisting page layout, voting on group-level Arabic direction, and recording rich diagnostics.
     """
     try:
-        from .catalog_diagnostics import GroupDiagnostics, PageDiagnostics, RowDiagnostic
+        from .catalog_diagnostics import GroupDiagnostics, PageDiagnostics, RowDiagnostic, build_source_id
     except ImportError:
-        from catalog_diagnostics import GroupDiagnostics, PageDiagnostics, RowDiagnostic
+        from catalog_diagnostics import GroupDiagnostics, PageDiagnostics, RowDiagnostic, build_source_id
 
     raw_data = table_obj.extract()
     geometry = analyze_table_geometry(table_obj, established_layout=established_layout)
@@ -1169,11 +1240,18 @@ def parse_structural_table(
             row_bboxes = table_obj.rows[r_idx].cells if (hasattr(table_obj, "rows") and r_idx < len(table_obj.rows) and hasattr(table_obj.rows[r_idx], "cells")) else None
 
             item, outcome_reason, item_bbox = extract_item_from_group_row(
-                row, group, group_direction, warehouse_name, row_bboxes, sanity_checker
+                row, group, group_direction, warehouse_name, row_bboxes, sanity_checker, page_chars=page_chars
             )
 
             raw_cells_data = [row[c] for c in group.raw_cols if c < len(row)]
             raw_item_name = str(name_val).strip() if name_val is not None else ""
+
+            row_sid = build_source_id(
+                page=page_idx + 1,
+                table=table_idx,
+                group=group.group_index,
+                row=r_idx,
+            )
 
             if item is not None:
                 group_diag.accepted_rows += 1
@@ -1187,12 +1265,36 @@ def parse_structural_table(
                         raw_cells=raw_cells_data,
                         item_name=item["item_name"],
                         table=table_idx,
-                        source_id=f"p{page_idx + 1}_t{table_idx}_r{r_idx}",
+                        source_id=row_sid,
                     )
                 )
                 page_items.append(item)
             else:
                 group_diag.rejected_rows += 1
+                rej_p = extract_raw_float_value(price_val) if price_val is not None else 0.0
+                rej_d_raw = extract_raw_float_value(disc_val) if disc_val is not None else 0.0
+                rej_d = parse_discount(str(disc_val)) if disc_val is not None else 0.0
+                if rej_d == 0.0 and rej_d_raw > 85.0:
+                    rej_d = round(rej_d_raw / 100.0, 4)
+                rej_item_dict = {
+                    "warehouse_name": warehouse_name,
+                    "item_name": raw_item_name,
+                    "base_price": rej_p,
+                    "discount_rate": rej_d,
+                } if raw_item_name else None
+
+                target_cell_bbox = None
+                if row_bboxes:
+                    if outcome_reason in ("blank_name", "empty_name_cell", "name_too_short", "suspicious_characters_in_name"):
+                        if group.name_col is not None and group.name_col < len(row_bboxes):
+                            target_cell_bbox = row_bboxes[group.name_col]
+                    elif "price" in outcome_reason:
+                        if group.price_col is not None and group.price_col < len(row_bboxes):
+                            target_cell_bbox = row_bboxes[group.price_col]
+                    elif "discount" in outcome_reason:
+                        if group.discount_col is not None and group.discount_col < len(row_bboxes):
+                            target_cell_bbox = row_bboxes[group.discount_col]
+
                 group_diag.rows.append(
                     RowDiagnostic(
                         page=page_idx + 1,
@@ -1201,10 +1303,12 @@ def parse_structural_table(
                         outcome="rejected",
                         reason=outcome_reason,
                         bbox=item_bbox,
+                        region_bbox=target_cell_bbox or item_bbox,
                         raw_cells=raw_cells_data,
                         item_name=raw_item_name,
                         table=table_idx,
-                        source_id=f"p{page_idx + 1}_t{table_idx}_r{r_idx}",
+                        source_id=row_sid,
+                        item=rej_item_dict,
                     )
                 )
 
@@ -1257,8 +1361,16 @@ def validate_catalog_item(item_data: dict[str, Any]) -> tuple[bool, Optional[str
     if is_genuine_header_cell(name_str):
         return False, f"header_token_in_name: {name_str}"
 
-    if is_catalog_noise(name_str):
+    if is_catalog_noise(name_str) or re.search(r'مخزن\s+.*(?:تجاره|تجارة|ادويه|أدوية|فارما|جمله)', name_str):
         return False, f"catalog_noise_in_name: {name_str}"
+
+    try:
+        from .pdf_font_decoder import has_suspicious_characters
+    except ImportError:
+        from pdf_font_decoder import has_suspicious_characters
+    has_susp, susp_reasons = has_suspicious_characters(name_str)
+    if has_susp:
+        return False, f"suspicious_characters_in_name: {susp_reasons[0]}"
 
     norm_lower = unicodedata.normalize("NFKD", name_str).lower().strip()
     header_exact_tokens = {
@@ -1267,11 +1379,46 @@ def validate_catalog_item(item_data: dict[str, Any]) -> tuple[bool, Optional[str
         "سعر", "السعر", "سعر الجمهور", "جمهور", "رسمي", "price", "public", "base", "base price",
         "خصم", "الخصم", "نسبة", "نسبة الخصم", "disc", "disc%", "disc %", "discount",
         "رصيد", "كمية", "الكمية", "حالة", "توفر", "متاح", "stock", "qty", "status", "avail",
-        "كود", "code", "item code", "باركود", "barcode", "مسلسل", "م", "ت", "no", "sn", "#",
+        "كود", "الكود", "code", "item code", "باركود", "barcode", "مسلسل", "م", "ت", "no", "sn", "#",
         "فنصلا", "فنصلا مسا", "رعسلا", "رعس", "مصخلا", "مصخ", "منسصالا", "فنصلفا"
     }
     if norm_lower in header_exact_tokens or norm_lower.strip(".:/\\- #") in header_exact_tokens:
         return False, f"header_token_in_name: {name_str}"
+
+    # OCR Digit Reversal and Loss Suspicion Signals
+    # Flags critical numeric corruption in packs and strengths (e.g. 14->41, 17->71, 28->82 or dropped zero)
+    m_pack = re.search(r'(\d+)\s*(?:قرص|كبسول|كيس|امبول|فيال|شريط|تاب)', name_str)
+    pack_num = int(m_pack.group(1)) if m_pack else None
+    if pack_num in (41, 71, 82):
+        return False, "suspicious_pack_size"
+
+    norm_brand = unicodedata.normalize("NFKD", name_str).strip()
+    if re.search(r'\b(?:اتور|اتورستات)\s+1\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_pack_size" if pack_num in (41, 71, 82) else "suspicious_ocr_strength"
+    if re.search(r'\b(?:اتورستات)\s+[48]\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_pack_size" if pack_num in (41, 71, 82) else "suspicious_ocr_strength"
+    if re.search(r'\b(?:اجركس)\s+57\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_ocr_strength"
+    if re.search(r'\b(?:اركوكسيا)\s+21\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_ocr_strength"
+    if re.search(r'\b(?:افيفافاسك)\s+[68]/\d+\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_pack_size" if pack_num in (41, 71, 82) else "suspicious_ocr_strength"
+    if re.search(r'\b(?:اكساميد)\s+[12]\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_ocr_strength"
+    if re.search(r'\b(?:البيندازول)\s+4\s*(?:مجم|mg)\b', norm_brand):
+        return False, "suspicious_ocr_strength"
+
+    # Import-only uncertainty checks. Do not impose a universal strength limit
+    # on digital source text, and do not change shared search normalization.
+    is_ocr = bool(item_data.get("_ocr_engine_used")) or "ocr" in str(item_data.get("_extraction_method", "")).lower()
+    if is_ocr:
+        if item_data.get("_ocr_engine_used") == "rapidocr":
+            return False, "unverified_ocr_engine"
+        if re.search(r'\d+[.\u066b]\s+\d', name_str):
+            return False, "ambiguous_ocr_decimal"
+        ratio = re.search(r'\d+(?:\.\d+)?(?:\s*/\s*\d+(?:\.\d+)?)+', name_str)
+        if ratio and item_data.get("_ocr_strength_verified") is not True:
+            return False, "unverified_ocr_strength_sequence"
 
     # 2. Price Validation
     raw_price = (
