@@ -65,6 +65,7 @@ try:
         is_in_installation_dir,
     )
     from src.updater import AutoUpdateManager
+    from src.manual_search_window import ManualSearchWindow
 except ImportError:
     from controller import (
         classify_files,
@@ -99,6 +100,7 @@ except ImportError:
         is_in_installation_dir,
     )
     from updater import AutoUpdateManager
+    from manual_search_window import ManualSearchWindow
 
 
 logger = logging.getLogger("PharmaGUI")
@@ -1897,6 +1899,10 @@ class PharmaProcurementApp(ctk.CTk):
         self.last_kpi_data: Optional[dict] = None
         self._file_card_widgets: Dict[str, ctk.CTkFrame] = {}
 
+        # Milestone 2: Manual Search Window & Catalog Generation Tracker
+        self._manual_search_window: Optional[ManualSearchWindow] = None
+        self._catalog_generation_id: int = 0
+
         # Default Output Destination: Guaranteed safe user-writable directory outside installation path
         default_out = get_default_output_dir()
         self.output_dir_var = tk.StringVar(value=default_out)
@@ -1978,7 +1984,7 @@ class PharmaProcurementApp(ctk.CTk):
         """Builds left sidebar with branding, destination picker, run button, and theme switcher."""
         self.sidebar_frame = ctk.CTkFrame(self, corner_radius=0, width=320)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
-        self.sidebar_frame.grid_rowconfigure(7, weight=1)  # Push theme toggle to bottom
+        self.sidebar_frame.grid_rowconfigure(8, weight=1)  # Push theme toggle to bottom
 
         # Branding Header
         self.brand_title = ctk.CTkLabel(
@@ -2048,7 +2054,20 @@ class PharmaProcurementApp(ctk.CTk):
         )
         self.run_button.grid(row=6, column=0, padx=20, pady=(0, 8), sticky="ew")
 
-        # Validation Guidance Label
+        # Milestone 2: Sidebar Manual Search Launcher (Row 7)
+        self.sidebar_search_btn = ctk.CTkButton(
+            self.sidebar_frame,
+            text="🔍 بحث يدوي للأدوية\nManual Search",
+            font=get_font(12, "bold"),
+            height=42,
+            fg_color=COLOR_CATALOG_BADGE,
+            hover_color="#0270A5",
+            text_color="white",
+            command=self._open_manual_search_window
+        )
+        self.sidebar_search_btn.grid(row=7, column=0, padx=20, pady=(0, 8), sticky="ew")
+
+        # Validation Guidance Label (Shifted to Row 8)
         self.validation_label = ctk.CTkLabel(
             self.sidebar_frame,
             text="",
@@ -2057,11 +2076,11 @@ class PharmaProcurementApp(ctk.CTk):
             wraplength=280,
             justify="center"
         )
-        self.validation_label.grid(row=7, column=0, padx=20, pady=(0, 10), sticky="n")
+        self.validation_label.grid(row=8, column=0, padx=20, pady=(0, 10), sticky="n")
 
         # Theme Selector & Version Tag (Bottom of sidebar)
         theme_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
-        theme_frame.grid(row=8, column=0, padx=20, pady=(10, 15), sticky="sew")
+        theme_frame.grid(row=9, column=0, padx=20, pady=(10, 15), sticky="sew")
         theme_frame.grid_columnconfigure(1, weight=1)
 
         theme_label = ctk.CTkLabel(
@@ -2092,7 +2111,7 @@ class PharmaProcurementApp(ctk.CTk):
             height=32,
             command=self._open_update_wizard
         )
-        self.update_btn.grid(row=9, column=0, padx=20, pady=(0, 8), sticky="ew")
+        self.update_btn.grid(row=10, column=0, padx=20, pady=(0, 8), sticky="ew")
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
@@ -2101,7 +2120,7 @@ class PharmaProcurementApp(ctk.CTk):
             text_color=("gray50", "gray50"),
             anchor="center"
         )
-        app_info_label.grid(row=10, column=0, padx=20, pady=(0, 15), sticky="ew")
+        app_info_label.grid(row=11, column=0, padx=20, pady=(0, 15), sticky="ew")
 
     # -------------------------------------------------------------------------
     # Right Main Panel
@@ -2129,7 +2148,7 @@ class PharmaProcurementApp(ctk.CTk):
         """Builds multi-file selection toolbar with action buttons and badge counters."""
         self.toolbar_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.toolbar_frame.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        self.toolbar_frame.grid_columnconfigure(4, weight=1)
+        self.toolbar_frame.grid_columnconfigure(5, weight=1)
 
         self.add_files_btn = ctk.CTkButton(
             self.toolbar_frame,
@@ -2166,6 +2185,19 @@ class PharmaProcurementApp(ctk.CTk):
         )
         self.clear_all_btn.grid(row=0, column=2, padx=(0, 8), sticky="w")
 
+        # Milestone 2: Manual Search Toolbar Launcher (Row 0, Col 3)
+        self.manual_search_btn = ctk.CTkButton(
+            self.toolbar_frame,
+            text="🔍 بحث يدوي / Manual Search",
+            font=get_font(12, "bold"),
+            width=160,
+            fg_color=COLOR_CATALOG_BADGE,
+            hover_color="#0270A5",
+            text_color="white",
+            command=self._open_manual_search_window
+        )
+        self.manual_search_btn.grid(row=0, column=3, padx=(0, 8), sticky="w")
+
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
             text="🔄 التحديثات / Updates (v2.7)",
@@ -2176,7 +2208,7 @@ class PharmaProcurementApp(ctk.CTk):
             text_color=("black", "white"),
             command=self._open_update_wizard
         )
-        self.top_update_btn.grid(row=0, column=3, padx=(0, 8), sticky="w")
+        self.top_update_btn.grid(row=0, column=4, padx=(0, 8), sticky="w")
 
         # Hidden-by-default "Restart & Update" Pill Button (appears when background download finishes)
         self.restart_update_btn = ctk.CTkButton(
@@ -2197,7 +2229,7 @@ class PharmaProcurementApp(ctk.CTk):
             font=get_font(12, "bold"),
             anchor="e"
         )
-        self.counter_badge.grid(row=0, column=5, sticky="e")
+        self.counter_badge.grid(row=0, column=6, sticky="e")
 
     def _build_file_list(self):
         """Builds scrollable container displaying selected files with badges and overrides."""
@@ -2409,6 +2441,7 @@ class PharmaProcurementApp(ctk.CTk):
         """Adds files to model and refreshes the scrollable list."""
         added, dups = self.file_model.add_paths(file_paths)
         if added > 0:
+            self._bump_catalog_generation()
             self._render_file_list()
             self._update_ui_state()
             try:
@@ -2429,12 +2462,47 @@ class PharmaProcurementApp(ctk.CTk):
                     f.diagnostic_status = updated_res.diagnostics.status
                     f.diagnostic_summary = updated_res.diagnostics.summary()
                     break
+            self._bump_catalog_generation()
             self._update_file_card_badge(norm_path)
             self._render_file_list()
             self._update_ui_state()
 
         review_win = CatalogReviewWindow(self, norm_path, on_done_callback=_on_review_done)
         return review_win
+
+    def _open_manual_search_window(self) -> ManualSearchWindow:
+        """Opens or focuses the single reusable, non-blocking Manual Search window."""
+        if self._manual_search_window is not None:
+            try:
+                if self._manual_search_window.winfo_exists():
+                    self._manual_search_window.deiconify()
+                    self._manual_search_window.lift()
+                    self._manual_search_window.focus_force()
+                    return self._manual_search_window
+            except Exception:
+                self._manual_search_window = None
+
+        self._manual_search_window = ManualSearchWindow(
+            parent=self,
+            file_model=self.file_model,
+            catalog_generation_id=self._catalog_generation_id,
+            on_close_callback=self._on_manual_search_closed
+        )
+        return self._manual_search_window
+
+    def _on_manual_search_closed(self):
+        """Clears the reference when the window is closed."""
+        self._manual_search_window = None
+
+    def _bump_catalog_generation(self):
+        """Increments catalog generation ID and notifies the manual search window if open."""
+        self._catalog_generation_id += 1
+        if hasattr(self, "_manual_search_window") and self._manual_search_window is not None:
+            try:
+                if self._manual_search_window.winfo_exists():
+                    self._manual_search_window.notify_catalogs_changed(self._catalog_generation_id)
+            except Exception as e:
+                logger.debug(f"Failed to notify manual search window: {e}")
 
     def _async_inspect_counts(self, file_paths: List[str], refresh: bool = False):
         """Inspects medication counts and completeness diagnostics in catalogs asynchronously without freezing GUI."""
@@ -2472,6 +2540,7 @@ class PharmaProcurementApp(ctk.CTk):
                 f.diagnostic_summary = ""
                 f.acknowledged_token = None
                 break
+        self._bump_catalog_generation()
         self._update_file_card_badge(norm_path)
         self._async_inspect_counts([norm_path], refresh=True)
 
@@ -2601,6 +2670,7 @@ class PharmaProcurementApp(ctk.CTk):
                             break
                     self._update_file_card_badge(norm_path)
                     self._render_file_list()
+                    self._bump_catalog_generation()
                 elif m_type == "INSPECT_DONE":
                     counts = msg[1]
                     for f in self.file_model.files:
@@ -2639,6 +2709,7 @@ class PharmaProcurementApp(ctk.CTk):
                     self._ocr_cancel_events.pop(path, None)
                     self._update_file_card_badge(path)
                     self._render_file_list()
+                    self._bump_catalog_generation()
                     self.status_label.configure(
                         text=f"✓ اكتمل مسح الكتالوج بـ OCR: تم التعرف على {count} صنف بنجاح! / OCR completed ({count} items)"
                     )
@@ -2677,6 +2748,7 @@ class PharmaProcurementApp(ctk.CTk):
         """Clears all files from model, cache, and GUI."""
         global_catalog_cache.clear()
         self.file_model.clear()
+        self._bump_catalog_generation()
         self._render_file_list()
         self._update_ui_state()
 
@@ -2684,6 +2756,7 @@ class PharmaProcurementApp(ctk.CTk):
         """Removes an individual file by path and invalidates its cached result."""
         global_catalog_cache.remove(path)
         self.file_model.remove_path(path)
+        self._bump_catalog_generation()
         self._render_file_list()
         self._update_ui_state()
 
@@ -2716,6 +2789,7 @@ class PharmaProcurementApp(ctk.CTk):
                 break
 
         self._file_card_widgets.pop(old_norm, None)
+        self._bump_catalog_generation()
         self._async_inspect_counts([new_norm])
         self._render_file_list()
         self._update_ui_state()
@@ -2733,6 +2807,7 @@ class PharmaProcurementApp(ctk.CTk):
         else:
             new_category = "Catalog"
         self.file_model.set_override(path, new_category)
+        self._bump_catalog_generation()
         self._render_file_list()
         self._update_ui_state()
 

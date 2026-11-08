@@ -9,9 +9,10 @@ import os
 import re
 import datetime
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple, Union
 import pandas as pd
 from .normalizer import normalize_arabic_text, parse_discount, parse_dosage_and_pack, pre_tokenize_pharma_string
+from .order_parser import is_old_price_item, ExcludedItem
 
 logger = logging.getLogger("ExcelParser")
 
@@ -275,10 +276,16 @@ def parse_quantity_value(val: Any) -> int:
         return 1
 
 
-def _parse_single_sheet_df(raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+def _parse_single_sheet_df(
+    raw_df: pd.DataFrame,
+    source_file: str = "",
+    sheet_name: str = "",
+    exclusions: Optional[List[ExcludedItem]] = None,
+) -> Optional[pd.DataFrame]:
     """
     Parses a single sheet DataFrame: detects header, maps columns,
-    filters metadata and totals, and extracts items and uninflated quantities.
+    filters metadata and totals, excludes old-price rows, and extracts
+    items and uninflated quantities.
     """
     if raw_df is None or raw_df.empty or len(raw_df) < 2:
         return None
@@ -324,15 +331,31 @@ def _parse_single_sheet_df(raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
     df = df[df['requested_item'] != '']
     df = df[~df['requested_item'].str.upper().isin({'AE', 'NA', 'N/A', 'NONE', 'NULL', 'N\\A'})]
 
-    # Filter out metadata, section dividers, totals, reps, and customer names
+    # Filter out metadata, section dividers, totals, reps, customer names, and old price items
     valid_mask = []
     for idx, row in df.iterrows():
         item_val = row['requested_item']
         row_vals = row.values
+        # Evaluate raw medicine name using shared canonical predicate early
+        if is_old_price_item(item_val):
+            if exclusions is not None:
+                qty_raw = row['quantity'] if 'quantity' in df.columns else 1
+                qty_val = parse_quantity_value(qty_raw)
+                row_idx = int(idx) + 1 if isinstance(idx, (int, float)) else 0
+                exclusions.append(ExcludedItem(
+                    reason='old_price_suffix',
+                    source_file=source_file,
+                    sheet_name=sheet_name,
+                    row_index=row_idx,
+                    raw_name=str(item_val),
+                    quantity=float(qty_val),
+                ))
+            valid_mask.append(False)
+            continue
         if is_metadata_or_header(item_val, row_vals):
             valid_mask.append(False)
-        else:
-            valid_mask.append(True)
+            continue
+        valid_mask.append(True)
 
     df = df[valid_mask].copy()
     if df.empty:
@@ -350,29 +373,37 @@ def _parse_single_sheet_df(raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
     return df[res_cols]
 
 
-def load_purchase_order(file_path: str, drop_zero_qty: bool = False) -> pd.DataFrame:
+def load_purchase_order(
+    file_path: str,
+    drop_zero_qty: bool = False,
+    return_exclusions: bool = False,
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, List[ExcludedItem]]]:
     """
     Load requested buying list from Excel or CSV.
     Detects header row automatically using scored multi-signal detection,
     scans all workbook sheets, filters out metadata rows (sales reps, warehouses, totals, categories),
-    deduplicates duplicate items, and aggregates (sums) requested quantities without inflation.
+    excludes old-price items ('س ق' / 'ق س'), deduplicates duplicate items, and aggregates
+    (sums) requested quantities without inflation.
     
     Guarantees:
     - Rejects metadata rows (customer names, sales reps, dates, warehouse identifiers, totals).
+    - Excludes old-price rows ending in 'س ق' or 'ق س'.
     - Preserves explicit 0 quantity without inflation (explicit 0 remains 0).
     - Aggregates quantities correctly across branches/sub-tables and multi-sheet workbooks.
-    - Returns exactly 202 distinct items for 0911.xlsx (sum=5553) and 743 items for 0912.xlsx (sum=21676).
+    - Preserves verbatim requested_item deduplication and attaches exclusions to attrs.
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Purchase order file not found: {file_path}")
 
     sheet_dfs = []
+    all_exclusions: List[ExcludedItem] = []
     if file_path.lower().endswith('.csv'):
         try:
             raw_df = pd.read_csv(file_path, encoding='utf-8-sig', header=None)
         except Exception:
             raw_df = pd.read_csv(file_path, encoding='cp1256', header=None)
-        parsed = _parse_single_sheet_df(raw_df)
+        sname = "Sheet1"
+        parsed = _parse_single_sheet_df(raw_df, source_file=file_path, sheet_name=sname, exclusions=all_exclusions)
         if parsed is not None and not parsed.empty:
             sheet_dfs.append(parsed)
     else:
@@ -381,7 +412,7 @@ def load_purchase_order(file_path: str, drop_zero_qty: bool = False) -> pd.DataF
             for sname in excel_file.sheet_names:
                 try:
                     sheet_raw = pd.read_excel(excel_file, sheet_name=sname, header=None)
-                    parsed = _parse_single_sheet_df(sheet_raw)
+                    parsed = _parse_single_sheet_df(sheet_raw, source_file=file_path, sheet_name=sname, exclusions=all_exclusions)
                     if parsed is not None and not parsed.empty:
                         sheet_dfs.append(parsed)
                 except Exception as e:
@@ -389,7 +420,11 @@ def load_purchase_order(file_path: str, drop_zero_qty: bool = False) -> pd.DataF
 
     std_cols = ['requested_item', 'canonical_item', 'normalized_name', 'dosage', 'unit_size', 'quantity']
     if not sheet_dfs:
-        return pd.DataFrame(columns=std_cols)
+        empty_df = pd.DataFrame(columns=std_cols)
+        empty_df.attrs['exclusions'] = all_exclusions
+        if return_exclusions:
+            return empty_df, all_exclusions
+        return empty_df
 
     df = pd.concat(sheet_dfs, ignore_index=True)
 
@@ -422,7 +457,12 @@ def load_purchase_order(file_path: str, drop_zero_qty: bool = False) -> pd.DataF
     else:
         df_dedup = df_dedup[df_dedup['quantity'] >= 0]
 
-    return df_dedup[['requested_item', 'canonical_item', 'normalized_name', 'dosage', 'unit_size', 'quantity']]
+    res_df = df_dedup[['requested_item', 'canonical_item', 'normalized_name', 'dosage', 'unit_size', 'quantity']].copy()
+    res_df.attrs['exclusions'] = all_exclusions
+
+    if return_exclusions:
+        return res_df, all_exclusions
+    return res_df
 
 
 # Contract alias for purchase order parsing

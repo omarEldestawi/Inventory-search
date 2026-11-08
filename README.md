@@ -1,18 +1,20 @@
 # 🏥 Egyptian Pharma Procurement Optimizer (نظام المشتريات الصيدلانية الأمثل)
-**Version:** 2.7 (Pre-Release / In Preparation)  
+**Version:** 2.7  
 **Platform:** Windows 10 / 11 (64-bit) & Cross-Platform Python  
 
 An intelligent, automated procurement optimization desktop application designed specifically for Egyptian community and hospital pharmacies. It ingests daily pharmaceutical wholesaler price lists (PDF and Excel catalogs), matches medicine orders with strict clinical safety validation, maximizes commercial discounts per item, and generates professionally formatted Arabic Excel purchase orders (`أفضل_اسعار_YYYY-MM-DD.xlsx` and `Procurement_Order_Optimized_YYYY-MM-DD.xlsx`).
 
 ---
 
-## 🌟 What's New in Version 2.7 (Pre-Release)
+## 🌟 What's New in Version 2.7
 
+- 🔍 **Responsive Manual Medication-Search Window (`src/manual_search_window.py`, `src/manual_search_adapter.py`, `app_gui.py`)**: Non-blocking `CTkToplevel` window launched from the toolbar and sidebar (`بحث يدوي في الكتالوجات`). Searches active selected catalogs via a thin adapter over existing matching logic with 60 ms input debounce, bounded background worker queue, warehouse filtering, Best Match / Highest Discount display sort, 100-row cap, in-place Treeview recycling (`~7–11 ms` render latency), and separated reference weighted-discount display.
+- 🚫 **Old-Price Spreadsheet Exclusion Policy (`src/order_parser.py`, `src/excel_parser.py`, `src/pipeline.py`, `src/average_discounts.py`)**: Automatically excludes Excel/CSV purchase order, supplier catalog, and reference rows ending in old-price markers (`س ق` or `ق س`) while preserving legitimate drug names (`س ج`, `اقراص`, `لاسيكس`, `زوفيراكس`) and new-price items. Tracks excluded rows via `ExcludedItem(reason="old_price_suffix")` and keeps excluded order items out of allocations and out-of-stock reports.
 - 🔒 **OCR Strength Source Fidelity & Safeguards (`src/catalog_recovery.py`, `src/ocr_engine.py`)**: Eliminates heuristic strength alterations, ratio guessing, and trailing digit truncation. Uncertain combinations and spaced decimal strengths are preserved without fabrication and safely quarantined from automatic procurement pending clinical verification.
 - 📐 **Coordinate-Driven Numeric Token Assignment**: Field assignment in OCR recovery utilizes strict cell/column horizontal boundaries, resolving numeric collisions when price and discount values coincide or when adjacent catalog item codes are present.
 - 🏷️ **Lifecycle Distinctions for Unknown Discounts (`src/pipeline.py`, `src/controller.py`)**: Preserves missing or unverified discounts as `None`/unknown throughout cache, export, and allocation rather than defaulting to `0.0`. Differentiates "offer found, discount unverified" from "out of stock" without changing core search algorithms.
 - ⚡ **Reusable OCR Worker Architecture**: Persistent background OCR worker process with bounding-box caching, eliminating per-crop process startup overhead and accelerating catalog analysis.
-- 🛡️ **Zero Search/Allocation Drift Guarantee**: Core search, ranking, matching, and clinical allocation algorithms (`src/allocator.py`, `src/pharma_matcher.py`) remain strictly unchanged and verified byte-for-byte.
+- 🛡️ **Zero Search/Allocation Drift Guarantee**: Core search, ranking, matching, and clinical allocation algorithms (`src/allocator.py`, `src/pharma_matcher.py`, `src/normalizer.py`) remain strictly unchanged and verified byte-for-byte.
 
 ---
 

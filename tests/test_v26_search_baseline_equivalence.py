@@ -40,8 +40,10 @@ class TestIsolatedSearchBaselineEquivalence(unittest.TestCase):
         # Copy medications.db into baseline environment so MedicationDB operates on identical database
         baseline_data = os.path.join(cls.baseline_dir, "data")
         os.makedirs(baseline_data, exist_ok=True)
-        if os.path.exists("data/medications.db"):
-            shutil.copy("data/medications.db", os.path.join(baseline_data, "medications.db"))
+        for ext in ["", "-wal", "-shm"]:
+            fpath = f"data/medications.db{ext}"
+            if os.path.exists(fpath):
+                shutil.copy(fpath, os.path.join(baseline_data, f"medications.db{ext}"))
 
         # 2. Shared test inputs: 50 clinical queries and 40 catalog items
         cls.test_queries = [

@@ -964,8 +964,11 @@ class TestTier5ChallengerStressTests:
     def test_stress_vector5_shell_actions_with_empty_or_forbidden_paths(self, gui_app):
         """Boundary: Shell actions (open report / open folder) handle non-existent paths gracefully."""
         gui_app.current_report_path = None
-        gui_app._on_open_report()
-        gui_app._on_open_folder()
+        gui_app.output_dir_var.set("")
+        with patch("tkinter.messagebox.showerror") as mock_err:
+            gui_app._on_open_report()
+            gui_app._on_open_folder()
+            mock_err.assert_not_called()
 
         gui_app.current_report_path = "Z:\\nonexistent_procurement_file.xlsx"
         with patch("tkinter.messagebox.showerror") as mock_err:

@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.7] - 2026-11-08
+
+### 🚀 Added & Improved
+- **Responsive Manual Medication-Search Window (`src/manual_search_window.py`, `src/manual_search_adapter.py`, `app_gui.py`)**:
+  - Added a dedicated, non-blocking `CTkToplevel` manual search window launched from the toolbar and sidebar (`🔍 بحث يدوي في الكتالوجات / Manual Search`).
+  - Uses a thin adapter over existing matching and candidate-generation logic with **zero modifications** to core search, normalization, scoring, or clinical allocation algorithms (`src/allocator.py`, `src/pharma_matcher.py`, `src/normalizer.py`).
+  - Queries strictly against active selected catalog files (`file_model.get_catalog_files()`) resolved via validated cache access, automatically invalidating snapshots when catalogs are added, removed, refreshed, or edited.
+  - Implements a 60 ms GUI-thread input debounce, bounded background worker queue (at most 1 active job and 1 replaceable pending query) tagged with query/filter/catalog-generation IDs, warehouse scope filtering, Best Match vs. Highest Discount display sorting, a 100-row display cap, and separated reference weighted-discount display.
+  - Optimized Treeview updates via in-place Tcl item recycling, scrollbar decoupling, and layout detachment (`~7–11 ms` consecutive 100-row render latency).
+- **Old-Price Spreadsheet Ingestion Exclusion Policy (`src/order_parser.py`, `src/excel_parser.py`, `src/pipeline.py`, `src/average_discounts.py`)**:
+  - Excludes spreadsheet rows ending in old-price markers (`س ق` or `ق س`, regex `(?:^|\s)(?:س[\s.]*ق|ق[\s.]*س)\s*$`) across Excel and CSV purchase orders, supplier catalogs, and average-discount reference files while preserving legitimate medicine names (`س ج`, `اقراص`, `لاسيكس`, `زوفيراكس`) and all new-price rows.
+  - Records excluded rows with `ExcludedItem(reason="old_price_suffix")` including source file, sheet/row, raw name, and excluded quantity, keeping intentionally excluded order items out of procurement allocations and out-of-stock sheets.
+  - Replaced filename-dependent minimum row-count assertions in `load_average_discounts_file()` with schema and `[0.0, 1.0]` discount rate validation, and bumped `PARSER_REVISION = "2026.11.07.3"`.
+- **OCR Strength Source-Fidelity Safeguards & Coordinate Token Assignment (`src/catalog_recovery.py`, `src/ocr_engine.py`, `src/pipeline.py`)**:
+  - Removed speculative strength alterations and ratio reversals; quarantines uncertain combinations and spaced decimals as explicit `ReviewIssue` records outside automatic procurement.
+  - Enforces horizontal cell/column coordinate boundaries ($X_{\min}, X_{\max}$) during OCR numeric assignment and preserves unknown/unverified discounts as `None` rather than defaulting to `0.0`.
+  - Added a persistent background OCR worker process with bounding-box caching.
+
+---
+
 ## [2.6] - 2026-11-04
 
 ### 🚀 Added & Improved

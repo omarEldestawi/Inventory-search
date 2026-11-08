@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/customtkinter', 'customtkinter'), ('src', 'src'), ('input', 'input'), ('assets', 'assets'), ('data', 'data'), ('tests/fixtures', 'tests/fixtures')]
 binaries = []
-hiddenimports = ['customtkinter', 'PIL._tkinter_finder', 'openpyxl', 'pandas', 'fitz', 'pymupdf', 'rapidfuzz', 'google', 'sqlite3', 'onnxruntime', 'cv2', 'src.ocr_engine', 'src.image_table_detector', 'src.catalog_recovery', 'src.pdf_font_decoder', 'src.catalog_diagnostics', 'src.catalog_corrections', 'src.catalog_service', 'src.controller', 'src.pipeline', 'src.allocator', 'src.medication_db', 'src.catalog_reader', 'src.average_discounts', 'src.updater', 'src.pharma_matcher', 'src.report_generator', 'src.normalizer', 'src.pdf_parser', 'src.excel_parser', 'src.order_parser', 'src.gemini_matcher']
+hiddenimports = ['customtkinter', 'PIL._tkinter_finder', 'openpyxl', 'pandas', 'fitz', 'pymupdf', 'rapidfuzz', 'google', 'sqlite3', 'onnxruntime', 'cv2', 'src.ocr_engine', 'src.image_table_detector', 'src.catalog_recovery', 'src.pdf_font_decoder', 'src.catalog_diagnostics', 'src.catalog_corrections', 'src.catalog_service', 'src.controller', 'src.pipeline', 'src.allocator', 'src.medication_db', 'src.catalog_reader', 'src.average_discounts', 'src.updater', 'src.pharma_matcher', 'src.report_generator', 'src.normalizer', 'src.pdf_parser', 'src.excel_parser', 'src.order_parser', 'src.gemini_matcher', 'src.manual_search_window', 'src.manual_search_adapter']
 tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('onnxruntime')

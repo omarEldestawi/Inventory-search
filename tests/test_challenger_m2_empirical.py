@@ -3,7 +3,7 @@
 Empirical Challenger Verification Suite for Milestone M2 Purchase Order Extraction.
 Author: Challenger M2_2 gen3
 Purpose: Independently and empirically verify:
-  1. Exact yields on 0911.xlsx (202 items / 5,553 units) and 0912.xlsx (743 items / 21,676 units).
+  1. Exact eligible yields on 0911.xlsx (202 items / 5,531 units) and 0912.xlsx (747 items / 21,479 units).
   2. Zero customer name, sales rep, warehouse, date, or total contamination.
   3. Zero quantity inflation (+0.0) compared to raw row sums.
   4. Complete schema compliance (canonical_item, requested_item, quantity, normalized_name, dosage, unit_size).
@@ -54,7 +54,7 @@ class TestM2EmpiricalYields:
 
         # 2. Exact Quantity Sum
         total_qty = df['quantity'].sum()
-        assert total_qty == 5553, f"0911.xlsx: Expected exactly 5,553 units, got {total_qty}"
+        assert total_qty == 5531
 
         # 3. Schema Completeness
         for col in REQUIRED_COLUMNS:
@@ -75,11 +75,11 @@ class TestM2EmpiricalYields:
         df = load_purchase_order(FILE_0912)
 
         # 1. Exact Item Count
-        assert len(df) == 743, f"0912.xlsx: Expected exactly 743 distinct items, got {len(df)}"
+        assert len(df) == 747
 
         # 2. Exact Quantity Sum
         total_qty = df['quantity'].sum()
-        assert total_qty == 21676, f"0912.xlsx: Expected exactly 21,676 units, got {total_qty}"
+        assert total_qty == 21479
 
         # 3. Schema Completeness
         for col in REQUIRED_COLUMNS:
@@ -162,10 +162,10 @@ class TestZeroQuantityInflation:
         raw_sum = sum(q for _, q in raw_items)
         assert raw_sum == 5553.0, f"Raw data sum expected 5553.0, got {raw_sum}"
 
-        df = load_purchase_order(FILE_0911)
-        parsed_sum = df['quantity'].sum()
-        inflation = parsed_sum - raw_sum
-        assert inflation == 0.0, f"Quantity inflation detected in 0911.xlsx: +{inflation}"
+        df, exclusions = load_purchase_order(FILE_0911, return_exclusions=True)
+        excluded_sum = sum(item.quantity for item in exclusions)
+        assert excluded_sum == 22
+        assert df['quantity'].sum() + excluded_sum == raw_sum
 
     def test_0912_raw_sum_comparison(self):
         """Read raw sheets directly, sum raw quantities, and verify inflation is exactly 0.0."""
@@ -202,10 +202,10 @@ class TestZeroQuantityInflation:
         raw_sum = sum(q for _, q in raw_items)
         assert raw_sum == 21676.0, f"Raw data sum expected 21676.0, got {raw_sum}"
 
-        df = load_purchase_order(FILE_0912)
-        parsed_sum = df['quantity'].sum()
-        inflation = parsed_sum - raw_sum
-        assert inflation == 0.0, f"Quantity inflation detected in 0912.xlsx: +{inflation}"
+        df, exclusions = load_purchase_order(FILE_0912, return_exclusions=True)
+        excluded_sum = sum(item.quantity for item in exclusions)
+        assert excluded_sum == 197
+        assert df['quantity'].sum() + excluded_sum == raw_sum
 
 
 class TestZeroQuantityAndSuffixDeduplication:
@@ -221,7 +221,7 @@ class TestZeroQuantityAndSuffixDeduplication:
         # With drop_zero_qty=True, it should be dropped leaving exactly 201 items
         df_dropped = load_purchase_order(FILE_0911, drop_zero_qty=True)
         assert len(df_dropped) == 201
-        assert df_dropped['quantity'].sum() == 5553
+        assert df_dropped['quantity'].sum() == 5531
 
     def test_0912_zero_quantity_items_fi_and_cream(self):
         """In 0912, 'في اند كريم' ordered across rows with quantities 0, 0, 3 -> sum must be 3."""

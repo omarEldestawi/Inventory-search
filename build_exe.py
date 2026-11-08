@@ -97,6 +97,8 @@ def build():
         "--hidden-import", "src.excel_parser",
         "--hidden-import", "src.order_parser",
         "--hidden-import", "src.gemini_matcher",
+        "--hidden-import", "src.manual_search_window",
+        "--hidden-import", "src.manual_search_adapter",
     ]
 
     for d in datas:

@@ -226,8 +226,8 @@ class TestTier1Feature1POIngestionAndDeduplication:
         assert "اسم الصنف" not in items
         assert "رقم الصنف" not in items
 
-    def test_f1_03_preserves_pricing_states_without_collapsing(self, synthetic_order_279_style):
-        """Verify items differing only by 'س ج' vs 'س ق' or raw vs 'س ج' are retained as distinct rows."""
+    def test_f1_03_preserves_new_pricing_and_excludes_old_pricing(self, synthetic_order_279_style):
+        """Keep unmarked and new-price rows distinct and exclude old-price rows."""
         df = load_purchase_order(synthetic_order_279_style)
         items = set(df["requested_item"].tolist())
 
@@ -237,7 +237,7 @@ class TestTier1Feature1POIngestionAndDeduplication:
 
         # Check concor pair
         assert "كونكور 10مجم بلاس 30قرص س ج" in items
-        assert "كونكور 10مجم بلاس 30قرص س ق" in items
+        assert "كونكور 10مجم بلاس 30قرص س ق" not in items
 
         # Check depovit pair
         assert any("ديبوفيت" in i and "س ج" in i for i in items)

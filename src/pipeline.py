@@ -13,12 +13,14 @@ import traceback
 import tempfile
 import time
 import threading
+from dataclasses import asdict
 from typing import Any, Callable, Optional, Union
 import pandas as pd
 
 try:
     from .pdf_parser import PDFCatalogParser
     from .excel_parser import load_purchase_order
+    from .order_parser import is_old_price_item, ExcludedItem
     from .allocator import MedicineAllocator, evaluate_above_average_discounts
     from .report_generator import ArabicExcelReportGenerator
     from .normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack, normalize_arabic_text
@@ -35,6 +37,7 @@ try:
 except ImportError:
     from pdf_parser import PDFCatalogParser
     from excel_parser import load_purchase_order
+    from order_parser import is_old_price_item, ExcludedItem
     from allocator import MedicineAllocator, evaluate_above_average_discounts
     from report_generator import ArabicExcelReportGenerator
     from normalizer import parse_discount, normalize_vendor_name, parse_dosage_and_pack, normalize_arabic_text
@@ -486,6 +489,11 @@ def parse_excel_catalog(file_path: str, warehouse_name: str) -> pd.DataFrame:
     if disc_col is None and len(raw_df.columns) > 1:
         disc_col = raw_df.columns[1]
 
+    # Filter out old-price catalog rows early before standard schema construction
+    raw_df = raw_df[~raw_df[item_col].apply(is_old_price_item)].reset_index(drop=True)
+    if raw_df.empty:
+        return empty_schema
+
     clean_df = pd.DataFrame()
     clean_warehouse = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', str(warehouse_name))
     clean_df['warehouse_name'] = [clean_warehouse] * len(raw_df)
@@ -661,6 +669,9 @@ def run_procurement_pipeline(
             'arabic_report_path': str (absolute path to Arabic alias workbook)
             'kpis': dict (summary procurement metrics)
             'above_average_discounts': pd.DataFrame (medications with discounts > reference average)
+            'per_warehouse_above_average_discounts': dict (per-warehouse discount breakdowns)
+            'catalog_diagnostics': dict (per-catalog import diagnostics)
+            'diagnostics': dict (overall pipeline execution diagnostics, order exclusions, and accounting)
 
     Raises:
         PipelineExecutionError: If any pipeline stage fails, wrapping diagnostics.
@@ -867,6 +878,7 @@ def run_procurement_pipeline(
         _notify(0.60, "قراءة وتجميع طلبات الشراء... / Ingesting purchase orders...")
 
         all_orders = []
+        all_order_exclusions = []
         order_count = len(order_files)
 
         for idx, ord_file in enumerate(order_files):
@@ -880,14 +892,30 @@ def run_procurement_pipeline(
             _notify(pct, f"قراءة ملف الطلبيات ({idx+1}/{order_count}): {base_name}...")
 
             try:
-                df_order = load_purchase_order(ord_file)
+                df_order, exclusions = load_purchase_order(ord_file, return_exclusions=True)
+                if exclusions:
+                    all_order_exclusions.extend(exclusions)
                 if df_order is not None and not df_order.empty:
                     all_orders.append(df_order)
                     diagnostics["orders_processed"] += 1
             except Exception as ord_err:
                 logger.warning(f"Error parsing purchase order '{base_name}': {ord_err}")
 
+        diagnostics["order_exclusions_count"] = len(all_order_exclusions)
+        diagnostics["order_exclusions"] = [
+            asdict(e) if hasattr(e, "__dataclass_fields__") else (e.__dict__ if hasattr(e, "__dict__") else str(e))
+            for e in all_order_exclusions
+        ]
+
         if not all_orders:
+            if all_order_exclusions:
+                diagnostics["outcome"] = "all_items_excluded"
+                msg = (
+                    f"All {len(all_order_exclusions)} item(s) across {order_count} purchase order file(s) "
+                    "were intentionally excluded by old-price policy ('س ق' / 'ق س'). No procurement allocation performed."
+                )
+                logger.info(msg)
+                raise PipelineExecutionError(msg, diagnostics=diagnostics)
             raise RuntimeError(
                 f"Failed to load valid purchase order items from any of the {order_count} provided order file(s)."
             )
@@ -1012,6 +1040,7 @@ def run_procurement_pipeline(
             'above_average_discounts': above_avg_df,
             'per_warehouse_above_average_discounts': per_wh_above_avg,
             'catalog_diagnostics': diagnostics.get("catalog_diagnostics", {}),
+            'diagnostics': diagnostics,
         }
 
     except PipelineExecutionError:

@@ -5,7 +5,7 @@ Milestone M2 Unit and Integration Tests:
 - Scored multi-signal header detection (ignore sales rep/warehouse metadata rows, depth up to 50).
 - Row-level metadata rejection (totals, categories, sales reps, warehouses, customer names, dates).
 - Non-inflating quantity aggregation (explicit 0 remains 0, NaN defaults to 1).
-- Exact target yields for train/0911.xlsx (202 items, 5,553 units) and train/0912.xlsx (743 items, 21,676 units).
+- Exact eligible yields and old-price exclusion totals for the 0911 and 0912 training workbooks.
 """
 import os
 import re
@@ -15,13 +15,15 @@ from src.excel_parser import load_purchase_order, find_order_header_row, is_meta
 
 
 def test_0911_target_yield():
-    """Verify train/0911.xlsx yields exactly 202 distinct items and 5,553 units."""
+    """Verify 5,553 source units reconcile to 5,531 eligible and 22 old-price units."""
     fpath = os.path.join("train", "0911.xlsx")
     assert os.path.exists(fpath), f"File not found: {fpath}"
-    df = load_purchase_order(fpath)
+    df, exclusions = load_purchase_order(fpath, return_exclusions=True)
 
     assert len(df) == 202, f"Expected 202 items, got {len(df)}"
-    assert df['quantity'].sum() == 5553, f"Expected sum 5553, got {df['quantity'].sum()}"
+    assert df['quantity'].sum() == 5531
+    assert len(exclusions) == 1
+    assert sum(item.quantity for item in exclusions) == 22
 
     # Verify no customer names misclassified
     for name in df['requested_item']:
@@ -31,13 +33,15 @@ def test_0911_target_yield():
 
 
 def test_0912_target_yield():
-    """Verify train/0912.xlsx yields exactly 743 distinct items and 21,676 units."""
+    """Verify 21,676 source units reconcile to 21,479 eligible and 197 old-price units."""
     fpath = os.path.join("train", "0912.xlsx")
     assert os.path.exists(fpath), f"File not found: {fpath}"
-    df = load_purchase_order(fpath)
+    df, exclusions = load_purchase_order(fpath, return_exclusions=True)
 
-    assert len(df) == 743, f"Expected 743 items, got {len(df)}"
-    assert df['quantity'].sum() == 21676, f"Expected sum 21676, got {df['quantity'].sum()}"
+    assert len(df) == 747
+    assert df['quantity'].sum() == 21479
+    assert len(exclusions) == 18
+    assert sum(item.quantity for item in exclusions) == 197
 
     # Verify specific previously inflated items
     # 'في اند كريم' was previously inflated by +2 (rows 986, 987, 988: 0, 0, 3 -> previously 5)
@@ -71,15 +75,15 @@ def test_multisheet_scanning_and_concatenation(tmp_path):
         df_b = pd.DataFrame([
             ["كود الصنف", "أسم الصنف", "الكمية"],
             ["003", "سرنجات 3 سم", 50],
-            ["001", "بانادول اكسترا 24 قرص س ج", 15],  # duplicate item with state suffix
+            ["001", "بانادول اكسترا 24 قرص س ج", 15],
         ])
         df_b.to_excel(writer, sheet_name="Supplies", header=False, index=False)
 
     df = load_purchase_order(wb_path)
-    assert len(df) == 3  # Panadol Extra (merged), Concor, Syringes
-    panadol_row = df[df['requested_item'] == 'بانادول اكسترا 24 قرص']
-    assert not panadol_row.empty
-    assert panadol_row['quantity'].iloc[0] == 25  # 10 + 15
+    assert len(df) == 4
+    quantities = df.set_index('requested_item')['quantity']
+    assert quantities['بانادول اكسترا 24 قرص'] == 10
+    assert quantities['بانادول اكسترا 24 قرص س ج'] == 15
     assert df['quantity'].sum() == 80  # 25 + 5 + 50
 
 
@@ -120,7 +124,7 @@ def test_scored_header_detection_and_metadata_rejection(tmp_path):
     items = set(df['requested_item'])
     assert "كونكور 5 مجم 30 قرص" in items
     assert "كتافلام 50 مجم 20 قرص" in items
-    assert "بانادول اكسترا 24 قرص" in items
+    assert "بانادول اكسترا 24 قرص س ج" in items
     assert "ابيدرا خرطوشه" in items
     assert "لانتوس سولوستار" in items
     assert "أوجمنتين 1 جم 14 قرص" in items

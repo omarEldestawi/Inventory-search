@@ -11,6 +11,11 @@ import logging
 from typing import Optional, List, Dict, Any, Tuple
 import pandas as pd
 
+try:
+    from .order_parser import is_old_price_item
+except ImportError:
+    from order_parser import is_old_price_item
+
 logger = logging.getLogger("AverageDiscounts")
 
 
@@ -210,6 +215,8 @@ def _load_excel_discounts(file_path: str) -> pd.DataFrame:
                 raw_name_str = str(raw_name).strip()
                 if not raw_name_str or raw_name_str.lower() in ['none', 'nan']:
                     continue
+                if is_old_price_item(raw_name_str):
+                    continue
                 norm_rate = _normalize_discount_rate(raw_disc)
                 if norm_rate is None:
                     continue
@@ -236,6 +243,8 @@ def _load_excel_discounts(file_path: str) -> pd.DataFrame:
                 continue
             raw_name_str = str(raw_name).strip()
             if not raw_name_str or raw_name_str.lower() in ['none', 'nan']:
+                continue
+            if is_old_price_item(raw_name_str):
                 continue
             norm_rate = _normalize_discount_rate(raw_disc)
             if norm_rate is None:
@@ -305,6 +314,8 @@ def _load_csv_discounts(file_path: str) -> pd.DataFrame:
         raw_name_str = str(raw_name).strip()
         if not raw_name_str or raw_name_str.lower() in ['none', 'nan']:
             continue
+        if is_old_price_item(raw_name_str):
+            continue
         norm_rate = _normalize_discount_rate(raw_disc)
         if norm_rate is None:
             continue
@@ -353,11 +364,25 @@ def load_average_discounts_file(file_path: Optional[str] = None) -> pd.DataFrame
     df = df.sort_values(by=['clean_name', 'avg_discount_rate'], ascending=[True, False])
     df = df.drop_duplicates(subset=['clean_name'], keep='first').reset_index(drop=True)
 
-    # Ensure required columns exist
-    df = df[['raw_name', 'clean_name', 'avg_discount_rate']]
+    # Validate schema and value bounds
+    required_cols = ['raw_name', 'clean_name', 'avg_discount_rate']
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Reference dataset missing required columns: {missing_cols}")
 
-    # Verification assertion for default dataset
-    if "average_discounts.xlsx" in os.path.basename(file_path) or "media_" in os.path.basename(file_path):
-        assert len(df) > 2100, f"Expected >2,100 rows in reference average discounts, but found {len(df)}"
+    df = df[required_cols]
+
+    if not df.empty:
+        # Check non-empty clean_name
+        empty_clean = (df['clean_name'].astype(str).str.strip() == '') | df['clean_name'].isna()
+        if empty_clean.any():
+            raise ValueError(f"Reference dataset contains {empty_clean.sum()} records with empty clean_name")
+
+        # Check avg_discount_rate is float in [0.0, 1.0]
+        rates = pd.to_numeric(df['avg_discount_rate'], errors='coerce')
+        if rates.isna().any():
+            raise ValueError("Reference dataset contains invalid (non-numeric) discount rates")
+        if (rates < 0.0).any() or (rates > 1.0).any():
+            raise ValueError("Reference dataset contains discount rates outside [0.0, 1.0]")
 
     return df
