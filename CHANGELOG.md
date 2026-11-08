@@ -1,4 +1,4 @@
-﻿# سجل التغييرات والإصدارات (Changelog)
+# سجل التغييرات والإصدارات (Changelog)
 All notable changes to the **Egyptian Pharma Procurement Optimizer** project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -6,17 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ---
 
 ## [2.7.1] - 2026-11-08
-
-### Fixed & Improved
-- **Responsive PDF inspection (`app_gui.py`, `src/controller.py`)**: Catalog PDFs are now inspected in a separate worker process (`inspect_catalog_batch_in_process`), so PyMuPDF/OCR no longer hold the GUI interpreter lock. Results stream back per file and Tk repaints between batches.
-- **Windowed-build stability**: Added safe stdout/stderr streams for the console-less packaged GUI. Some dependencies write to them while importing or parsing PDFs.
-- **Catalog review window**: Review data loads asynchronously, and each catalog card's review button now stays in sync with its file state.
-- **Reviewed snapshot protection (`src/pipeline.py`)**: An explicitly reviewed and acknowledged catalog snapshot is never silently replaced by a fresh extraction.
-- **Recovery accounting (`src/catalog_recovery.py`)**: When every row in a group is accepted, recovered, or corrected, the stale rejected/unprocessed counts left by the first extraction pass are cleared. Page totals are recomputed.
-- **PDF parser (`src/pdf_parser.py`)**: Added ruled triplet-column layout extraction for Makramy catalogs. Header-only tables are rejected. Accepted and rejected rows are now tracked per table row, which makes candidate/rejected counts accurate. `PARSER_REVISION = "2026.11.08.1"`.
-- **Installer (`installer.iss`)**: Version 2.7.1. The output filename now comes from `MyAppVersion`, and the build directory and compression are configurable (`AppBuildDir`, `SetupCompression`).
-- **Tests**: Added `tests/test_procurement_review_snapshot.py`, more parser adversarial cases, and updated the GUI contract tests.
-## [2.7] - 2026-11-08
 
 ### 🚀 Added & Improved
 - **Responsive Manual Medication-Search Window (`src/manual_search_window.py`, `src/manual_search_adapter.py`, `app_gui.py`)**:
