@@ -444,12 +444,15 @@ class TestBackgroundWorkerSequenceProtection(unittest.TestCase):
         self.assertEqual(self.app._latest_applied_seq[test_path], 5)
 
         # Simulate newer thread returning seq=6 with count=20 (should be accepted)
+        self.app._render_file_list()
+        original_card = self.app._file_card_widgets[test_path]
         newer_msg = ("INSPECT_FILE_DONE", test_path, 20, None, 6)
         self.app._ocr_queue.put(newer_msg)
         self.app._poll_ocr_queue()
 
         self.assertEqual(f_item.item_count, 20, "Newer sequence result must be applied")
         self.assertEqual(self.app._latest_applied_seq[test_path], 6)
+        self.assertIs(self.app._file_card_widgets[test_path], original_card)
 
     def test_stale_fingerprint_callback_is_discarded(self):
         """A background inspection callback whose FileFingerprint is not current is discarded."""

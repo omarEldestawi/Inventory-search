@@ -1315,14 +1315,9 @@ class TestMilestoneEnhancements:
         gui_app.add_files([cat_file])
         assert len(gui_app.file_model.files) == 1
 
-        # Seed global cache
-        from src.controller import global_catalog_cache
-        df_sample = pd.DataFrame([
-            {"item_name": "Panadol Extra 500mg", "base_price": 45.0, "discount_rate": 0.20, "stock_status": True},
-            {"item_name": "Augmentin 1g Tab", "base_price": 120.0, "discount_rate": 0.15, "stock_status": True},
-            {"item_name": "Cataflam 50mg Tab", "base_price": 55.0, "discount_rate": 0.10, "stock_status": False},
-        ])
-        global_catalog_cache.set(cat_file, df_sample)
+        from src.controller import inspect_catalog
+        file_item = gui_app.file_model.files[0]
+        file_item.catalog_result = inspect_catalog(cat_file)
 
         # Trigger viewer
         gui_app._open_catalog_item_viewer(cat_file)

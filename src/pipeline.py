@@ -769,6 +769,14 @@ def run_procurement_pipeline(
                 if verified_res is not None:
                     df_cat = verified_res.to_dataframe()
                     logger.info(f"Using verified cached catalog for '{base_name}'.")
+                elif isinstance(cached_candidate, CatalogResult):
+                    # An explicit reviewed snapshot must never be replaced by a
+                    # fresh extraction behind the user's acknowledgment.
+                    raise PipelineExecutionError(
+                        f"Catalog '{base_name}' changed after inspection. "
+                        "Refresh the catalog, review the updated results, and run again.",
+                        diagnostics={"catalog_to_refresh": norm_cat},
+                    )
                 else:
                     logger.info(
                         f"Cached catalog '{base_name}' is unverified, malformed, or stale on disk; re-parsing fresh copy."

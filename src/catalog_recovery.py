@@ -1091,6 +1091,15 @@ def run_automatic_recovery(
                             r_diag.provenance = iss.provenance
                             if iss.item and iss.item.get("item_name"):
                                 r_diag.item_name = iss.item["item_name"]
+                # When the whole group is accounted for, clear the old
+                # rejection tally left by the initial extraction pass.
+                if (grp.rows and len(grp.rows) == grp.candidate_rows
+                        and all(row.outcome in ("accepted", "recovered", "corrected")
+                                for row in grp.rows)):
+                    grp.accepted_rows = grp.candidate_rows
+                    grp.rejected_rows = 0
+                    grp.unprocessed_rows = 0
+            page.accepted_rows = sum(group.accepted_rows for group in page.groups)
 
     if "base_price" in updated_df.columns:
         updated_df["base_price"] = pd.to_numeric(updated_df["base_price"], errors="coerce").astype(float)

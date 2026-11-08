@@ -42,6 +42,27 @@ if PROJECT_ROOT not in sys.path:
 from src.pdf_parser import PDFCatalogParser
 
 
+def test_header_only_fragments_are_distinct_from_product_tables():
+    foxit = ["روﮭﻣﺟ.س", "مﺻﺧﻟا", "فﻧﺻﻟا مﺳا"]
+    microsoft = ["رعسلا", "مصخلا", "فنصلا مسا"]
+    assert PDFCatalogParser._is_header_only_table([foxit])
+    assert PDFCatalogParser._is_header_only_table([microsoft])
+    assert not PDFCatalogParser._is_header_only_table([foxit, ["100", "20", "بانادول"]])
+    assert not PDFCatalogParser._is_header_only_table([["100", "20", "بانادول"]])
+
+
+def test_legacy_offer_provenance_survives_blank_and_rejected_rows():
+    parser = PDFCatalogParser("catalog.pdf")
+    items = parser._process_table([
+        ["Item Name", "Price", "Discount"],
+        ["Panadol Extra 500mg", "125", "20%"],
+        ["", "", ""],
+        ["Zyrtec 10mg", "80", "99.5%"],
+        ["Augmentin 1g", "240", "30%"],
+    ], track_rows=True)
+    assert [(item["_table_row"], item["base_price"]) for item in items] == [(1, 125), (4, 240)]
+
+
 class TestParsePriceAdversarial(unittest.TestCase):
     """Adversarial stress testing for PDFCatalogParser._parse_price."""
 

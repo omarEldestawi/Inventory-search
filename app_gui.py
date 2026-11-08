@@ -7,8 +7,17 @@ asynchronous thread-safe worker bridge, file management, and post-run KPI analyt
 """
 import os
 import sys
+
+# Windows GUI executables have no console streams. Some packaged dependencies
+# write to them directly while importing or parsing a PDF.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 import queue
 import threading
+import multiprocessing
 import logging
 
 import datetime
@@ -38,6 +47,7 @@ try:
         inspect_catalog_counts,
         inspect_single_catalog,
         inspect_catalog,
+        inspect_catalog_batch_in_process,
         refresh_catalog,
         reread_catalog_with_ocr,
         global_catalog_cache,
@@ -73,6 +83,7 @@ except ImportError:
         inspect_catalog_counts,
         inspect_single_catalog,
         inspect_catalog,
+        inspect_catalog_batch_in_process,
         refresh_catalog,
         reread_catalog_with_ocr,
         global_catalog_cache,
@@ -709,13 +720,14 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         parent,
         catalog_path: str,
         on_done_callback: Optional[Callable[[CatalogResult], None]] = None,
+        service: Optional[CatalogCorrectionService] = None,
     ):
         super().__init__(parent)
         self.catalog_path = os.path.normpath(os.path.abspath(catalog_path))
         self.filename = os.path.basename(self.catalog_path)
         self.on_done_callback = on_done_callback
 
-        self.service = CatalogCorrectionService(self.catalog_path)
+        self.service = service if service is not None else CatalogCorrectionService(self.catalog_path)
         self.catalog_result = self.service.get_refreshed_catalog_result()
 
         # Page navigation state
@@ -1880,7 +1892,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.7 / Egyptian Pharma Procurement Optimizer v2.7")
+        self.title("نظام المشتريات الصيدلانية v2.7.1 / Egyptian Pharma Procurement Optimizer v2.7.1")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -1920,9 +1932,13 @@ class PharmaProcurementApp(ctk.CTk):
         # Milestone 2C: Monotonically increasing sequence ID & background inspection tracker
         self._inspection_seq: int = 0
         self._latest_applied_seq: Dict[str, int] = {}
+        self._catalogs_inspecting: set[str] = set()
+        self._catalog_inspection_lock = threading.Lock()
+        self._pending_catalog_view: Optional[str] = None
+        self._pending_catalog_review: Optional[str] = None
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.7"
+        self.app_version = "2.7.1"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -1935,7 +1951,8 @@ class PharmaProcurementApp(ctk.CTk):
         self.after(200, self._async_init_ocr_models)
 
         # Start background auto-update check after 2 seconds
-        self.after(2000, self._start_auto_update_service)
+        if "--self-test" not in sys.argv:
+            self.after(2000, self._start_auto_update_service)
 
     def _async_init_ocr_models(self):
         """Asynchronously initializes OCR models in a background daemon thread so GUI launches instantly without freezing."""
@@ -2115,7 +2132,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.7 Windows 11 Edition • Engine Ready",
+            text="v2.7.1 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -2200,7 +2217,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.7)",
+            text="🔄 التحديثات / Updates (v2.7.1)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -2452,8 +2469,25 @@ class PharmaProcurementApp(ctk.CTk):
             self._update_ui_state()
 
     def _open_catalog_review_window(self, path: str):
-        """Opens the interactive Catalog Review and Correction window for a catalog."""
+        """Load the review data in the background before constructing the Tk window."""
         norm_path = os.path.normpath(os.path.abspath(path))
+        if self._pending_catalog_review is not None:
+            return
+        self._pending_catalog_review = norm_path
+        self.status_label.configure(text=f"Loading review / تحميل المراجعة: {os.path.basename(path)}")
+
+        def _load_review():
+            try:
+                with self._catalog_inspection_lock:
+                    service = CatalogCorrectionService(norm_path)
+                    service.get_refreshed_catalog_result()
+                self._ocr_queue.put(("REVIEW_READY", norm_path, service))
+            except Exception as exc:
+                self._ocr_queue.put(("REVIEW_ERROR", norm_path, str(exc)))
+
+        threading.Thread(target=_load_review, name="CatalogReviewLoader", daemon=True).start()
+
+    def _show_catalog_review_window(self, norm_path: str, service=None):
         def _on_review_done(updated_res: CatalogResult):
             for f in self.file_model.files:
                 if os.path.normpath(f.path) == norm_path:
@@ -2467,7 +2501,7 @@ class PharmaProcurementApp(ctk.CTk):
             self._render_file_list()
             self._update_ui_state()
 
-        review_win = CatalogReviewWindow(self, norm_path, on_done_callback=_on_review_done)
+        review_win = CatalogReviewWindow(self, norm_path, on_done_callback=_on_review_done, service=service)
         return review_win
 
     def _open_manual_search_window(self) -> ManualSearchWindow:
@@ -2508,22 +2542,67 @@ class PharmaProcurementApp(ctk.CTk):
         """Inspects medication counts and completeness diagnostics in catalogs asynchronously without freezing GUI."""
         uninspected = [
             f.path for f in self.file_model.files
-            if f.category == "Catalog" and (refresh or f.item_count is None) and f.path in file_paths
+            if f.category == "Catalog" and (refresh or f.catalog_result is None)
+            and f.path in file_paths and f.path not in self._catalogs_inspecting
         ]
         if not uninspected:
             return
 
         self._inspection_seq += 1
         seq_id = self._inspection_seq
+        self._catalogs_inspecting.update(uninspected)
 
         def _worker(paths_to_inspect, do_refresh, current_seq):
+            def publish(path, result):
+                self._ocr_queue.put(("INSPECT_FILE_DONE", path, len(result.dataframe), result, current_seq))
+
+            # PyMuPDF and OCR can hold the interpreter lock even when called
+            # on a thread. Give PDF inspection a separate interpreter.
+            if any(path.lower().endswith(".pdf") for path in paths_to_inspect):
+                pending = list(paths_to_inspect)
+                try:
+                    with self._catalog_inspection_lock:
+                        ctx = multiprocessing.get_context("spawn")
+                        incoming, outgoing = ctx.Pipe(duplex=False)
+                        with incoming, outgoing:
+                            process = ctx.Process(
+                                target=inspect_catalog_batch_in_process,
+                                args=(paths_to_inspect, do_refresh, outgoing),
+                                name="CatalogPDFReader", daemon=True,
+                            )
+                            process.start()
+                            outgoing.close()
+                            try:
+                                while pending:
+                                    if not incoming.poll(180):
+                                        raise TimeoutError("PDF reader stopped responding")
+                                    path, result, error = incoming.recv()
+                                    pending.remove(path)
+                                    if result is None:
+                                        self._ocr_queue.put(("INSPECT_FILE_ERROR", path, error))
+                                    else:
+                                        global_catalog_cache.set(path, result.to_dataframe())
+                                        publish(path, result)
+                            finally:
+                                process.join(timeout=1)
+                                if process.is_alive():
+                                    process.terminate()
+                                    process.join()
+                                process.close()
+                except (OSError, RuntimeError, EOFError) as exc:
+                    logger.warning("PDF process inspection failed, using the background reader: %s", exc)
+                    paths_to_inspect = pending
+                else:
+                    return
+
             for p in paths_to_inspect:
                 try:
-                    res = inspect_catalog(p, refresh=do_refresh)
-                    norm = os.path.normpath(os.path.abspath(p))
-                    self._ocr_queue.put(("INSPECT_FILE_DONE", norm, len(res.dataframe), res, current_seq))
+                    with self._catalog_inspection_lock:
+                        res = inspect_catalog(p, refresh=do_refresh)
+                    publish(p, res)
                 except Exception as e:
                     logger.debug(f"Catalog inspection thread error for {p}: {e}")
+                    self._ocr_queue.put(("INSPECT_FILE_ERROR", p, str(e)))
 
         t = threading.Thread(target=_worker, args=(uninspected, refresh, seq_id), name="CatalogInspectWorker", daemon=True)
         t.start()
@@ -2531,6 +2610,8 @@ class PharmaProcurementApp(ctk.CTk):
     def _on_refresh_catalog(self, path: str):
         """Forces cache invalidation and re-inspection of a catalog file."""
         norm_path = os.path.normpath(os.path.abspath(path))
+        if norm_path in self._catalogs_inspecting:
+            return
         global_catalog_cache.remove(norm_path)
         for f in self.file_model.files:
             if os.path.normpath(f.path) == norm_path:
@@ -2594,7 +2675,8 @@ class PharmaProcurementApp(ctk.CTk):
             return f"📦 جاهز ({count} صنف) / Ready ({count} items)", COLOR_SUCCESS
         elif state == CatalogLifecycleState.PARTIALLY_RECOVERED:
             is_acked = (
-                f_item.catalog_result is not None
+                f_item.acknowledged_token is not None
+                and f_item.catalog_result is not None
                 and f_item.acknowledged_token == f_item.catalog_result.acknowledgment_token
             )
             ack_tag = " [معتمد / Ack]" if is_acked else " [غير مكتمل]"
@@ -2620,19 +2702,48 @@ class PharmaProcurementApp(ctk.CTk):
             count_text, count_color = self._format_catalog_badge(target_f)
             try:
                 card._count_badge.configure(text=count_text, text_color=count_color)
+                self._sync_catalog_review_button(card, target_f)
             except Exception:
                 self._render_file_list()
         else:
             self._render_file_list()
 
+    def _sync_catalog_review_button(self, card, file_item):
+        """Update the review action without recreating the entire file list."""
+        result = file_item.catalog_result
+        needs_review = (
+            file_item.diagnostic_status in ("partial", "failed")
+            or file_item.item_count == 0
+            or (result is not None and (
+                result.diagnostics.status in ("partial", "failed")
+                or result.diagnostics.unresolved_region_count > 0
+                or any(not issue.resolved for issue in result.review_issues)
+            ))
+        )
+        button = getattr(card, "_review_btn", None)
+        if needs_review and button is None:
+            refresh = card._refresh_btn
+            card._review_btn = ctk.CTkButton(
+                refresh.master, text="🔎 مراجعة وتصحيح / Review & Fix",
+                font=get_font(10, "bold"), width=165, height=24,
+                fg_color=COLOR_WARN_BADGE, hover_color="#B45309",
+                command=lambda p=file_item.path: self._open_catalog_review_window(p),
+            )
+            card._review_btn.pack(side="left", padx=(0, 6), before=refresh)
+        elif not needs_review and button is not None:
+            button.destroy()
+            del card._review_btn
+
     def _poll_ocr_queue(self):
         """Polls OCR and inspection queue without freezing GUI."""
         try:
-            while True:
+            # Give Tk a chance to paint between batches of completed files.
+            for _ in range(8):
                 msg = self._ocr_queue.get_nowait()
                 m_type = msg[0]
                 if m_type == "INSPECT_FILE_DONE":
                     norm_path, count = msg[1], msg[2]
+                    self._catalogs_inspecting.discard(norm_path)
                     res = msg[3] if len(msg) > 3 else None
                     seq_id = msg[4] if len(msg) > 4 else None
 
@@ -2655,22 +2766,44 @@ class PharmaProcurementApp(ctk.CTk):
                             continue
 
                     for f in self.file_model.files:
-                        if os.path.normpath(f.path) == norm_path:
+                        if os.path.normpath(f.path) == norm_path and f.category == "Catalog":
                             f.item_count = count
                             if res is not None:
                                 if (
-                                    f.catalog_result is not None
-                                    and f.catalog_result.acknowledgment_token != res.acknowledgment_token
+                                    f.acknowledged_token is not None
+                                    and f.acknowledged_token != res.acknowledgment_token
                                 ):
                                     f.acknowledged_token = None
                                 f.catalog_result = res
                                 f.diagnostic_status = res.diagnostics.status
                                 f.diagnostic_summary = res.diagnostics.summary()
                             f.determine_lifecycle_state()
+                            self._update_file_card_badge(norm_path)
+                            self._bump_catalog_generation()
+                            if res is not None and self._pending_catalog_view == norm_path:
+                                self._pending_catalog_view = None
+                                self.after_idle(lambda path=norm_path: self._open_catalog_item_viewer(path))
                             break
-                    self._update_file_card_badge(norm_path)
-                    self._render_file_list()
-                    self._bump_catalog_generation()
+                elif m_type == "INSPECT_FILE_ERROR":
+                    path, error = msg[1], msg[2]
+                    self._catalogs_inspecting.discard(path)
+                    if self._pending_catalog_view == path:
+                        self._pending_catalog_view = None
+                    for f in self.file_model.files:
+                        if f.path == path and f.category == "Catalog":
+                            f.item_count = 0
+                            f.diagnostic_status = "failed"
+                            f.diagnostic_summary = error
+                            self._update_file_card_badge(path)
+                            break
+                elif m_type in ("REVIEW_READY", "REVIEW_ERROR"):
+                    path, payload = msg[1], msg[2]
+                    self._pending_catalog_review = None
+                    if m_type == "REVIEW_ERROR":
+                        self.status_label.configure(text=f"Could not load review: {payload}")
+                    elif any(f.path == path and f.category == "Catalog" for f in self.file_model.files):
+                        self.status_label.configure(text=f"Review ready / المراجعة جاهزة: {os.path.basename(path)}")
+                        self._show_catalog_review_window(path, service=payload)
                 elif m_type == "INSPECT_DONE":
                     counts = msg[1]
                     for f in self.file_model.files:
@@ -2820,21 +2953,18 @@ class PharmaProcurementApp(ctk.CTk):
         fname = os.path.basename(norm_path)
         w_raw = os.path.splitext(fname)[0]
 
-        # Retrieve or inspect CatalogResult so badge, viewer, and pipeline share the exact same extraction
-        cat_res = inspect_catalog(norm_path, refresh=False)
+        file_item = next((f for f in self.file_model.files
+                          if f.path == norm_path and f.category == "Catalog"), None)
+        if file_item is None:
+            return
+        cat_res = file_item.catalog_result
+        if cat_res is None:
+            self._pending_catalog_view = norm_path
+            self.status_label.configure(text=f"Reading catalog / قيد القراءة: {fname}")
+            self._async_inspect_counts([norm_path])
+            return
         cached_df = cat_res.dataframe
         diag_summary = cat_res.diagnostics.summary()
-
-        for f in self.file_model.files:
-            if os.path.normpath(f.path) == norm_path:
-                f.item_count = len(cached_df)
-                if f.catalog_result is not None and f.catalog_result.acknowledgment_token != cat_res.acknowledgment_token:
-                    f.acknowledged_token = None
-                f.catalog_result = cat_res
-                f.diagnostic_status = cat_res.diagnostics.status
-                f.diagnostic_summary = diag_summary
-                break
-        self._update_file_card_badge(norm_path)
 
         viewer = ctk.CTkToplevel(self)
         viewer.title(f"عرض الأصناف والخصومات - {fname} / Items & Discounts Viewer")
@@ -3030,7 +3160,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.7 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.7.1 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"
@@ -3296,35 +3426,6 @@ class PharmaProcurementApp(ctk.CTk):
                     ocr_status_lbl.pack(side="left", padx=(0, 6))
                     card._ocr_status_lbl = ocr_status_lbl
 
-                # Review & Fix button when issues, unmapped regions, partial import diagnostics, or 0 items exist
-                has_review_needs = False
-                if f_item.catalog_result is not None:
-                    unres = [i for i in f_item.catalog_result.review_issues if not i.resolved]
-                    unmapped = getattr(f_item.catalog_result.diagnostics, "unresolved_region_count", 0)
-                    if (
-                        f_item.catalog_result.diagnostics.status in ("partial", "failed")
-                        or unmapped > 0
-                        or len(unres) > 0
-                        or f_item.item_count == 0
-                    ):
-                        has_review_needs = True
-                elif f_item.diagnostic_status in ("partial", "failed") or f_item.item_count == 0:
-                    has_review_needs = True
-
-                if has_review_needs:
-                    review_btn = ctk.CTkButton(
-                        actions_frame,
-                        text="🛠️ مراجعة وتصحيح / Review & Fix",
-                        font=get_font(10, "bold"),
-                        width=165,
-                        height=24,
-                        fg_color=COLOR_WARN_BADGE,
-                        hover_color="#B45309",
-                        command=lambda p=f_item.path: self._open_catalog_review_window(p)
-                    )
-                    review_btn.pack(side="left", padx=(0, 6))
-                    card._review_btn = review_btn
-
                 refresh_btn = ctk.CTkButton(
                     actions_frame,
                     text="🔄 تحديث / Refresh",
@@ -3338,6 +3439,7 @@ class PharmaProcurementApp(ctk.CTk):
                 )
                 refresh_btn.pack(side="left", padx=(0, 6))
                 card._refresh_btn = refresh_btn
+                self._sync_catalog_review_button(card, f_item)
 
                 view_items_btn = ctk.CTkButton(
                     actions_frame,
@@ -3576,6 +3678,7 @@ class PharmaProcurementApp(ctk.CTk):
             catalog_files=catalog_files,
             output_dir=output_dir,
             avg_discounts_file=avg_discounts_file,
+            catalog_cache={entry["path"]: entry["catalog_result"] for entry in catalogs_summary},
             accepted_partial_tokens=accepted_tokens,
         )
 
@@ -4049,12 +4152,14 @@ def main():
                 ]
             }
             print("__JSON_RESULT__" + json.dumps(out) + "__JSON_RESULT__")
-            sys.stdout.flush()
+            if sys.stdout is not None:
+                sys.stdout.flush()
             os._exit(0)
 
     if "--self-test" in sys.argv:
         code = run_headless_self_test()
-        sys.stdout.flush()
+        if sys.stdout is not None:
+            sys.stdout.flush()
         os._exit(code)
 
     app = PharmaProcurementApp()
@@ -4062,4 +4167,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

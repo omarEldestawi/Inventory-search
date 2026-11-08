@@ -1,7 +1,13 @@
 ; Inno Setup 6 Script for Egyptian Pharma Procurement Optimizer
 #define MyAppName "Egyptian Pharma Procurement Optimizer"
 #define MyAppArabicName "نظام المشتريات الصيدلانية"
-#define MyAppVersion "2.7"
+#define MyAppVersion "2.7.1"
+#ifndef AppBuildDir
+  #define AppBuildDir "dist\EgyptianPharmaOptimizer"
+#endif
+#ifndef SetupCompression
+  #define SetupCompression "lzma2/ultra64"
+#endif
 #define MyAppPublisher "Pharma Tech Solutions"
 #define MyAppExeName "EgyptianPharmaOptimizer.exe"
 
@@ -15,9 +21,9 @@ DefaultDirName={autopf}\EgyptianPharmaOptimizer
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist_installer
-OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v2.7
+OutputBaseFilename=EgyptianPharmaOptimizer_Setup_v{#MyAppVersion}
 SetupIconFile=assets\app.ico
-Compression=lzma2/ultra64
+Compression={#SetupCompression}
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -35,7 +41,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\EgyptianPharmaOptimizer\*"; DestDir: "{app}"; Excludes: "*.bak,*.db-wal,*.db-shm"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#AppBuildDir}\*"; DestDir: "{app}"; Excludes: "*.bak,*.db-wal,*.db-shm"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "assets\*"; DestDir: "{app}\assets"; Excludes: "*.bak"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "data\*"; DestDir: "{app}\data"; Excludes: "*.bak,*.db-wal,*.db-shm"; Flags: ignoreversion recursesubdirs createallsubdirs
 

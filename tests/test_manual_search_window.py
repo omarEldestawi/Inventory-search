@@ -613,7 +613,7 @@ class TestCatalogLifecycleInvalidation(unittest.TestCase):
 
     def test_06_generation_id_increments_on_review_done(self):
         gen0 = self.app._catalog_generation_id
-        win = self.app._open_catalog_review_window("dummy.xlsx")
+        win = self.app._show_catalog_review_window("dummy.xlsx")
         try:
             mock_res = MagicMock()
             mock_res.dataframe = pd.DataFrame()

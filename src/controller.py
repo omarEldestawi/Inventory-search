@@ -625,6 +625,18 @@ def inspect_catalog(catalog_file: str, refresh: bool = False, include_correction
     return res
 
 
+def inspect_catalog_batch_in_process(paths, refresh, connection):
+    """Send each PDF inspection result back to the GUI from a worker process."""
+    with connection:
+        for path in paths:
+            try:
+                result = inspect_catalog(path, refresh=refresh)
+            except Exception as exc:
+                connection.send((path, None, str(exc)))
+            else:
+                connection.send((path, result, None))
+
+
 def is_replacement_quality_degraded(
     prev_res: Optional[CatalogResult],
     new_res: Optional[CatalogResult],

@@ -691,6 +691,7 @@ class PDFCatalogParser:
             is_block_layout = 'ميجا' in self.warehouse_name or 'ميجـا' in self.warehouse_name
             is_cure = 'كيور' in self.warehouse_name
             is_makramy = 'المكرومي' in self.warehouse_name
+            ruled_layout = self._find_ruled_triplet_layout(doc[0]) if is_makramy else None
             base_fname = os.path.basename(self.pdf_path)
             is_sina = 'سينا' in self.warehouse_name or 'سينا' in base_fname
             is_dar_fouad = 'دار الفؤاد' in self.warehouse_name or 'دار الفؤاد' in base_fname
@@ -788,6 +789,14 @@ class PDFCatalogParser:
                             logger.error(f"Failed OCR table extraction on page {page_idx + 1}: {exc}")
 
                     page_chars = extract_page_chars(page) if (has_any_repaired_font or assessment.font_repaired) else None
+                    if ruled_layout and assessment.classification == "usable_digital":
+                        ruled = self._extract_ruled_triplet_page(page, ruled_layout)
+                        if ruled is not None:
+                            page_items, page_diag = ruled
+                            items.extend(page_items)
+                            raw_accepted_count += len(page_items)
+                            self._page_diagnostics.append(page_diag)
+                            continue
                     page_items = []
                     page_hdr_order = self._detect_page_header_price_first(page)
                     if page_hdr_order is not None:
@@ -916,10 +925,10 @@ class PDFCatalogParser:
                                 stitched_tables = self._stitch_contiguous_tables(remaining_tables, page_chars=page_chars)
                                 for rem_idx, table_data in enumerate(stitched_tables):
                                     if table_data and len(table_data) >= 1:
-                                        t_items = self._process_table(table_data)
+                                        t_items = self._process_table(table_data, track_rows=True)
                                         # Skip non-product banner/footer tables that yield no items and lack product catalog indicators
                                         if not t_items:
-                                            if not self._is_likely_catalog_table(table_data):
+                                            if self._is_header_only_table(table_data) or not self._is_likely_catalog_table(table_data):
                                                 continue
                                             # Candidate catalog table that cannot be mapped: emit region-level issue without hallucinating row counts (R2)
                                             table_expected_known = False
@@ -954,6 +963,10 @@ class PDFCatalogParser:
 
                                         table_items.extend(t_items)
                                         raw_accepted_count += len(t_items)
+                                        accepted_by_row = {}
+                                        for item in t_items:
+                                            row_index = item.pop("_table_row")
+                                            accepted_by_row.setdefault(row_index, item)
 
                                         grp_idx_on_page = len(table_groups)
                                         legacy_accepted = len(t_items)
@@ -1002,17 +1015,20 @@ class PDFCatalogParser:
                                             ):
                                                 header_offset = 1
 
-                                        legacy_candidates = max(legacy_accepted, len(table_data) - header_offset)
-                                        legacy_rejected = max(0, legacy_candidates - legacy_accepted)
+                                        data_row_indices = [
+                                            index for index in range(header_offset, len(table_data))
+                                            if any(cell is not None and str(cell).strip() for cell in table_data[index])
+                                        ]
+                                        legacy_rejected = sum(index not in accepted_by_row for index in data_row_indices)
+                                        legacy_candidates = legacy_accepted + legacy_rejected
 
                                         rem_bbox = None
                                         if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], 'bbox') and remaining_tables[rem_idx].bbox:
                                             rem_bbox = list(remaining_tables[rem_idx].bbox)
 
                                         legacy_rows: List[RowDiagnostic] = []
-                                        used_item_indices = set()
-                                        num_data_rows = len(table_data) - header_offset
-                                        for r_i in range(header_offset, len(table_data)):
+                                        column_indices = None
+                                        for r_i in data_row_indices:
                                             row_cells = table_data[r_i]
                                             r_bbox = None
                                             if rem_idx < len(remaining_tables) and hasattr(remaining_tables[rem_idx], "rows"):
@@ -1024,26 +1040,7 @@ class PDFCatalogParser:
                                             if not r_bbox and rem_bbox:
                                                 r_bbox = list(rem_bbox)
 
-                                            row_str = " ".join(str(c) for c in row_cells if c)
-                                            row_norm_str = normalize_arabic_text(row_str)
-                                            clean_row = re.sub(r'[\s\W_]+', '', row_norm_str).lower()
-                                            clean_row_rev = clean_row[::-1]
-
-                                            matched_item = None
-                                            if len(t_items) == num_data_rows:
-                                                idx_in_items = r_i - header_offset
-                                                if 0 <= idx_in_items < len(t_items):
-                                                    matched_item = t_items[idx_in_items]
-                                            else:
-                                                for it_idx, it in enumerate(t_items):
-                                                    if it_idx in used_item_indices:
-                                                        continue
-                                                    it_norm_str = it.get("normalized_name") or normalize_arabic_text(it.get("item_name", ""))
-                                                    clean_it_name = re.sub(r'[\s\W_]+', '', it_norm_str).lower()
-                                                    if clean_it_name and (clean_it_name in clean_row or clean_row in clean_it_name or clean_it_name in clean_row_rev or clean_row_rev in clean_it_name):
-                                                        matched_item = it
-                                                        used_item_indices.add(it_idx)
-                                                        break
+                                            matched_item = accepted_by_row.get(r_i)
 
                                             if matched_item:
                                                 legacy_rows.append(RowDiagnostic(
@@ -1063,8 +1060,10 @@ class PDFCatalogParser:
                                                 rej_d = 0.0
                                                 rej_reason = "legacy_parsing_rejection"
                                                 if len(row_cells) >= 3:
-                                                    hdr_row = [str(c).strip() if c else "" for c in table_data[0]] if header_offset > 0 else ["" for _ in row_cells]
-                                                    n_idx, p_idx, d_idx, _ = self._find_column_indices(hdr_row, table_data[header_offset:])
+                                                    if column_indices is None:
+                                                        hdr_row = [str(c).strip() if c else "" for c in table_data[0]] if header_offset > 0 else ["" for _ in row_cells]
+                                                        column_indices = self._find_column_indices(hdr_row, table_data[header_offset:])
+                                                    n_idx, p_idx, d_idx, _ = column_indices
                                                     if n_idx is not None and n_idx < len(row_cells) and row_cells[n_idx]:
                                                         rej_name = str(row_cells[n_idx]).strip()
                                                     if p_idx is not None and p_idx < len(row_cells) and row_cells[p_idx]:
@@ -1443,6 +1442,18 @@ class PDFCatalogParser:
 
 
 
+    @staticmethod
+    def _is_header_only_table(table_data: list) -> bool:
+        if len(table_data) != 1:
+            return False
+        cells = [str(cell).strip() for cell in table_data[0] if cell and str(cell).strip()]
+        headers = {"اسم الصنف", "إسم الصنف", "الصنف", "السعر", "الخصم", "خصم", "سجمهور", "سعر الجمهور"}
+        labels = [
+            re.sub(r"[^\w\s]", "", unicodedata.normalize("NFKC", cell).replace("ھ", "ه")).strip()
+            for cell in cells
+        ]
+        return len(labels) >= 3 and all(label in headers or label[::-1] in headers for label in labels)
+
     def _is_likely_catalog_table(self, table_data: list) -> bool:
         """
         Determines whether a raw table is likely an actual product catalog table
@@ -1484,12 +1495,17 @@ class PDFCatalogParser:
 
         return False
 
-    def _process_table(self, table: list) -> list:
+    def _process_table(self, table: list, track_rows: bool = False) -> list:
         """Parse raw 2D list table into catalog items, supporting split side-by-side tables."""
         if not table or len(table) < 2:
             return []
             
         results = []
+        def emit(destination, item, row_index):
+            if track_rows:
+                item["_table_row"] = row_index
+            destination.append(item)
+
         headers = [str(col).strip() if col else '' for col in table[0]]
         
         # Filter rows to non-empty cells
@@ -1511,7 +1527,7 @@ class PDFCatalogParser:
                         break
                 
                 invoice_results = []
-                for row in table[start_row:]:
+                for row_index, row in enumerate(table[start_row:], start_row):
                     if not row or len(row) < 9:
                         continue
                     # Col 8 (or 9) = Item Name, Col 5 = Public Price, Col 3 = Discount %
@@ -1543,7 +1559,7 @@ class PDFCatalogParser:
                         norm_name = normalize_arabic_text(item_name)
                         dosage, unit_size = parse_dosage_and_pack(item_name)
                         if len(norm_name) >= 2:
-                            invoice_results.append({
+                            emit(invoice_results, {
                                 'warehouse_name': self.warehouse_name,
                                 'item_name': item_name,
                                 'normalized_name': norm_name,
@@ -1552,14 +1568,14 @@ class PDFCatalogParser:
                                 'base_price': price_val,
                                 'discount_rate': disc_val,
                                 'stock_status': True
-                            })
+                            }, row_index)
                 if invoice_results:
                     return invoice_results
 
         # 1. Pattern: 6-element dual-item rows (e.g. Al-Fares, Al-Awael, New Active)
         rows_6 = [r for r in filtered_rows if len(r) == 6]
         if len(rows_6) >= 2 and (len(rows_6) / len(filtered_rows)) >= 0.4:
-            for r in filtered_rows:
+            for row_index, r in enumerate(filtered_rows):
                 if len(r) == 6:
                     for triplet in (r[0:3], r[3:6]):
                         c0, c1, c2 = triplet[0], triplet[1], triplet[2]
@@ -1616,7 +1632,7 @@ class PDFCatalogParser:
                             norm_name = normalize_arabic_text(item_name)
                             dosage, unit_size = parse_dosage_and_pack(item_name)
                             if len(norm_name) >= 2:
-                                results.append({
+                                emit(results, {
                                     'warehouse_name': self.warehouse_name,
                                     'item_name': item_name,
                                     'normalized_name': norm_name,
@@ -1625,7 +1641,7 @@ class PDFCatalogParser:
                                     'base_price': p_val,
                                     'discount_rate': d_val,
                                     'stock_status': True
-                                })
+                                }, row_index)
             if results:
                 return results
 
@@ -1650,7 +1666,7 @@ class PDFCatalogParser:
             c3_disc_count = sum(1 for r in sample_candidates if 0.01 <= parse_discount(r[3]) <= 0.85)
             is_hadhaba = c3_disc_count > c0_disc_count or ('هضبة' in self.warehouse_name or 'الهضبة' in self.warehouse_name or 'الهضبه' in self.warehouse_name)
 
-            for r in filtered_rows:
+            for row_index, r in enumerate(filtered_rows):
                 if len(r) == 4:
                     r1_raw = str(r[1]).strip()
                     r0_raw = str(r[0]).strip()
@@ -1703,7 +1719,7 @@ class PDFCatalogParser:
                             continue
                         dosage, unit_size = parse_dosage_and_pack(item_name)
                         if len(norm_name) >= 2:
-                            results.append({
+                            emit(results, {
                                 'warehouse_name': self.warehouse_name,
                                 'item_name': item_name,
                                 'normalized_name': norm_name,
@@ -1712,7 +1728,7 @@ class PDFCatalogParser:
                                 'base_price': p_val,
                                 'discount_rate': d_val,
                                 'stock_status': True
-                            })
+                            }, row_index)
             if results:
                 return results
 
@@ -1792,7 +1808,7 @@ class PDFCatalogParser:
             )
             is_table_reversed = (rev_votes >= 2 and rev_votes > fwd_votes * 2)
             
-            for row in data_rows:
+            for row_index, row in enumerate(data_rows, len(sub_t) - len(data_rows)):
                 if not row or all(not cell for cell in row):
                     continue
 
@@ -1837,7 +1853,7 @@ class PDFCatalogParser:
                                 norm_name = normalize_arabic_text(item_name)
                                 dosage, unit_size = parse_dosage_and_pack(item_name)
                                 if len(norm_name) >= 2:
-                                    results.append({
+                                    emit(results, {
                                         'warehouse_name': self.warehouse_name,
                                         'item_name': item_name,
                                         'normalized_name': norm_name,
@@ -1846,7 +1862,7 @@ class PDFCatalogParser:
                                         'base_price': price_val,
                                         'discount_rate': discount_val,
                                         'stock_status': True
-                                    })
+                                    }, row_index)
                     continue
 
                 # Case B: Standard column row
@@ -1997,7 +2013,7 @@ class PDFCatalogParser:
                     valid_discount = (0.0 < discount_val <= 0.85) or is_valid_zero
 
                     if len(norm_name) >= 2 and valid_discount and 0.0 < price_val <= 10000.0:
-                        results.append({
+                        emit(results, {
                             'warehouse_name': self.warehouse_name,
                             'item_name': item_name,
                             'normalized_name': norm_name,
@@ -2006,7 +2022,7 @@ class PDFCatalogParser:
                             'base_price': price_val,
                             'discount_rate': discount_val,
                             'stock_status': stock_status
-                        })
+                        }, row_index)
                 
         return results
 
@@ -2889,6 +2905,103 @@ class PDFCatalogParser:
         if return_diagnostics:
             return items, row_diags
         return items
+
+    @staticmethod
+    def _ruled_rectangles(page):
+        return [
+            drawing["rect"] for drawing in page.get_drawings()
+            if len(drawing["items"]) == 1 and drawing["items"][0][0] == "re"
+        ]
+
+    def _find_ruled_triplet_layout(self, page):
+        """Learn numeric-column positions from the printed headings."""
+        headings = {}
+        for block in page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
+            for line in block.get("lines", []):
+                for span in line["spans"]:
+                    label = unicodedata.normalize("NFKC", span["text"]).strip()
+                    if label in {"السعر", "الخصم", "إسم الصنف", "اسم الصنف"}:
+                        headings[label] = pymupdf.Rect(span["bbox"])
+        price, discount = headings.get("السعر"), headings.get("الخصم")
+        name = headings.get("إسم الصنف", headings.get("اسم الصنف"))
+        if price is None or discount is None or name is None:
+            return None
+        if not (discount.x1 < price.x0 and price.x1 < name.x0):
+            return None
+        for rect in self._ruled_rectangles(page):
+            if rect.contains(discount) and rect.contains(price) and rect.contains(name):
+                gap = (price.x0 + price.x1 - discount.x0 - discount.x1) / 2
+                first_split = (discount.x1 + price.x0) / 2
+                second_split = price.x1 + gap / 4
+                return rect, first_split - rect.x0, second_split - rect.x0
+        return None
+
+    def _extract_ruled_triplet_page(self, page, layout):
+        header, first_split, second_split = layout
+        by_column = {}
+        for rect in self._ruled_rectangles(page):
+            if abs(rect.width - header.width) > 1 or abs(rect.height - header.height) > 1:
+                continue
+            if rect.y0 < header.y0 - 1:
+                continue
+            column = round((rect.x0 - header.x0) / header.width)
+            offset = rect.x0 - header.x0 - column * header.width
+            if 0 <= column < 3 and abs(offset) < header.width * 0.08:
+                by_column.setdefault(column, {})[round(rect.y0, 1)] = rect
+        if len(by_column) < 2 or len(by_column.get(0, {})) < 5:
+            return None
+
+        spans = [
+            span for block in page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]
+            for line in block.get("lines", []) for span in line["spans"]
+        ]
+        page_no = page.number + 1
+        items, groups = [], []
+        for column, rects in sorted(by_column.items()):
+            group = ProductGroup(column, [0, 1, 2], price_col=1, discount_col=0,
+                                 name_col=2, explicit_price_disc_headers=True)
+            rows = []
+            for rect in sorted(rects.values(), key=lambda box: box.y0):
+                edges = [rect.x0, rect.x0 + first_split, rect.x0 + second_split, rect.x1]
+                cell_text = [[], [], []]
+                for span in spans:
+                    bbox = span["bbox"]
+                    x = (bbox[0] + bbox[2]) / 2
+                    y = span["origin"][1]
+                    if rect.y0 <= y < rect.y1 and rect.x0 <= x < rect.x1:
+                        cell = 0 if x < edges[1] else 1 if x < edges[2] else 2
+                        cell_text[cell].append(span["text"].strip())
+                raw = [" ".join(parts).strip() for parts in cell_text]
+                if not any(raw) or (column == 0 and abs(rect.y0 - header.y0) < 1
+                                    and self._is_header_only_table([raw])):
+                    continue
+                row_idx = len(rows)
+                source_id = build_source_id(page_no, 0, column, row_idx)
+                if all(re.fullmatch(r"[0-9]+(?:[.,][0-9]+)?%?", value) for value in raw[:2]):
+                    values = [*raw[:2], fix_arwasoft_arabic_numbers(raw[2])]
+                    item, reason, _ = extract_item_from_group_row(values, group, "forward", self.warehouse_name)
+                else:
+                    item, reason = None, "ambiguous_ruled_numeric_cell"
+                if item is not None:
+                    item.update(source_id=source_id, _page=page.number, _y=rect.y0, _bbox=list(rect))
+                    items.append(item)
+                rows.append(RowDiagnostic(
+                    page=page_no, table=0, group=column, row=row_idx,
+                    outcome="accepted" if item is not None else "rejected",
+                    reason=reason, bbox=list(rect), raw_cells=raw, item_name=raw[2],
+                    source_id=source_id, item=item,
+                ))
+            accepted = sum(row.outcome == "accepted" for row in rows)
+            groups.append(GroupDiagnostics(
+                group=column, strategy="ruled_triplets", rows=rows,
+                candidate_rows=len(rows), accepted_rows=accepted, rejected_rows=len(rows) - accepted,
+            ))
+        if not items:
+            return None
+        return items, PageDiagnostics(
+            page=page_no, strategy="ruled_triplets", expected_count_known=True,
+            accepted_rows=len(items), groups=groups, selected_method="digital_ruled_cells",
+        )
 
     def _extract_makramy_columns(self, page) -> list:
         """Extracts right columns (columns 2 & 3) for 3-column ArwaSoft accounting PDFs (Makramy)."""
