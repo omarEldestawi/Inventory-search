@@ -68,6 +68,7 @@ try:
     from src.catalog_reader import validate_catalog_item
     from src.pipeline import (
         run_procurement_pipeline,
+        validate_cached_catalog,
         PipelineExecutionError,
         get_default_output_dir,
         resolve_safe_output_dir,
@@ -113,6 +114,8 @@ except ImportError:
     from updater import AutoUpdateManager
     from manual_search_window import ManualSearchWindow
 
+
+from src.bench_trace import event as bench_event, setup_app as bench_setup_app
 
 logger = logging.getLogger("PharmaGUI")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -427,14 +430,17 @@ def render_pdf_page_with_highlight(
         page = doc[p_idx]
         pix = page.get_pixmap(dpi=dpi)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img.info["pdf_page_rect"] = tuple(page.rect)
+        img.info["pdf_inverse_rotation"] = tuple(page.derotation_matrix)
 
         if bbox and len(bbox) >= 4:
             scale_x = pix.width / max(1.0, float(page.rect.width))
             scale_y = pix.height / max(1.0, float(page.rect.height))
-            rx0 = min(float(bbox[0]), float(bbox[2])) * scale_x
-            ry0 = min(float(bbox[1]), float(bbox[3])) * scale_y
-            rx1 = max(float(bbox[0]), float(bbox[2])) * scale_x
-            ry1 = max(float(bbox[1]), float(bbox[3])) * scale_y
+            rotated = pymupdf.Rect(bbox).normalize() * page.rotation_matrix
+            rx0, ry0, rx1, ry1 = (
+                rotated.x0 * scale_x, rotated.y0 * scale_y,
+                rotated.x1 * scale_x, rotated.y1 * scale_y,
+            )
 
             # Ensure minimal visibility
             if rx1 - rx0 < 10:
@@ -736,6 +742,11 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self.selected_issue: Optional[ReviewIssue] = None
         self.selected_source_id: Optional[str] = None
         self._current_ctk_image: Optional[ctk.CTkImage] = None
+        self._box_revision = 0
+        self._box_results = queue.Queue(maxsize=1)
+        self._box_pending = None
+        self._box_running = False
+        self._box_suggestion = None
 
         try:
             if self.catalog_path.lower().endswith(".pdf") and os.path.isfile(self.catalog_path):
@@ -911,10 +922,10 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self.disc_var = tk.StringVar()
         self.stock_var = tk.StringVar(value="متوفر (Available)")
 
-        self.name_var.trace_add("write", lambda *args: self._run_inline_validation())
-        self.price_var.trace_add("write", lambda *args: self._run_inline_validation())
-        self.disc_var.trace_add("write", lambda *args: self._run_inline_validation())
-        self.stock_var.trace_add("write", lambda *args: self._run_inline_validation())
+        self.name_var.trace_add("write", lambda *args: self._on_editor_changed())
+        self.price_var.trace_add("write", lambda *args: self._on_editor_changed())
+        self.disc_var.trace_add("write", lambda *args: self._on_editor_changed())
+        self.stock_var.trace_add("write", lambda *args: self._on_editor_changed())
 
         def _add_field(row, label_text, var, width=None):
             lbl = ctk.CTkLabel(self.editor_frame, text=label_text, font=get_font(11), anchor="w")
@@ -970,13 +981,21 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         self.read_box_btn = ctk.CTkButton(
             self.editor_frame,
-            text="🔍 قراءة المستطيل بمحرك PowerToys OCR / Read Highlighted Box (PowerToys OCR)",
+            text="🔍 قراءة المستطيل / Read Highlighted Box with OCR",
             font=get_font(10, "bold"),
             fg_color=COLOR_CATALOG_BADGE,
             hover_color="#0369A1",
             command=self._on_read_highlighted_box_ocr,
         )
         self.read_box_btn.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 6))
+
+        self.box_suggestions_lbl = ctk.CTkLabel(self.editor_frame, text="", wraplength=460, justify="left")
+        self.box_suggestions_lbl.grid(row=11, column=0, columnspan=2, sticky="w", padx=10)
+        self.use_box_suggestions_btn = ctk.CTkButton(
+            self.editor_frame, text="استخدام المقترحات / Use OCR Suggestions",
+            command=self._use_box_suggestions, state="disabled",
+        )
+        self.use_box_suggestions_btn.grid(row=12, column=0, columnspan=2, sticky="ew", padx=10, pady=3)
 
         # Action Buttons
         btn_grid = ctk.CTkFrame(right_frame, fg_color="transparent")
@@ -985,7 +1004,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         self.apply_btn = ctk.CTkButton(
             btn_grid,
-            text="✓ تطبيق التصحيح / Apply",
+            text="✓ حفظ التصحيح / Save Correction",
             font=get_font(11, "bold"),
             fg_color=COLOR_ORDER_BADGE,
             hover_color="#047857",
@@ -1045,7 +1064,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         self.auto_retry_btn = ctk.CTkButton(
             alt_bar,
-            text="🔄 محاولة بديلة (200 DPI CLAHE)\nAuto Retry Alternative Settings",
+            text="إعادة قراءة المستطيل / Retry Box OCR",
             font=get_font(10, "bold"),
             fg_color=COLOR_ACCENT,
             hover_color=COLOR_ACCENT_HOVER,
@@ -1191,21 +1210,19 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         item_data = issue.item or {}
         name_val = item_data.get("item_name") or ""
         price_val = str(item_data.get("base_price")) if item_data.get("base_price") is not None else ""
-        disc_val = str(item_data.get("discount_rate")) if item_data.get("discount_rate") is not None else ""
+        if "price" in reason_txt:
+            price_val = ""
+        rate = item_data.get("discount_rate") if "discount" not in reason_txt else None
+        disc_val = f"{float(rate) * 100:g}" if rate is not None else ""
         stock_bool = item_data.get("stock_status", True)
 
         # If item_data is empty, attempt to pre-populate from raw cells
-        if not name_val and issue.raw_cells:
+        if (not name_val and issue.raw_cells and not issue.is_region_level
+                and not (issue.identity and issue.identity.is_region_issue)):
             for c in issue.raw_cells:
                 s = str(c).strip()
                 if len(s) >= 2 and not re_is_pure_num(s) and not is_header_text(s):
                     name_val = s
-                    break
-        if not price_val and issue.raw_cells:
-            for c in issue.raw_cells:
-                num = extract_numeric(c)
-                if num is not None and 0.0 < num < 10000.0:
-                    price_val = str(num)
                     break
 
         self.name_var.set(name_val)
@@ -1219,7 +1236,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
                 curr_txt = self.explanation_lbl.cget("text")
                 if "PowerToys OCR" not in curr_txt:
                     self.explanation_lbl.configure(
-                        text=f"{curr_txt}\n💡 تلميح: انقر على '🔍 قراءة المستطيل بمحرك PowerToys OCR' أدناه أو اسحب بالماوس لاستخراج البيانات."
+                        text=f"{curr_txt}\n💡 تلميح: حدد المستطيل ثم اضغط قراءة المستطيل."
                     )
 
         self._render_pdf_page()
@@ -1229,13 +1246,21 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         raw_name = self.name_var.get().strip()
         raw_price = self.price_var.get().strip()
         raw_disc = self.disc_var.get().strip()
-        stock_val = "متوفر" in self.stock_var.get() or "Available" in self.stock_var.get()
+        stock_val = self.stock_var.get().startswith("متوفر") or "Available" in self.stock_var.get()
+        discount = None
+        if raw_disc:
+            from src.box_ocr_parser import normalize_numeric
+
+            try:
+                discount = float(normalize_numeric(raw_disc).removesuffix("%")) / 100.0
+            except ValueError:
+                discount = raw_disc
 
         candidate = {
             "warehouse_name": self.service.warehouse_name,
             "item_name": raw_name,
             "base_price": raw_price if raw_price else None,
-            "discount_rate": raw_disc if raw_disc else None,
+            "discount_rate": discount,
             "stock_status": stock_val,
         }
 
@@ -1276,7 +1301,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             disp_h = int(disp_w * aspect)
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(disp_w, disp_h))
             self._current_ctk_image = ctk_img
-            self._current_rendered_dims = (disp_w, disp_h, img.width, img.height)
+            self._current_rendered_dims = (disp_w, disp_h, img.info["pdf_page_rect"], img.info["pdf_inverse_rotation"])
             self.page_image_lbl.configure(image=ctk_img, text="")
         else:
             self._current_ctk_image = None
@@ -1289,16 +1314,23 @@ class CatalogReviewWindow(ctk.CTkToplevel):
     def _on_prev_page(self):
         if self.current_page > 1:
             self.current_page -= 1
+            self._custom_drag_bbox = None
+            self._invalidate_box_ocr()
             self._render_pdf_page()
 
     def _on_next_page(self):
         if self.current_page < self.total_pages:
             self.current_page += 1
+            self._custom_drag_bbox = None
+            self._invalidate_box_ocr()
             self._render_pdf_page()
 
     def _on_apply_correction(self):
         if not self.selected_source_id:
             messagebox.showwarning("تنبيه / Warning", "يرجى تحديد مشكلة من القائمة أولاً / Select an issue first.")
+            return
+        if self.selected_issue and self.selected_issue.identity and self.selected_issue.identity.page != self.current_page:
+            messagebox.showwarning("تنبيه / Warning", "Select the catalog issue on the displayed page before saving.")
             return
 
         valid, err, candidate = self._run_inline_validation()
@@ -1307,7 +1339,15 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             return
 
         try:
-            res = self.service.apply_field_correction(self.selected_source_id, candidate)
+            if self.selected_issue and (self.selected_issue.is_region_level or (
+                self.selected_issue.identity and self.selected_issue.identity.is_region_issue
+            )):
+                if not self._custom_drag_bbox:
+                    messagebox.showwarning("تنبيه / Warning", "Highlight one row inside the region before saving.")
+                    return
+                res = self.service.apply_region_row_correction(self.selected_issue, self._custom_drag_bbox, candidate)
+            else:
+                res = self.service.apply_field_correction(self.selected_source_id, candidate)
             self.catalog_result = res
             self._refresh_issue_list()
             self._update_summary_label()
@@ -1425,38 +1465,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self.destroy()
 
     def _on_auto_retry_alternative(self):
-        """Triggers bounded alternative recovery (200 DPI CLAHE deskew) for this catalog."""
-        if hasattr(self, "explanation_lbl"):
-            self.explanation_lbl.configure(
-                text="🔄 جاري تنفيذ المحاولة التلقائية البديلة (200 DPI CLAHE deskew)...",
-                text_color=COLOR_ACCENT,
-            )
-            self.update_idletasks()
-        try:
-            from src.catalog_recovery import run_automatic_recovery
-            res_rec = run_automatic_recovery(self.catalog_result, self.catalog_path)
-            self.catalog_result = res_rec
-            self.service._base_catalog_result = res_rec
-            # Rebuild from the recovered base so persisted mappings, field edits,
-            # and exclusions are reapplied. CatalogCorrectionService has no
-            # _apply_active_corrections() method.
-            self.service._catalog_result = None
-            self.catalog_result = self.service.get_refreshed_catalog_result()
-            self._refresh_issue_list()
-            self._update_summary_label()
-            self._render_pdf_page()
-            if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text="✓ اكتملت المحاولة التلقائية البديلة بنجاح. تم تحديث البيانات المستردة.",
-                    text_color=COLOR_SUCCESS,
-                )
-        except Exception as e:
-            logger.error(f"Auto retry error: {e}")
-            if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text=f"⚠️ تعذر استرداد أصناف إضافية تلقائياً: {e}",
-                    text_color=COLOR_WARN_BADGE,
-                )
+        self._on_read_highlighted_box_ocr()
 
     def _on_preview_drag_start(self, event):
         self._drag_start_x = event.x
@@ -1475,41 +1484,33 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._ocr_custom_preview_box(rx0, ry0, rx1, ry1)
 
     def _ocr_custom_preview_box(self, rx0: float, ry0: float, rx1: float, ry1: float):
-        """Maps user dragged rectangle on page_image_lbl to PDF coordinates and runs PowerToys OCR."""
+        """Map a dragged preview rectangle back to the PDF source coordinates."""
         dims = getattr(self, "_current_rendered_dims", None)
-        if not dims or not self.catalog_path or not self.catalog_path.lower().endswith(".pdf"):
+        if not dims:
             return
-
-        disp_w, disp_h, img_w, img_h = dims
-        scale_x = img_w / max(1.0, float(disp_w))
-        scale_y = img_h / max(1.0, float(disp_h))
-
-        try:
-            import numpy as np
-            import cv2
-            doc = pymupdf.open(self.catalog_path)
-            p_idx = max(0, min(self.current_page - 1, len(doc) - 1))
-            page = doc[p_idx]
-            pt_to_img_x = img_w / max(1.0, float(page.rect.width))
-            pt_to_img_y = img_h / max(1.0, float(page.rect.height))
-
-            pt_x0 = (rx0 * scale_x) / pt_to_img_x
-            pt_y0 = (ry0 * scale_y) / pt_to_img_y
-            pt_x1 = (rx1 * scale_x) / pt_to_img_x
-            pt_y1 = (ry1 * scale_y) / pt_to_img_y
-            doc.close()
-
-            custom_bbox = [pt_x0, pt_y0, pt_x1, pt_y1]
-            self._custom_drag_bbox = custom_bbox
-            self._render_pdf_page()
-            self._execute_box_ocr(custom_bbox)
-        except Exception as exc:
-            logger.warning("Error mapping custom preview box: %s", exc)
+        disp_w, disp_h, page_bounds, inverse = dims
+        display_w = self.page_image_lbl._apply_widget_scaling(disp_w)
+        display_h = self.page_image_lbl._apply_widget_scaling(disp_h)
+        display_x = max(0, (self.page_image_lbl.winfo_width() - display_w) / 2)
+        display_y = max(0, (self.page_image_lbl.winfo_height() - display_h) / 2)
+        rect = pymupdf.Rect(page_bounds)
+        selected = pymupdf.Rect(
+            rect.x0 + (rx0 - display_x) * rect.width / display_w,
+            rect.y0 + (ry0 - display_y) * rect.height / display_h,
+            rect.x0 + (rx1 - display_x) * rect.width / display_w,
+            rect.y0 + (ry1 - display_y) * rect.height / display_h,
+        ) & rect
+        if selected.is_empty:
+            return
+        self._custom_drag_bbox = list(selected * pymupdf.Matrix(*inverse))
+        self._invalidate_box_ocr()
+        self._render_pdf_page()
 
     def _on_read_highlighted_box_ocr(self):
         """Runs ContextWindowOCR on the currently highlighted row/box."""
         crop_bbox = getattr(self, "_custom_drag_bbox", None)
-        if not crop_bbox and self.selected_issue:
+        if (not crop_bbox and self.selected_issue and self.selected_issue.identity
+                and self.selected_issue.identity.page == self.current_page):
             crop_bbox = self.selected_issue.bbox or (self.selected_issue.identity.bbox if self.selected_issue.identity else None)
 
         if not crop_bbox:
@@ -1522,177 +1523,94 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         self._execute_box_ocr(crop_bbox)
 
-    def _execute_box_ocr(self, crop_bbox: List[float]):
-        """Executes PowerToys ContextWindowOCR on the specified bbox and fills the editor fields."""
-        if not self.catalog_path or not os.path.isfile(self.catalog_path) or not self.catalog_path.lower().endswith(".pdf"):
+    def _invalidate_box_ocr(self):
+        self._box_revision += 1
+        self._box_pending = None
+        self._box_suggestion = None
+        if hasattr(self, "box_suggestions_lbl"):
+            self.box_suggestions_lbl.configure(text="")
+            self.use_box_suggestions_btn.configure(state="disabled")
+
+    def _on_editor_changed(self):
+        self._invalidate_box_ocr()
+        self._run_inline_validation()
+
+    def _box_editor_context(self):
+        return (self.catalog_path, id(self.catalog_result), self.current_page,
+                self.selected_source_id, self._box_revision)
+
+    def _execute_box_ocr(self, crop_bbox):
+        if not self.catalog_path.lower().endswith(".pdf"):
             return
+        self._invalidate_box_ocr()
+        identity = self._box_editor_context()
+        fingerprint = self.catalog_result.fingerprint
+        roles = {}
+        issue = self.selected_issue
+        row_bounds = issue.bbox if issue and issue.identity and issue.identity.page == self.current_page else None
+        associated = bool(row_bounds and pymupdf.Rect(row_bounds).contains(pymupdf.Rect(crop_bbox)))
+        if (issue and issue.identity and issue.identity.page == self.current_page
+                and issue.validation_results.get("verified_column_roles") and issue.column_bounds):
+            roles = {role: (x0, crop_bbox[1], x1, crop_bbox[3])
+                     for role, (x0, x1) in issue.column_bounds.items()}
+        self._box_pending = (identity, fingerprint, tuple(crop_bbox), roles, associated)
+        self.box_suggestions_lbl.configure(text="جاري قراءة المستطيل / Reading selected box…")
+        if not self._box_running:
+            self._launch_box_ocr()
 
-        try:
-            from src.native_ocr.win_context_ocr import ContextWindowOCR
-        except ImportError:
-            ContextWindowOCR = None
+    def _launch_box_ocr(self):
+        identity, fingerprint, bbox, roles, associated = self._box_pending
+        self._box_pending = None
+        self._box_running = True
+        results = self._box_results
 
-        if ContextWindowOCR is None:
-            if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text="⚠️ وحدة ContextWindowOCR غير متوفرة",
-                    text_color=COLOR_DANGER,
-                )
-            return
-
-        ctx_ocr = ContextWindowOCR()
-        if not ctx_ocr.is_available():
-            if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text="⚠️ محرك PowerToys OCR غير متاح على هذا النظام",
-                    text_color=COLOR_WARN_BADGE,
-                )
-            return
-
-        if hasattr(self, "explanation_lbl"):
-            self.explanation_lbl.configure(
-                text="🔄 جاري القراءة بمحرك PowerToys OCR مع سياق ±3 صفوف...",
-                text_color=COLOR_ACCENT,
-            )
-            self.update_idletasks()
-
-        try:
-            doc = pymupdf.open(self.catalog_path)
-            p_idx = max(0, min(self.current_page - 1, len(doc) - 1))
-            page = doc[p_idx]
-            pix = page.get_pixmap(dpi=180)
-            page_img = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.height, pix.width, pix.n))
-            if pix.n == 4:
-                page_img = cv2.cvtColor(page_img, cv2.COLOR_RGBA2RGB)
-            elif pix.n == 1:
-                page_img = cv2.cvtColor(page_img, cv2.COLOR_GRAY2RGB)
-
-            scale_x = pix.width / max(1.0, float(page.rect.width))
-            scale_y = pix.height / max(1.0, float(page.rect.height))
-            px_bbox = (
-                float(crop_bbox[0]) * scale_x,
-                float(crop_bbox[1]) * scale_y,
-                float(crop_bbox[2]) * scale_x,
-                float(crop_bbox[3]) * scale_y,
-            )
-            doc.close()
-
-            res = ctx_ocr.extract_target_box_with_context(
-                full_page_img=page_img,
-                target_bbox=px_bbox,
-                context_rows_above=3,
-                context_rows_below=3,
-                vertical_tolerance_ratio=0.35,
-            )
-
-            target_text = res.get("text", "").strip()
-            words = res.get("words", [])
-
-            if not target_text and not words:
-                if hasattr(self, "explanation_lbl"):
-                    self.explanation_lbl.configure(
-                        text="⚠️ لم يتم رصد نصوص واضحة داخل هذا المستطيل / No text detected",
-                        text_color=COLOR_WARN_BADGE,
-                    )
-                return
-
-            # Robust horizontal column clustering and BiDi word grouping
+        def read_box():
             try:
-                from src.native_ocr.win_context_ocr import _sort_words_bidi
-            except ImportError:
-                _sort_words_bidi = lambda ws: ws
+                from src.box_ocr_service import run_box_ocr
 
-            cand_price = None
-            cand_disc = None
-            name_tokens = []
+                outcome = run_box_ocr(identity[0], identity[2] - 1, bbox, column_roles=roles)
+            except Exception as exc:
+                outcome = {"ok": False, "error": str(exc)}
+            results.put_nowait((identity, fingerprint, outcome, associated))
 
-            # Sort words along X axis
-            words_by_x = sorted(words, key=lambda w: w.get("bbox", [0])[0])
-            clusters = []
-            if words_by_x:
-                curr_c = [words_by_x[0]]
-                for w in words_by_x[1:]:
-                    prev = curr_c[-1]
-                    prev_b = prev.get("bbox", [0, 0, 0, 0])
-                    curr_b = w.get("bbox", [0, 0, 0, 0])
-                    gap = curr_b[0] - prev_b[2]
-                    avg_h = ((prev_b[3] - prev_b[1]) + (curr_b[3] - curr_b[1])) / 2.0
-                    if gap > 1.2 * avg_h:
-                        clusters.append(curr_c)
-                        curr_c = [w]
-                    else:
-                        curr_c.append(w)
-                clusters.append(curr_c)
+        threading.Thread(target=read_box, name="ReviewBoxOCR", daemon=True).start()
+        self.after(25, self._poll_box_ocr)
 
-            name_parts = []
-            numeric_clusters = []
+    def _poll_box_ocr(self):
+        try:
+            identity, fingerprint, outcome, associated = self._box_results.get_nowait()
+        except queue.Empty:
+            self.after(25, self._poll_box_ocr)
+            return
+        self._box_running = False
+        if identity == self._box_editor_context() and fingerprint and fingerprint.is_current(self.catalog_path):
+            if outcome["ok"]:
+                result = outcome["parse"]
+                suggestion = {
+                    "Name": result.name,
+                    "Price": result.price,
+                    "Discount %": result.discount_percent,
+                }
+                fields = ", ".join(f"{key}: {value}" for key, value in suggestion.items() if value is not None)
+                self.box_suggestions_lbl.configure(text=" | ".join(filter(None, (outcome["backend"], fields, *result.notes))))
+                if fields and associated:
+                    self._box_suggestion = (identity, result)
+                    self.use_box_suggestions_btn.configure(state="normal")
+            else:
+                self.box_suggestions_lbl.configure(text=outcome["error"])
+        if self._box_pending is not None:
+            self._launch_box_ocr()
 
-            for c in clusters:
-                c_texts = [str(w.get("text", "")).strip() for w in c if str(w.get("text", "")).strip()]
-                has_letters = any(bool(re.search(r"[a-zA-Z\u0600-\u06ff]", t)) for t in c_texts)
-                if has_letters:
-                    sorted_c = _sort_words_bidi(c)
-                    name_parts.append(" ".join(str(w.get("text", "")).strip() for w in sorted_c))
-                else:
-                    joined_num = " ".join(c_texts).strip()
-                    norm_num = joined_num.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")).replace(",", ".")
-                    numeric_clusters.append((norm_num, c[0].get("bbox", [0])[0]))
-
-            if numeric_clusters:
-                parsed_nums = []
-                for n_str, x_pos in numeric_clusters:
-                    has_pct = "%" in n_str
-                    clean_str = n_str.replace("%", "").strip()
-                    try:
-                        v = float(clean_str)
-                        parsed_nums.append((v, has_pct, x_pos))
-                    except ValueError:
-                        pass
-
-                # If any has explicit %, it is discount
-                for v, has_pct, x_pos in parsed_nums:
-                    if has_pct and cand_disc is None:
-                        cand_disc = v / 100.0 if v > 1.0 else v
-
-                unassigned = [item for item in parsed_nums if not item[1]]
-                if len(unassigned) >= 2:
-                    # Sort by value: larger is price, smaller (<= 85) is discount
-                    v1, _, x1 = unassigned[0]
-                    v2, _, x2 = unassigned[1]
-                    p_val = max(v1, v2)
-                    d_val = min(v1, v2)
-                    if cand_price is None and 1.0 <= p_val < 10000.0:
-                        cand_price = p_val
-                    if cand_disc is None and 0.0 <= d_val <= 85.0:
-                        cand_disc = d_val / 100.0 if d_val >= 1.0 else d_val
-                elif len(unassigned) == 1:
-                    v, _, _ = unassigned[0]
-                    if cand_price is None and 1.0 <= v < 10000.0:
-                        cand_price = v
-                    elif cand_disc is None and 0.0 <= v <= 85.0:
-                        cand_disc = v / 100.0 if v >= 1.0 else v
-
-            new_name = " ".join(name_parts).strip() or target_text
-            if new_name:
-                self.name_var.set(new_name)
-            if cand_price is not None:
-                self.price_var.set(str(cand_price))
-            if cand_disc is not None:
-                self.disc_var.set(str(round(cand_disc * 100.0, 2)) if cand_disc > 0 else "0")
-
-            if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text=f"✓ تم استخراج النص بواسطة PowerToys OCR: '{target_text}'",
-                    text_color=COLOR_SUCCESS,
-                )
-            self._run_inline_validation()
-        except Exception as exc:
-            logger.warning("Error executing box OCR: %s", exc)
-            if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text=f"⚠️ خطأ أثناء قراءة المستطيل: {exc}",
-                    text_color=COLOR_DANGER,
-                )
+    def _use_box_suggestions(self):
+        if self._box_suggestion is None:
+            return
+        identity, result = self._box_suggestion
+        if identity != self._box_editor_context():
+            return
+        for variable, value in ((self.name_var, result.name), (self.price_var, result.price),
+                                (self.disc_var, result.discount_percent)):
+            if value is not None and not variable.get().strip():
+                variable.set(str(value))
 
     def _on_replace_with_clearer_source(self):
         """Allows pharmacist to pick a clearer replacement file for this specific catalog without restarting."""
@@ -2196,6 +2114,8 @@ class PharmaProcurementApp(ctk.CTk):
         self._inspection_seq: int = 0
         self._latest_applied_seq: Dict[str, int] = {}
         self._catalogs_inspecting: set[str] = set()
+        self._inspection_requests: Dict[str, Tuple[int, FileItem]] = {}
+        self._waiting_for_inspection = False
         self._catalog_inspection_lock = threading.Lock()
         self._pending_catalog_view: Optional[str] = None
         self._pending_catalog_review: Optional[str] = None
@@ -2210,32 +2130,9 @@ class PharmaProcurementApp(ctk.CTk):
         # Start OCR queue poller
         self.after(100, self._poll_ocr_queue)
 
-        # Asynchronously initialize OCR models in background (R2 Non-blocking startup)
-        self.after(200, self._async_init_ocr_models)
-
         # Start background auto-update check after 2 seconds
         if "--self-test" not in sys.argv:
             self.after(2000, self._start_auto_update_service)
-
-    def _async_init_ocr_models(self):
-        """Asynchronously initializes OCR models in a background daemon thread so GUI launches instantly without freezing."""
-        def _worker():
-            try:
-                logger.info("Initializing OCR models asynchronously in background thread...")
-                try:
-                    from src.ocr_engine import ArabicOCREngine
-                    engine = ArabicOCREngine()
-                    if hasattr(engine, "warmup"):
-                        engine.warmup()
-                    elif hasattr(engine, "is_available"):
-                        engine.is_available()
-                except Exception as e:
-                    logger.debug(f"Background ArabicOCREngine warmup note: {e}")
-            except Exception as exc:
-                logger.debug(f"Background OCR initialization exception: {exc}")
-
-        t = threading.Thread(target=_worker, name="OCRBackgroundWarmup", daemon=True)
-        t.start()
 
     def cancel_ocr(self, path: str):
         """Signals cancellation to an ongoing background OCR or recovery thread."""
@@ -2814,6 +2711,9 @@ class PharmaProcurementApp(ctk.CTk):
         self._inspection_seq += 1
         seq_id = self._inspection_seq
         self._catalogs_inspecting.update(uninspected)
+        for item in self.file_model.files:
+            if item.category == "Catalog" and item.path in uninspected:
+                self._inspection_requests[item.path] = (seq_id, item)
 
         def _worker(paths_to_inspect, do_refresh, current_seq):
             def publish(path, result):
@@ -2842,9 +2742,8 @@ class PharmaProcurementApp(ctk.CTk):
                                     path, result, error = incoming.recv()
                                     pending.remove(path)
                                     if result is None:
-                                        self._ocr_queue.put(("INSPECT_FILE_ERROR", path, error))
+                                        self._ocr_queue.put(("INSPECT_FILE_ERROR", path, error, current_seq))
                                     else:
-                                        global_catalog_cache.set(path, result.to_dataframe())
                                         publish(path, result)
                             finally:
                                 process.join(timeout=1)
@@ -2853,8 +2752,10 @@ class PharmaProcurementApp(ctk.CTk):
                                     process.join()
                                 process.close()
                 except (OSError, RuntimeError, EOFError) as exc:
-                    logger.warning("PDF process inspection failed, using the background reader: %s", exc)
-                    paths_to_inspect = pending
+                    logger.warning("PDF process inspection failed: %s", exc)
+                    for path in pending:
+                        self._ocr_queue.put(("INSPECT_FILE_ERROR", path, str(exc), current_seq))
+                    return
                 else:
                     return
 
@@ -2865,7 +2766,7 @@ class PharmaProcurementApp(ctk.CTk):
                     publish(p, res)
                 except Exception as e:
                     logger.debug(f"Catalog inspection thread error for {p}: {e}")
-                    self._ocr_queue.put(("INSPECT_FILE_ERROR", p, str(e)))
+                    self._ocr_queue.put(("INSPECT_FILE_ERROR", p, str(e), current_seq))
 
         t = threading.Thread(target=_worker, args=(uninspected, refresh, seq_id), name="CatalogInspectWorker", daemon=True)
         t.start()
@@ -3004,61 +2905,56 @@ class PharmaProcurementApp(ctk.CTk):
             for _ in range(8):
                 msg = self._ocr_queue.get_nowait()
                 m_type = msg[0]
-                if m_type == "INSPECT_FILE_DONE":
-                    norm_path, count = msg[1], msg[2]
-                    self._catalogs_inspecting.discard(norm_path)
-                    res = msg[3] if len(msg) > 3 else None
-                    seq_id = msg[4] if len(msg) > 4 else None
-
-                    # Monotonically increasing sequence protection: discard stale callbacks
-                    if seq_id is not None:
-                        last_seq = self._latest_applied_seq.get(norm_path, 0)
-                        if seq_id < last_seq:
-                            logger.info(
-                                f"Discarding stale background inspection result: seq {seq_id} < latest {last_seq} for {norm_path}"
-                            )
-                            continue
-                        self._latest_applied_seq[norm_path] = seq_id
-
-                    # Discard if file fingerprint is no longer current on disk
-                    if res is not None and getattr(res, "fingerprint", None) is not None:
-                        if not res.fingerprint.is_current(norm_path):
-                            logger.warning(
-                                f"Discarding background inspection result: FileFingerprint no longer current for {norm_path}"
-                            )
-                            continue
-
-                    for f in self.file_model.files:
-                        if os.path.normpath(f.path) == norm_path and f.category == "Catalog":
-                            f.item_count = count
-                            if res is not None:
-                                if (
-                                    f.acknowledged_token is not None
-                                    and f.acknowledged_token != res.acknowledgment_token
-                                ):
-                                    f.acknowledged_token = None
-                                f.catalog_result = res
-                                f.diagnostic_status = res.diagnostics.status
-                                f.diagnostic_summary = res.diagnostics.summary()
-                            f.determine_lifecycle_state()
-                            self._update_file_card_badge(norm_path)
-                            self._bump_catalog_generation()
-                            if res is not None and self._pending_catalog_view == norm_path:
-                                self._pending_catalog_view = None
-                                self.after_idle(lambda path=norm_path: self._open_catalog_item_viewer(path))
-                            break
-                elif m_type == "INSPECT_FILE_ERROR":
-                    path, error = msg[1], msg[2]
+                if m_type in ("INSPECT_FILE_DONE", "INSPECT_FILE_ERROR"):
+                    path = msg[1]
+                    result = msg[3] if m_type == "INSPECT_FILE_DONE" else None
+                    error = msg[2] if m_type == "INSPECT_FILE_ERROR" else None
+                    sequence = msg[-1]
+                    request = self._inspection_requests.get(path)
+                    if request is None or request[0] != sequence:
+                        continue
+                    del self._inspection_requests[path]
+                    self._latest_applied_seq[path] = sequence
                     self._catalogs_inspecting.discard(path)
-                    if self._pending_catalog_view == path:
-                        self._pending_catalog_view = None
-                    for f in self.file_model.files:
-                        if f.path == path and f.category == "Catalog":
-                            f.item_count = 0
-                            f.diagnostic_status = "failed"
-                            f.diagnostic_summary = error
-                            self._update_file_card_badge(path)
-                            break
+                    item = request[1]
+                    if item not in self.file_model.files or item.path != path or item.category != "Catalog":
+                        continue
+
+                    if result is not None and result.fingerprint is not None:
+                        if validate_cached_catalog(result, path) is None:
+                            item.catalog_result = None
+                            item.acknowledged_token = None
+                            self._async_inspect_counts([path])
+                            continue
+                    if result is None or result.fingerprint is None or (
+                        result.dataframe.empty and result.diagnostics.errors and not result.review_issues
+                    ):
+                        error = error or (result.diagnostics.summary() if result else "No catalog result")
+                        item.catalog_result = None
+                        item.item_count = 0
+                        item.diagnostic_status = "failed"
+                        item.diagnostic_summary = error
+                        self._waiting_for_inspection = False
+                        self.status_label.configure(text=f"Catalog inspection failed / فشل فحص الكتالوج: {error}")
+                        self._update_ui_state()
+                        if self._pending_catalog_view == path:
+                            self._pending_catalog_view = None
+                    else:
+                        if item.acknowledged_token != result.acknowledgment_token:
+                            item.acknowledged_token = None
+                        item.catalog_result = result
+                        bench_event("inspection_visible", path=path)
+                        item.item_count = len(result.dataframe)
+                        item.diagnostic_status = result.status
+                        item.diagnostic_summary = result.diagnostics.summary()
+                        if not result.dataframe.empty:
+                            global_catalog_cache.set(path, result.to_dataframe())
+                        if self._pending_catalog_view == path:
+                            self._pending_catalog_view = None
+                            self.after_idle(lambda path=path: self._open_catalog_item_viewer(path))
+                    item.determine_lifecycle_state()
+                    self._update_file_card_badge(path)
+                    self._bump_catalog_generation()
                 elif m_type in ("REVIEW_READY", "REVIEW_ERROR"):
                     path, payload = msg[1], msg[2]
                     self._pending_catalog_review = None
@@ -3139,10 +3035,33 @@ class PharmaProcurementApp(ctk.CTk):
             pass
         finally:
             self.after(100, self._poll_ocr_queue)
+            self._resume_waiting_optimization()
+
+    def _resume_waiting_optimization(self):
+        if not self._waiting_for_inspection:
+            return
+        paths = self.file_model.get_catalog_files()
+        if any(path in self._catalogs_inspecting for path in paths):
+            return
+        missing = [item.path for item in self.file_model.files
+                   if item.category == "Catalog" and item.catalog_result is None]
+        if missing:
+            self._async_inspect_counts(missing)
+            return
+        self._waiting_for_inspection = False
+        self._update_ui_state()
+        self._on_run_optimization()
+
+    def _invalidate_inspection(self, path):
+        self._inspection_requests.pop(path, None)
+        self._catalogs_inspecting.discard(path)
 
     def _on_clear_all(self):
         """Clears all files from model, cache, and GUI."""
         global_catalog_cache.clear()
+        self._inspection_requests.clear()
+        self._catalogs_inspecting.clear()
+        self._waiting_for_inspection = False
         self.file_model.clear()
         self._bump_catalog_generation()
         self._render_file_list()
@@ -3151,6 +3070,7 @@ class PharmaProcurementApp(ctk.CTk):
     def _on_remove_file(self, path: str):
         """Removes an individual file by path and invalidates its cached result."""
         global_catalog_cache.remove(path)
+        self._invalidate_inspection(path)
         self.file_model.remove_path(path)
         self._bump_catalog_generation()
         self._render_file_list()
@@ -3164,6 +3084,7 @@ class PharmaProcurementApp(ctk.CTk):
             return
 
         global_catalog_cache.remove(old_norm)
+        self._invalidate_inspection(old_norm)
         for f in self.file_model.files:
             if os.path.normpath(f.path) == old_norm:
                 f.path = new_norm
@@ -3203,6 +3124,8 @@ class PharmaProcurementApp(ctk.CTk):
         else:
             new_category = "Catalog"
         self.file_model.set_override(path, new_category)
+        if new_category != "Catalog":
+            self._invalidate_inspection(path)
         self._bump_catalog_generation()
         self._render_file_list()
         self._update_ui_state()
@@ -3744,7 +3667,7 @@ class PharmaProcurementApp(ctk.CTk):
             self.dest_entry.configure(state="disabled")
         else:
             self.run_button.configure(
-                state="normal" if is_valid else "disabled",
+                state="normal" if is_valid and not getattr(self, "_waiting_for_inspection", False) else "disabled",
                 text="بدء التحسين والتوزيع\nRun Optimization"
             )
             self.add_files_btn.configure(state="normal")
@@ -3769,39 +3692,28 @@ class PharmaProcurementApp(ctk.CTk):
         avg_discounts_file = avg_discounts_files[0] if avg_discounts_files else None
         output_dir = self.output_dir_var.get()
 
-        # R2 Non-blocking pre-flight inspection check
-        uninspected = [
-            f for f in self.file_model.files
-            if f.category == "Catalog" and f.catalog_result is None
-        ]
-        is_test_env = (
-            hasattr(messagebox.askyesno, "call_count")
-            or hasattr(messagebox.askyesno, "mock_calls")
-            or not hasattr(self, "after")
-        )
-        if uninspected and not is_test_env:
-            self.run_button.configure(state="disabled")
-            self.status_label.configure(
-                text="⏳ جاري التحقق من الكتالوجات في الخلفية... / Pre-flight inspection in progress..."
-            )
-            self.progress_bar.set(0.1)
-
-            def _preflight_worker():
-                for idx, f_item in enumerate(uninspected):
-                    try:
-                        res = inspect_catalog(f_item.path, refresh=False)
-                        f_item.catalog_result = res
-                        f_item.item_count = len(res.dataframe)
-                        f_item.diagnostic_status = res.diagnostics.status
-                        f_item.diagnostic_summary = res.diagnostics.summary()
-                        f_item.determine_lifecycle_state()
-                    except Exception as e:
-                        logger.error(f"Pre-flight inspection failed for {f_item.path}: {e}")
-                self.after(0, self._on_run_optimization)
-
-            t = threading.Thread(target=_preflight_worker, name="PreflightWorker", daemon=True)
-            t.start()
-            return
+        if hasattr(self, "_inspection_requests"):
+            if self._waiting_for_inspection or (self.bridge is not None and self.bridge.is_running):
+                return
+            pending = []
+            for item in self.file_model.files:
+                if item.category != "Catalog":
+                    continue
+                if item.path in self._catalogs_inspecting:
+                    pending.append(item.path)
+                    continue
+                if validate_cached_catalog(item.catalog_result, item.path) is None:
+                    item.catalog_result = None
+                    item.acknowledged_token = None
+                    pending.append(item.path)
+            if pending:
+                self._waiting_for_inspection = True
+                self.run_button.configure(state="disabled")
+                self.status_label.configure(
+                    text="⏳ جاري انتظار قراءة الكتالوجات... / Waiting for catalog inspection..."
+                )
+                self._async_inspect_counts(pending)
+                return
 
         # Revalidate catalog fingerprints and check for partial imports, review issues, or zero items
         accepted_tokens = set()
@@ -3883,7 +3795,11 @@ class PharmaProcurementApp(ctk.CTk):
                     target_path = None
             else:
                 dialog = ConsolidatedImportSummaryDialog(self, catalogs_summary)
+                if "--benchmark-batch" in sys.argv and os.getenv("EPO_BENCH_INPUTS") and not dialog.has_zero_valid():
+                    dialog.after(250, dialog._on_proceed)
+                bench_event("ack_start")
                 action, target_path = dialog.show_modal()
+                bench_event("ack_end", action=action)
 
             if action == "proceed":
                 if any_catalog_zero_valid:
@@ -3907,9 +3823,9 @@ class PharmaProcurementApp(ctk.CTk):
             elif action == "auto_retry":
                 retry_target = target_path or (catalogs_summary[0]["path"] if catalogs_summary else None)
                 if retry_target:
-                    self._start_ocr_reread(retry_target)
+                    self._open_catalog_review_window(retry_target)
                 self.status_label.configure(
-                    text="🔄 تم بدء إعادة المحاولة التلقائية بإعدادات بديلة... / Auto retry started."
+                    text="🛠️ تم فتح نافذة المراجعة والتصحيح للكتالوج / Review window opened."
                 )
                 return
             elif action == "replace_source":
@@ -3997,6 +3913,9 @@ class PharmaProcurementApp(ctk.CTk):
             results = {}
         report_path = results.get("report_path") or results.get("arabic_report_path")
         self.current_report_path = report_path
+        bench_event("saved", workbook=report_path)
+        if "--benchmark-batch" in sys.argv and os.getenv("EPO_BENCH_INPUTS"):
+            self.after(200, self.destroy)
         self.last_kpi_data = results.get("kpis") or {}
         if report_path:
             actual_dir = os.path.dirname(os.path.abspath(report_path))
@@ -4189,7 +4108,8 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
     assert hasattr(app, "_ocr_queue"), "Missing _ocr_queue"
     assert hasattr(app, "_active_ocr_threads"), "Missing _active_ocr_threads"
     assert hasattr(app, "_ocr_cancel_events"), "Missing _ocr_cancel_events"
-    assert callable(getattr(app, "_async_init_ocr_models", None)), "Missing _async_init_ocr_models"
+    assert not app._active_ocr_threads, "OCR must remain idle at startup"
+    assert callable(getattr(CatalogReviewWindow, "_on_read_highlighted_box_ocr", None)), "Missing explicit Review OCR action"
     assert callable(getattr(app, "cancel_ocr", None)), "Missing cancel_ocr"
     assert callable(getattr(app, "_replace_catalog_file", None)), "Missing _replace_catalog_file"
     assert callable(getattr(app, "_start_ocr_reread", None)), "Missing _start_ocr_reread"
@@ -4426,6 +4346,7 @@ def main():
         os._exit(code)
 
     app = PharmaProcurementApp()
+    bench_setup_app(app)
     app.mainloop()
 
 

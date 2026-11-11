@@ -24,6 +24,7 @@ Tests:
 """
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import unittest
 from unittest.mock import MagicMock, patch
@@ -414,6 +415,9 @@ class TestBackgroundWorkerSequenceProtection(unittest.TestCase):
         self.app = get_shared_app()
         self.app.file_model.clear()
         self.app._latest_applied_seq.clear()
+        self.app._inspection_requests.clear()
+        self.app._catalogs_inspecting.clear()
+        self.app._waiting_for_inspection = False
         while not self.app._ocr_queue.empty():
             try:
                 self.app._ocr_queue.get_nowait()
@@ -423,16 +427,21 @@ class TestBackgroundWorkerSequenceProtection(unittest.TestCase):
     def tearDown(self):
         self.app.file_model.clear()
         self.app._latest_applied_seq.clear()
+        self.app._inspection_requests.clear()
+        self.app._catalogs_inspecting.clear()
+        self.app._waiting_for_inspection = False
 
     def test_stale_sequence_callback_is_discarded(self):
         """A background inspection callback with seq_id < latest_applied_seq is discarded."""
-        test_path = os.path.normpath(os.path.abspath("test_seq_catalog.pdf"))
+        test_path = HAYAH_PDF
         f_item = FileItem(test_path, "Catalog")
         f_item.item_count = 10
         self.app.file_model.files = [f_item]
 
         # Record latest applied sequence as 5
         self.app._latest_applied_seq[test_path] = 5
+        self.app._inspection_requests[test_path] = (6, f_item)
+        self.app._catalogs_inspecting.add(test_path)
 
         # Simulate older thread returning seq=3 with count=2 (should be discarded)
         stale_msg = ("INSPECT_FILE_DONE", test_path, 2, None, 3)
@@ -446,9 +455,15 @@ class TestBackgroundWorkerSequenceProtection(unittest.TestCase):
         # Simulate newer thread returning seq=6 with count=20 (should be accepted)
         self.app._render_file_list()
         original_card = self.app._file_card_widgets[test_path]
-        newer_msg = ("INSPECT_FILE_DONE", test_path, 20, None, 6)
+        result = CatalogResult(
+            dataframe=pd.DataFrame({"item_name": [f"Item {index}" for index in range(20)]}),
+            diagnostics=ImportDiagnostics(accepted_rows=20, unique_records=20),
+            fingerprint=FileFingerprint.from_path(test_path),
+        )
+        newer_msg = ("INSPECT_FILE_DONE", test_path, 20, result, 6)
         self.app._ocr_queue.put(newer_msg)
-        self.app._poll_ocr_queue()
+        with patch("app_gui.global_catalog_cache.set"):
+            self.app._poll_ocr_queue()
 
         self.assertEqual(f_item.item_count, 20, "Newer sequence result must be applied")
         self.assertEqual(self.app._latest_applied_seq[test_path], 6)
@@ -456,23 +471,20 @@ class TestBackgroundWorkerSequenceProtection(unittest.TestCase):
 
     def test_stale_fingerprint_callback_is_discarded(self):
         """A background inspection callback whose FileFingerprint is not current is discarded."""
-        test_path = os.path.normpath(os.path.abspath("test_fp_catalog.pdf"))
+        test_path = HAYAH_PDF
         f_item = FileItem(test_path, "Catalog")
         f_item.item_count = 15
         self.app.file_model.files = [f_item]
 
-        # Create mock CatalogResult with stale fingerprint
-        mock_fp = MagicMock()
-        mock_fp.is_current.return_value = False  # Fingerprint changed on disk
+        stale_fp = replace(FileFingerprint.from_path(test_path), sha256="0" * 64)
+        result = CatalogResult(pd.DataFrame([{"col": 1}]), ImportDiagnostics(), stale_fp)
+        self.app._inspection_requests[test_path] = (10, f_item)
+        self.app._catalogs_inspecting.add(test_path)
 
-        mock_res = MagicMock()
-        mock_res.fingerprint = mock_fp
-        mock_res.dataframe = pd.DataFrame([{"col": 1}])
-        mock_res.diagnostics.status = "complete"
-
-        msg = ("INSPECT_FILE_DONE", test_path, 999, mock_res, 10)
-        self.app._ocr_queue.put(msg)
-        self.app._poll_ocr_queue()
+        self.app._ocr_queue.put(("INSPECT_FILE_DONE", test_path, 999, result, 10))
+        with patch.object(self.app, "_async_inspect_counts") as inspect:
+            self.app._poll_ocr_queue()
+            inspect.assert_called_once_with([test_path])
 
         # Item count must remain 15, not 999
         self.assertEqual(f_item.item_count, 15, "Result with non-current fingerprint must be discarded")
