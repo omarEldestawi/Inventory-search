@@ -98,7 +98,7 @@ class _Transport:
             return result
         raise RuntimeError('OCR worker transport stopped')
 
-    def close(self):
+    def close(self, timeout_s=0.5):
         with self._close_lock:
             if self._closed:
                 return
@@ -108,7 +108,7 @@ class _Transport:
             self.job.close()
         if self.process.poll() is None:
             self.process.kill()
-        deadline = time.monotonic() + 0.5
+        deadline = time.monotonic() + timeout_s
         try:
             self.process.wait(timeout=max(0, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
@@ -137,12 +137,12 @@ class NativeOcrWorker:
             return 'Native OCR worker executable is missing'
         return self._reason
 
-    def _discard(self, transport):
+    def _discard(self, transport, cleanup_s=0.5):
         with self._lifecycle:
             if self._transport is not transport:
                 return
             self._transport = None
-        transport.close()
+        transport.close(cleanup_s)
 
     def _ready(self, deadline, generation):
         reason = self.unavailable_reason()
@@ -161,6 +161,9 @@ class NativeOcrWorker:
         if deadline <= time.monotonic():
             raise TimeoutError('OCR request expired before worker startup')
         started = time.monotonic()
+        startup_deadline = min(deadline, started + self.ready_timeout_s)
+        # Reserve time to release the owned process within the same startup budget.
+        cleanup_s = min(0.1, max(0.0, (startup_deadline - started) / 2))
         transport = None
         try:
             transport = _Transport(self.command)
@@ -171,13 +174,13 @@ class NativeOcrWorker:
                 transport.close()
                 raise RuntimeError('OCR worker shut down during startup')
             self._stats['starts'] += 1
-            if transport.receive(min(deadline, started + self.ready_timeout_s)) != b'__READY__':
+            if transport.receive(startup_deadline - cleanup_s) != b'__READY__':
                 raise RuntimeError('Invalid OCR worker READY message')
             self._stats['ready_s'] = time.monotonic() - started
             return transport
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
             if transport is not None:
-                self._discard(transport)
+                self._discard(transport, cleanup_s)
             if generation == self._shutdown_generation:
                 self._reason = f'Native OCR startup failed (circuit breaker): {exc}'
             raise

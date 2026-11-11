@@ -33,6 +33,19 @@ def test_rotated_pdf_crop_keeps_source_target_and_roles_in_same_pixels(tmp_path)
     assert image[top:bottom, left:right].min() < 100
 
 
+def test_drag_maps_scaled_preview_without_starting_ocr():
+    label = SimpleNamespace(_apply_widget_scaling=lambda size: size * 2,
+                            winfo_width=lambda: 400, winfo_height=lambda: 500)
+    window = SimpleNamespace(
+        _current_rendered_dims=(100, 200, (0, 0, 100, 200), (1, 0, 0, 1, 0, 0)),
+        page_image_lbl=label, _invalidate_box_ocr=Mock(), _render_pdf_page=Mock(), _execute_box_ocr=Mock(),
+    )
+    CatalogReviewWindow._ocr_custom_preview_box(window, 120, 70, 160, 110)
+    assert window._custom_drag_bbox == [10, 10, 30, 30]
+    window._invalidate_box_ocr.assert_called_once()
+    window._execute_box_ocr.assert_not_called()
+
+
 def test_stale_review_result_cannot_change_editor_or_publish_suggestions():
     current = ('catalog.pdf', 1, 1, 'p1_t0_r2', 2)
     old = ('catalog.pdf', 1, 1, 'p1_t0_r1', 1)
