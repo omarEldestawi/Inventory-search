@@ -2,6 +2,12 @@
 
 The candidate is under verification on `release/v2.7.2`. Release approval requires the full regression suite, the remaining benchmark evidence, and the disposable-profile installer lifecycle checks.
 
+## Row preview follow-up
+
+- Row crops rotate padded source bounds into display coordinates before clipping. The preview worker bounds crop rasterization to the thumbnail size and discards crops from a superseded issue selection.
+- The focused run passed 72 tests, including crop placement at all four rotations, rapid issue selection, and both scanned fixture OCR tests. The previous full-suite attempt stopped at an older scanned test after 188 passes. That test now checks deferral and preserves the original 20-row minimum under explicit OCR.
+- A visible source run exercised issue selection, page changes, dragging, and real Windows OCR. Both trials displayed a row crop and returned suggestions. The largest heartbeat gaps were 443 ms on the early trial and 102 ms on repeat. B8 remains open.
+
 ## Review follow-up
 
 - Full-page Review regions use unrotated source coordinates. Tests saved a row near the bottom of a 300×500 scanned page at both 90° and 270° rotation.
@@ -10,7 +16,7 @@ The candidate is under verification on `release/v2.7.2`. Release approval requir
 - The follow-up source run passed 67 focused tests.
 - The visible source test changed pages, dragged a box, and received Windows OCR suggestions. Maximum Tk heartbeat gaps were 402 ms on the early trial and 44 ms on the repeat. B8 remains open.
 
-The installer and package measurements below apply to the build before this follow-up. The Review changes have source verification.
+The historical package and benchmark measurements below apply to the build before these follow-ups.
 
 ## Source baselines
 

@@ -317,12 +317,18 @@ class TestAdversarialRegressionBaselines(unittest.TestCase):
         self.assertIn("discount_rate", df.columns)
 
     def test_scanned_sample_minimum_rows(self):
-        """Scanned Arabic PDF must extract >= 20 valid rows."""
+        """Scanned Arabic PDF defers on import and yields at least 20 rows with explicit OCR."""
         if not os.path.isfile(SCANNED_SAMPLE_PATH):
             self.skipTest(f"Scanned sample not found: {SCANNED_SAMPLE_PATH}")
 
         parser = PDFCatalogParser(SCANNED_SAMPLE_PATH)
-        df = parser.parse()
+        deferred = CatalogResult.from_dataframe(parser.parse())
+        self.assertTrue(deferred.dataframe.empty)
+        self.assertTrue(any(
+            issue.rejection_reason == "image_only_page_requires_review" and not issue.resolved
+            for issue in deferred.review_issues
+        ))
+        df = parser.parse(allow_ocr=True)
         self.assertGreaterEqual(len(df), 20)
 
 

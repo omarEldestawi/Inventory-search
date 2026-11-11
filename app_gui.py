@@ -468,6 +468,7 @@ def render_pdf_row_crop(
     bbox: Optional[List[float]] = None,
     dpi: int = 180,
     pad: float = 6.0,
+    max_size: Optional[Tuple[int, int]] = None,
 ) -> Optional[Image.Image]:
     """
     Renders a cropped PIL Image of a specific row/region bounding box [x0, y0, x1, y1]
@@ -478,24 +479,24 @@ def render_pdf_row_crop(
     if not bbox or len(bbox) < 4:
         return None
     try:
-        doc = pymupdf.open(pdf_path)
-        if len(doc) == 0:
-            doc.close()
-            return None
-        p_idx = max(0, min(page_number - 1, len(doc) - 1))
-        page = doc[p_idx]
-        rect = page.rect
-        x0 = max(float(rect.x0), min(float(bbox[0]), float(bbox[2])) - pad)
-        y0 = max(float(rect.y0), min(float(bbox[1]), float(bbox[3])) - pad)
-        x1 = min(float(rect.x1), max(float(bbox[0]), float(bbox[2])) + pad)
-        y1 = min(float(rect.y1), max(float(bbox[1]), float(bbox[3])) + pad)
-        if (x1 - x0) < 12 or (y1 - y0) < 8:
-            doc.close()
-            return None
-        clip_rect = pymupdf.Rect(x0, y0, x1, y1)
-        pix = page.get_pixmap(dpi=dpi, clip=clip_rect)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        doc.close()
+        with pymupdf.open(pdf_path) as doc:
+            if not len(doc):
+                return None
+            page = doc[max(0, min(page_number - 1, len(doc) - 1))]
+            x0, y0, x1, y1 = pymupdf.Rect(bbox[:4]).normalize()
+            source_clip = pymupdf.Rect(x0 - pad, y0 - pad, x1 + pad, y1 + pad)
+            source_clip &= page.rect * page.derotation_matrix
+            if source_clip.width < 12 or source_clip.height < 8:
+                return None
+            clip = source_clip * page.rotation_matrix & page.rect
+            if max_size:
+                scale = min(dpi / 72, max_size[0] / clip.width, max_size[1] / clip.height)
+                pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), clip=clip)
+            else:
+                pix = page.get_pixmap(dpi=dpi, clip=clip)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        if max_size:
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
         return img
     except Exception as exc:
         logger.debug(f"Error rendering PDF row crop on page {page_number} for {pdf_path}: {exc}")
@@ -744,6 +745,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._current_ctk_image: Optional[ctk.CTkImage] = None
         self._current_rendered_dims = None
         self._preview_request = None
+        self._displayed_row_preview = None
         self._preview_running = False
         self._preview_poll_id = None
         self._preview_results = queue.Queue(maxsize=1)
@@ -1191,26 +1193,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             plain = getattr(issue, "plain_explanation", None) or reason_desc
             self.explanation_lbl.configure(text=f"💡 التشخيص: {plain} (التعديل اليدوي اختياري — الصف مستبعد تلقائياً)")
 
-        # Render original PDF crop beside editable fields
-        if hasattr(self, "row_crop_lbl"):
-            crop_bbox = issue.bbox or (issue.identity.bbox if issue.identity else None)
-            crop_img = render_pdf_row_crop(
-                self.catalog_path,
-                page_number=self.current_page,
-                bbox=crop_bbox,
-                dpi=180,
-            )
-            if crop_img is not None:
-                max_w = 460
-                aspect = crop_img.height / max(1, crop_img.width)
-                disp_w = min(max_w, crop_img.width)
-                disp_h = max(24, min(110, int(disp_w * aspect)))
-                crop_ctk = ctk.CTkImage(light_image=crop_img, dark_image=crop_img, size=(disp_w, disp_h))
-                self._current_crop_ctk_image = crop_ctk
-                self.row_crop_lbl.configure(image=crop_ctk, text="")
-            else:
-                self._current_crop_ctk_image = None
-                self.row_crop_lbl.configure(image=None, text="")
+        crop_bbox = issue.bbox or (issue.identity.bbox if issue.identity else None)
 
         # Populate fields
         item_data = issue.item or {}
@@ -1293,24 +1276,40 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             if self.selected_issue.identity.page == self.current_page:
                 bbox_to_highlight = self.selected_issue.bbox or self.selected_issue.identity.bbox
 
-        request = (self.catalog_path, self.current_page, tuple(bbox_to_highlight or ()))
+        page_request = (self.catalog_path, self.current_page, tuple(bbox_to_highlight or ()))
+        issue = self.selected_issue
+        row_request = None
+        if issue:
+            identity = issue.identity
+            bounds = issue.bbox or (identity.bbox if identity else None)
+            if bounds:
+                row_request = (self.catalog_path, identity.page if identity else self.current_page,
+                               tuple(bounds), issue.source_id)
+        request = (page_request, row_request)
         if request == self._preview_request:
             return
-        if self._preview_request is not None and request[:2] != self._preview_request[:2]:
-            self.page_image_lbl.configure(image="")
-            self._current_ctk_image = None
+        previous_page, previous_row = self._preview_request or (None, None)
+        if row_request != previous_row:
+            self.row_crop_lbl.configure(image="")
+            self._displayed_row_preview = None
+        if page_request != previous_page:
+            if previous_page and page_request[:2] != previous_page[:2]:
+                self.page_image_lbl.configure(image="")
+                self._current_ctk_image = None
+            self._current_rendered_dims = None
+            self._preview_drag = None
+            if self._current_ctk_image is None:
+                self.page_image_lbl.configure(text="جاري تحميل المعاينة / Loading preview…")
         self._preview_request = request
-        self._current_rendered_dims = None
-        self._preview_drag = None
-        if self._current_ctk_image is None:
-            self.page_image_lbl.configure(text="جاري تحميل المعاينة / Loading preview…")
         if not self._preview_running:
             self._launch_pdf_preview(request)
 
     def _launch_pdf_preview(self, request):
         self._preview_running = True
         results = self._preview_results
-        path, page, bbox = request
+        (path, page, bbox), row_request = request
+        if row_request == self._displayed_row_preview:
+            row_request = None
 
         def render():
             img = None
@@ -1322,7 +1321,11 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             except Exception:
                 logger.exception("Could not prepare Review preview for page %s", page)
                 img = None
-            results.put_nowait((request, img))
+            row_img = None
+            if row_request:
+                row_path, row_page, row_bbox, _ = row_request
+                row_img = render_pdf_row_crop(row_path, row_page, row_bbox, max_size=(460, 110))
+            results.put_nowait((request, img, row_request, row_img))
 
         threading.Thread(target=render, name="ReviewPDFPreview", daemon=True).start()
         self._preview_poll_id = self.after(15, self._poll_pdf_preview)
@@ -1330,11 +1333,16 @@ class CatalogReviewWindow(ctk.CTkToplevel):
     def _poll_pdf_preview(self):
         self._preview_poll_id = None
         try:
-            request, img = self._preview_results.get_nowait()
+            request, img, row_request, row_img = self._preview_results.get_nowait()
         except queue.Empty:
             self._preview_poll_id = self.after(15, self._poll_pdf_preview)
             return
         self._preview_running = False
+        if row_request and row_request == self._preview_request[1]:
+            self._displayed_row_preview = row_request
+            if row_img is not None:
+                crop = ctk.CTkImage(light_image=row_img, dark_image=row_img, size=row_img.size)
+                self.row_crop_lbl.configure(image=crop, text="")
         if request != self._preview_request:
             self._launch_pdf_preview(self._preview_request)
             return
