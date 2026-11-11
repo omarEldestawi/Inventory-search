@@ -1,0 +1,158 @@
+{
+  "input_sha256": [
+    "d99eb3012e117d259d302330a300a590c9fc351ce649d21c07242a3ecf29e911",
+    "87e709f5970517bc30900be0848b238220315d18e3f4ce42d471460fe0c24918",
+    "684665ad5a6b0481194a8f7957e1b4e9b084d28cfc72c3eda886ac167102dcca",
+    "4e5ef0f5321b631f7e5d03c355a395af1397f9f7100a85689b926b1ca43337b4",
+    "3cb094fc8500221ff2effdc3dce7b743b0f461010e598eacb74b0aab72bc7539"
+  ],
+  "executable_sha256": "fa107bc1578e0ef99b4795d8fe30f5b7d0897a363f64edb85871364d0b8b6e40",
+  "exit_code": 0,
+  "commit": "491e793",
+  "runtime": "instrumented frozen WIP",
+  "acknowledgement": "automated confirmation in isolated benchmark",
+  "trials": [
+    {
+      "first_result_s": 18.6905018,
+      "inspection_s": 181.8529147,
+      "run_clicked_s": 0.9598208,
+      "waiting_s": 180.8930939,
+      "user_wait_s": 0.3308222,
+      "allocation_s": 72.5821168,
+      "reference_discounts_s": 25.3981168,
+      "excel_save_s": 5.1884446,
+      "elapsed_s": 340.765801,
+      "processing_s": 340.4349788,
+      "saved_workbook": "scratch/v272-baseline/batch-first/events/workbook/Procurement_Order_Optimized_2026-11-11.xlsx",
+      "workbook_sha256": "05e6e50494a45e9cef87106339a6e167bb15abb606d2adb03d94259f3a191155",
+      "catalogs": [
+        {
+          "sha256": "d99eb3012e117d259d302330a300a590c9fc351ce649d21c07242a3ecf29e911",
+          "parse_starts": 2,
+          "status": "partial",
+          "accepted_rows": 138,
+          "unresolved_rows": 3,
+          "worker_starts": 2,
+          "ocr_calls": 296,
+          "source_numeric_pairs": 138,
+          "source_numeric_pairs_not_matched": 138
+        },
+        {
+          "sha256": "87e709f5970517bc30900be0848b238220315d18e3f4ce42d471460fe0c24918",
+          "parse_starts": 2,
+          "status": "partial",
+          "accepted_rows": 592,
+          "unresolved_rows": 1,
+          "worker_starts": 0,
+          "ocr_calls": 1290,
+          "source_numeric_pairs": 597,
+          "source_numeric_pairs_not_matched": 570
+        },
+        {
+          "sha256": "684665ad5a6b0481194a8f7957e1b4e9b084d28cfc72c3eda886ac167102dcca",
+          "parse_starts": 2,
+          "status": "complete",
+          "accepted_rows": 1788,
+          "unresolved_rows": 0,
+          "worker_starts": 0,
+          "ocr_calls": 0,
+          "source_numeric_pairs": 1750,
+          "source_numeric_pairs_not_matched": 1
+        },
+        {
+          "sha256": "4e5ef0f5321b631f7e5d03c355a395af1397f9f7100a85689b926b1ca43337b4",
+          "parse_starts": 2,
+          "status": "partial",
+          "accepted_rows": 1368,
+          "unresolved_rows": 1,
+          "worker_starts": 0,
+          "ocr_calls": 1086,
+          "source_numeric_pairs": 1337,
+          "source_numeric_pairs_not_matched": 522
+        }
+      ],
+      "exit_code": 0,
+      "launch": "first",
+      "trace": "scratch/v272-baseline/batch-first/raw.json",
+      "gemini_attempted_offline": true
+    },
+    {
+      "first_result_s": 18.2956343,
+      "inspection_s": 178.2961696,
+      "run_clicked_s": 0.8929148,
+      "waiting_s": 177.4032548,
+      "user_wait_s": 0.3270684,
+      "allocation_s": 71.2146901,
+      "reference_discounts_s": 25.483316,
+      "excel_save_s": 5.1571148,
+      "elapsed_s": 336.746738,
+      "processing_s": 336.4196696,
+      "saved_workbook": "scratch/v272-baseline/batch-subsequent/events/workbook/Procurement_Order_Optimized_2026-11-11.xlsx",
+      "workbook_sha256": "2fad0ee329f4b328d8356cf0390418a8a7a4cbfe7de6aa76b8dc04535bf355f2",
+      "catalogs": [
+        {
+          "sha256": "d99eb3012e117d259d302330a300a590c9fc351ce649d21c07242a3ecf29e911",
+          "parse_starts": 2,
+          "status": "partial",
+          "accepted_rows": 138,
+          "unresolved_rows": 3,
+          "worker_starts": 2,
+          "ocr_calls": 296,
+          "source_numeric_pairs": 138,
+          "source_numeric_pairs_not_matched": 138
+        },
+        {
+          "sha256": "87e709f5970517bc30900be0848b238220315d18e3f4ce42d471460fe0c24918",
+          "parse_starts": 2,
+          "status": "partial",
+          "accepted_rows": 592,
+          "unresolved_rows": 1,
+          "worker_starts": 0,
+          "ocr_calls": 1290,
+          "source_numeric_pairs": 597,
+          "source_numeric_pairs_not_matched": 570
+        },
+        {
+          "sha256": "684665ad5a6b0481194a8f7957e1b4e9b084d28cfc72c3eda886ac167102dcca",
+          "parse_starts": 2,
+          "status": "complete",
+          "accepted_rows": 1788,
+          "unresolved_rows": 0,
+          "worker_starts": 0,
+          "ocr_calls": 0,
+          "source_numeric_pairs": 1750,
+          "source_numeric_pairs_not_matched": 1
+        },
+        {
+          "sha256": "4e5ef0f5321b631f7e5d03c355a395af1397f9f7100a85689b926b1ca43337b4",
+          "parse_starts": 2,
+          "status": "partial",
+          "accepted_rows": 1368,
+          "unresolved_rows": 1,
+          "worker_starts": 0,
+          "ocr_calls": 1086,
+          "source_numeric_pairs": 1337,
+          "source_numeric_pairs_not_matched": 522
+        }
+      ],
+      "exit_code": 0,
+      "launch": "subsequent",
+      "trace": "scratch/v272-baseline/batch-subsequent/raw.json",
+      "gemini_attempted_offline": false
+    }
+  ],
+  "source_checked": true,
+  "source_verified": false,
+  "source_evidence_sha256": "4ee48d4b22d6d1927b9fed2e0f9b0759ea49d8440a36c21121d719398a54348e",
+  "source_evidence": "scratch/v272-baseline/source_evidence.json",
+  "medians": {
+    "first": {
+      "inspection_s": 181.8529147,
+      "processing_s": 340.4349788
+    },
+    "subsequent": {
+      "inspection_s": 178.2961696,
+      "processing_s": 336.4196696
+    }
+  }
+}
