@@ -29,7 +29,7 @@
 | B6 | Four valid 180 DPI native strip reads. Median 167 ms and p95 348 ms. | Pass |
 | B7 | One invalid PowerShell result and the valid sample medians were 177 ms PowerShell and 167 ms native. | Fail |
 | B8 | The latest visible source trial included issue selection, page navigation, dragging, and real OCR. The maximum gap was 443 ms early and 102 ms on repeat. | Fail |
-| B9 | Audited installer 125.69 MiB. | Pass |
+| B9 | Rebuilt row-preview installer 125.70 MiB. | Pass |
 | B10 | Audited portable bundle 405.6 MiB. | Pass |
 | B11 | Exactly one failed start. First call returned in 4.951 s including cleanup, next returned in 0.013 ms. | Pass |
 | B12 | Job-object tests exercised normal shutdown and abrupt `os._exit`. | Pass |

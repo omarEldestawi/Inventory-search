@@ -7,6 +7,7 @@ The candidate is under verification on `release/v2.7.2`. Release approval requir
 - Row crops rotate padded source bounds into display coordinates before clipping. The preview worker bounds crop rasterization to the thumbnail size and discards crops from a superseded issue selection.
 - The focused run passed 72 tests, including crop placement at all four rotations, rapid issue selection, and both scanned fixture OCR tests. The previous full-suite attempt stopped at an older scanned test after 188 passes. That test now checks deferral and preserves the original 20-row minimum under explicit OCR.
 - A visible source run exercised issue selection, page changes, dragging, and real Windows OCR. Both trials displayed a row crop and returned suggestions. The largest heartbeat gaps were 443 ms on the early trial and 102 ms on repeat. B8 remains open.
+- The rebuilt 125.70 MiB installer is at `scratch/v272-baseline/row-preview-candidate/EgyptianPharmaOptimizer_Setup_v2.7.2.exe`. Its SHA-256 is `92C3F4D3BA556ADCCCB15939CD1CBAB7B5338EE99208C5682BA5076F731A95AF`. The rebuilt portable bundle passed `--self-test`, including the 571-row PDF fixture and correction persistence. Installer lifecycle checks in a disposable Windows profile remain open.
 
 ## Review follow-up
 
