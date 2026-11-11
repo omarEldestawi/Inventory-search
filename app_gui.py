@@ -4318,10 +4318,12 @@ def main():
         if idx + 1 < len(sys.argv):
             catalog_file = sys.argv[idx + 1]
             import json
+            import pandas as pd
             from src.pdf_parser import PDFCatalogParser
             from src.catalog_diagnostics import CatalogResult
             df = PDFCatalogParser(catalog_file, warehouse_name="PackagedCLITest").parse()
             res = CatalogResult.from_dataframe(df)
+            records = pd.DataFrame(df, copy=False)[["item_name", "base_price", "discount_rate"]]
             out = {
                 "count": len(df),
                 "status": res.diagnostics.status if res else "unknown",
@@ -4330,11 +4332,11 @@ def main():
                 "rejected_rows": res.diagnostics.rejected_rows if res else 0,
                 "unprocessed_rows": res.diagnostics.unprocessed_rows if res else 0,
                 "items": [
-                    {"name": r["item_name"], "price": r["base_price"], "discount": r["discount_rate"]}
-                    for _, r in df.iterrows()
+                    {"name": name, "price": price, "discount": None if pd.isna(discount) else discount}
+                    for name, price, discount in records.itertuples(index=False, name=None)
                 ]
             }
-            print("__JSON_RESULT__" + json.dumps(out) + "__JSON_RESULT__")
+            print("__JSON_RESULT__" + json.dumps(out, allow_nan=False) + "__JSON_RESULT__")
             if sys.stdout is not None:
                 sys.stdout.flush()
             os._exit(0)

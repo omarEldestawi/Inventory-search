@@ -674,10 +674,12 @@ class CatalogResult:
 
     @property
     def acknowledgment_token(self) -> str:
+        # Serialize the records without copying the diagnostics attached to the DataFrame.
+        records = pd.DataFrame(self.dataframe, copy=False).to_json(orient="split", index=False, force_ascii=False)
         payload = {
             "fingerprint": asdict(self.fingerprint) if self.fingerprint else None,
             "diagnostics": self.diagnostics.to_dict(),
-            "records": self.dataframe.to_json(orient="split", index=False, force_ascii=False),
+            "records": records,
         }
         encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
