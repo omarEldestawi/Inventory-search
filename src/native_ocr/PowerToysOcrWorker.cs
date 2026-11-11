@@ -129,9 +129,10 @@ namespace NativeOcr
                 }
 
                 OcrResponse response;
+                string requestId = null;
                 try
                 {
-                    OcrRequest request = ParseRequest(trimmed);
+                    OcrRequest request = ParseRequest(trimmed, out requestId);
                     if (request == null)
                     {
                         response = new OcrResponse { Status = "error", Error = "Null JSON request." };
@@ -156,7 +157,7 @@ namespace NativeOcr
                     };
                 }
 
-                string jsonOut = SerializeResponse(response);
+                string jsonOut = SerializeResponse(response, requestId);
                 Console.Out.WriteLine(jsonOut);
                 await Console.Out.FlushAsync();
             }
@@ -164,8 +165,9 @@ namespace NativeOcr
             return 0;
         }
 
-        private static OcrRequest ParseRequest(string json)
+        private static OcrRequest ParseRequest(string json, out string requestId)
         {
+            requestId = null;
             var dict = JsonSerializerInstance.Deserialize<Dictionary<string, object>>(json);
             if (dict == null)
             {
@@ -174,6 +176,8 @@ namespace NativeOcr
 
             var req = new OcrRequest();
             object val;
+            if (dict.TryGetValue("request_id", out val) && val != null)
+                requestId = val.ToString();
             if (dict.TryGetValue("image_path", out val) && val != null)
                 req.ImagePath = val.ToString();
             else if (dict.TryGetValue("ImagePath", out val) && val != null)
@@ -202,7 +206,7 @@ namespace NativeOcr
             return req;
         }
 
-        private static string SerializeResponse(OcrResponse resp)
+        private static string SerializeResponse(OcrResponse resp, string requestId)
         {
             var linesList = new List<Dictionary<string, object>>(resp.Lines.Count);
             foreach (var l in resp.Lines)
@@ -228,6 +232,7 @@ namespace NativeOcr
             var root = new Dictionary<string, object>
             {
                 { "status", resp.Status },
+                { "request_id", requestId },
                 { "lines", linesList }
             };
             if (!string.IsNullOrEmpty(resp.Error))

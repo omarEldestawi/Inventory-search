@@ -11,23 +11,20 @@ Provides:
 from __future__ import annotations
 
 import atexit
-import json
-import logging
+import base64
+import io
 import os
-import subprocess
 import sys
-import tempfile
 import threading
-import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import cv2
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
-logger = logging.getLogger("WinContextOCR")
+from .worker import NativeOcrWorker, READY_TIMEOUT_S, REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
 
-_NATIVE_WORKER_PROC: Optional[subprocess.Popen] = None
-_NATIVE_WORKER_LOCK = threading.Lock()
+_worker = None
+_worker_lock = threading.Lock()
 
 
 def _discover_worker_exe() -> Optional[str]:
@@ -48,74 +45,20 @@ def _discover_worker_exe() -> Optional[str]:
     return None
 
 
-def _get_or_start_native_worker(worker_exe_path: Optional[str] = None) -> Optional[subprocess.Popen]:
-    """Starts or returns the persistent PowerToysOcrWorker.exe background process."""
-    global _NATIVE_WORKER_PROC
-    if os.name != "nt":
-        return None
-
-    exe_path = worker_exe_path or _discover_worker_exe()
-    if not exe_path or not os.path.isfile(exe_path):
-        return None
-
-    with _NATIVE_WORKER_LOCK:
-        if _NATIVE_WORKER_PROC is not None:
-            if _NATIVE_WORKER_PROC.poll() is None:
-                return _NATIVE_WORKER_PROC
-            _NATIVE_WORKER_PROC = None
-
-        try:
-            creationflags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
-            proc = subprocess.Popen(
-                [exe_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                creationflags=creationflags,
-            )
-
-            deadline = time.time() + 6.0
-            ready = False
-            while time.time() < deadline:
-                line = proc.stdout.readline()
-                if not line and proc.poll() is not None:
-                    break
-                if "__READY__" in line:
-                    ready = True
-                    break
-
-            if not ready:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-                return None
-
-            _NATIVE_WORKER_PROC = proc
-            return _NATIVE_WORKER_PROC
-        except Exception as exc:
-            logger.warning("Failed to start PowerToysOcrWorker.exe: %s", exc)
-            return None
+def get_native_worker():
+    global _worker
+    with _worker_lock:
+        if _worker is None:
+            executable = _discover_worker_exe()
+            _worker = NativeOcrWorker([executable] if executable and os.name == "nt" else None)
+        return _worker
 
 
-def _shutdown_native_worker() -> None:
-    """Cleanly terminates PowerToysOcrWorker.exe on process exit."""
-    global _NATIVE_WORKER_PROC
-    with _NATIVE_WORKER_LOCK:
-        if _NATIVE_WORKER_PROC is not None:
-            try:
-                if _NATIVE_WORKER_PROC.poll() is None and _NATIVE_WORKER_PROC.stdin:
-                    _NATIVE_WORKER_PROC.stdin.write('{"command":"exit"}\n')
-                    _NATIVE_WORKER_PROC.stdin.flush()
-                    _NATIVE_WORKER_PROC.wait(timeout=1.0)
-            except Exception:
-                try:
-                    _NATIVE_WORKER_PROC.kill()
-                except Exception:
-                    pass
-            _NATIVE_WORKER_PROC = None
+def _shutdown_native_worker():
+    with _worker_lock:
+        worker = _worker
+    if worker is not None:
+        worker.shutdown()
 
 
 atexit.register(_shutdown_native_worker)
@@ -176,69 +119,30 @@ class ContextWindowOCR:
     """
 
     def __init__(self, worker_exe_path: Optional[str] = None) -> None:
-        self._worker_exe_path = worker_exe_path or _discover_worker_exe()
+        self._worker = NativeOcrWorker([worker_exe_path]) if worker_exe_path else get_native_worker()
 
     def is_available(self) -> bool:
-        """Returns True if the native PowerToysOcrWorker.exe is available and responsive."""
-        return _get_or_start_native_worker(self._worker_exe_path) is not None
+        return self._worker.is_available()
+
+    def unavailable_reason(self):
+        return self._worker.unavailable_reason()
 
     def recognize_image(
-        self,
-        img_np: np.ndarray,
-        upscale: Optional[bool] = None,
-        padding: int = 16,
+        self, img_np: np.ndarray, upscale: Optional[bool] = None, padding: int = 16,
+        timeout_s: float = REQUEST_TIMEOUT_S,
     ) -> Dict[str, Any]:
-        """
-        Sends an RGB or grayscale numpy image to `PowerToysOcrWorker.exe` and returns
-        the parsed JSON response `{"status": "ok", "lines": [...]}`.
-        """
+        """Send an encoded RGB or grayscale image to the native worker."""
         if img_np is None or img_np.size == 0:
             return {"status": "ok", "lines": []}
 
-        worker = _get_or_start_native_worker(self._worker_exe_path)
-        if worker is None:
-            return {"status": "error", "error": "Native OCR worker unavailable.", "lines": []}
+        from PIL import Image
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_f:
-            tmp_path = tmp_f.name
-
-        try:
-            if len(img_np.shape) == 3 and img_np.shape[2] == 3:
-                cv2.imwrite(tmp_path, cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR))
-            else:
-                cv2.imwrite(tmp_path, img_np)
-
-            req_payload: Dict[str, Any] = {
-                "image_path": tmp_path,
-                "padding": int(padding),
-            }
-            if upscale is not None:
-                req_payload["upscale"] = bool(upscale)
-
-            req_str = json.dumps(req_payload, ensure_ascii=False)
-            raw_out = ""
-
-            with _NATIVE_WORKER_LOCK:
-                if worker.poll() is not None or worker.stdin is None or worker.stdout is None:
-                    worker = _get_or_start_native_worker(self._worker_exe_path)
-                if worker is not None and worker.stdin and worker.stdout:
-                    worker.stdin.write(req_str + "\n")
-                    worker.stdin.flush()
-                    raw_out = worker.stdout.readline().strip()
-
-            if not raw_out:
-                return {"status": "ok", "lines": []}
-
-            return json.loads(raw_out)
-        except Exception as exc:
-            logger.warning("Native OCR recognize_image error: %s", exc)
-            return {"status": "error", "error": str(exc), "lines": []}
-        finally:
-            if os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
+        with io.BytesIO() as png:
+            Image.fromarray(img_np).save(png, format="PNG")
+            payload = {"image_base64": base64.b64encode(png.getvalue()).decode("ascii"), "padding": int(padding)}
+        if upscale is not None:
+            payload["upscale"] = bool(upscale)
+        return self._worker.request(payload, timeout_s=timeout_s)
 
     def extract_target_box_with_context(
         self,
@@ -270,7 +174,9 @@ class ContextWindowOCR:
 
         crop_img = full_page_img[exp_y0:exp_y1, exp_x0:exp_x1]
         resp = self.recognize_image(crop_img, upscale=True, padding=16)
-        lines = resp.get("lines", []) if isinstance(resp, dict) else []
+        if resp.get("status") != "ok":
+            return resp
+        lines = resp["lines"]
 
         band_min_y = y0 - (vertical_tolerance_ratio * row_h)
         band_max_y = y1 + (vertical_tolerance_ratio * row_h)

@@ -411,6 +411,8 @@ class ArabicOCREngine:
 
     def _extract_rapid_ocr(self, img_np: np.ndarray) -> List[Dict[str, Any]]:
         """Executes RapidOCR with Arabic ONNX recognition model."""
+        from src.bench_trace import event
+        event("ocr_call", backend="rapidocr")
         cache_key = ("rapidocr", hashlib.sha256(img_np.tobytes()).hexdigest())
         with _OCR_CACHE_LOCK:
             if cache_key in _OCR_CACHE:
@@ -468,6 +470,8 @@ class ArabicOCREngine:
         Confidence is explicitly represented as None and validated through separate
         structural, geometric, and domain evidence downstream.
         """
+        from src.bench_trace import event
+        event("ocr_call", backend="windows")
         cache_key = ("windows", hashlib.sha256(img_np.tobytes()).hexdigest())
         with _OCR_CACHE_LOCK:
             if cache_key in _OCR_CACHE:
