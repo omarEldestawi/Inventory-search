@@ -10,6 +10,7 @@ import sys
 import re
 import shutil
 import sqlite3
+import tempfile
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -67,28 +68,28 @@ def _resolve_default_db_path() -> str:
         if not bundled_template and meipass:
             bundled_template = os.path.join(meipass, "data", "medications.db")
 
-        # 3. If user db doesn't exist or bundled template is newer/larger (e.g. upgraded to v2.0), sync from bundled template
-        if bundled_template and os.path.exists(bundled_template):
-            needs_sync = (
-                not os.path.exists(user_db_path) or
-                os.path.getsize(user_db_path) == 0 or
-                os.path.getsize(bundled_template) > os.path.getsize(user_db_path) or
-                os.path.getmtime(bundled_template) > os.path.getmtime(user_db_path) + 1.0
-            )
-            if needs_sync:
+        # Publish the template only on first use, even if two instances start together.
+        if bundled_template and os.path.isfile(bundled_template) and not os.path.exists(user_db_path):
+            staged = None
+            try:
+                os.makedirs(user_db_dir, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=user_db_dir, delete=False) as staging_file:
+                    staged = staging_file.name
+                shutil.copy2(bundled_template, staged)
                 try:
-                    os.makedirs(user_db_dir, exist_ok=True)
-                    shutil.copy2(bundled_template, user_db_path)
-                    logger.info(f"Synced user medications database at: {user_db_path}")
-                except Exception as exc:
-                    logger.warning(f"Could not copy template to user dir: {exc}. Using bundled database.")
-                    return bundled_template
-            return user_db_path
-
-        if os.path.exists(user_db_path) and os.path.getsize(user_db_path) > 0:
-            return user_db_path
-        if bundled_template:
-            return bundled_template
+                    if os.name == "nt":
+                        os.rename(staged, user_db_path)
+                        staged = None
+                    else:
+                        os.link(staged, user_db_path)
+                except FileExistsError:
+                    pass
+            except OSError as exc:
+                logger.warning("Could not initialize the user medications database: %s", exc)
+            finally:
+                if staged is not None:
+                    os.unlink(staged)
+        return user_db_path
 
     return os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

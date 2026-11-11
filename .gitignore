@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+src/native_ocr/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -9,6 +10,7 @@ __pycache__/
 # Distribution / packaging
 build/
 dist/
+dist/*_old_*/
 dist_installer/
 *.egg-info/
 EgyptianPharmaOptimizer.zip

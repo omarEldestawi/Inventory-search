@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:/Users/omart/AppData/Local/Programs/Python/Python312/Lib/site-packages/customtkinter', 'customtkinter'), ('src', 'src'), ('input', 'input'), ('assets', 'assets'), ('data', 'data'), ('tests/fixtures', 'tests/fixtures')]
+datas = [('assets/app.ico', 'assets'), ('assets/models/dict.txt', 'assets/models'), ('assets/models/rec.onnx', 'assets/models'), ('data/medications.db', 'data'), ('data/average_discounts.xlsx', 'data'), ('tests/fixtures/hayah_shibin.pdf', 'tests/fixtures')]
 binaries = [('src/native_ocr/PowerToysOcrWorker.exe', 'src/native_ocr')]
 hiddenimports = ['customtkinter', 'PIL._tkinter_finder', 'openpyxl', 'pandas', 'fitz', 'pymupdf', 'rapidfuzz', 'google', 'sqlite3', 'onnxruntime', 'cv2', 'src.ocr_engine', 'src.image_table_detector', 'src.catalog_recovery', 'src.pdf_font_decoder', 'src.catalog_diagnostics', 'src.catalog_corrections', 'src.catalog_service', 'src.controller', 'src.pipeline', 'src.allocator', 'src.medication_db', 'src.catalog_reader', 'src.average_discounts', 'src.updater', 'src.pharma_matcher', 'src.report_generator', 'src.normalizer', 'src.pdf_parser', 'src.excel_parser', 'src.order_parser', 'src.gemini_matcher', 'src.manual_search_window', 'src.manual_search_adapter']
 tmp_ret = collect_all('customtkinter')

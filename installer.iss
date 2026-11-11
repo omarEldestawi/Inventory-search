@@ -41,14 +41,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "{#AppBuildDir}\*"; DestDir: "{app}"; Excludes: "*.bak,*.db-wal,*.db-shm"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "assets\*"; DestDir: "{app}\assets"; Excludes: "*.bak"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "data\*"; DestDir: "{app}\data"; Excludes: "*.bak,*.db-wal,*.db-shm"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#AppBuildDir}\*"; DestDir: "{app}"; Excludes: "*.bak,*.db-wal,*.db-shm,*.log"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app.ico"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\assets\app.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall
