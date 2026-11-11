@@ -59,7 +59,8 @@ class TestUntouchedGeneratedRasterPage(unittest.TestCase):
            - Medication name accuracy
         """
         parser = PDFCatalogParser(self.pdf_path, warehouse_name="SpecialPharma_Page3_Raster")
-        df = parser.parse()
+        self.assertTrue(parser.parse().empty)
+        df = parser.parse_ocr()
         result = CatalogResult.from_dataframe(df)
         uncertain = {i.source_id: i for i in result.review_issues if not i.resolved and i.rejection_reason in ("unverified_ocr_strength_sequence", "ambiguous_ocr_decimal")}
         self.assertEqual(set(uncertain), {"p1_t0_r6", "p1_t0_r9", "p1_t0_r10", "p1_t0_r16"})
@@ -231,7 +232,7 @@ class TestUntouchedGeneratedRasterPage(unittest.TestCase):
         to the discount column, but preserved in the extracted text and dedicated metadata.
         """
         parser = PDFCatalogParser(self.pdf_path, warehouse_name="SpecialPharma_Page3_Raster")
-        df = parser.parse()
+        df = parser.parse_ocr()
 
         row_26 = None
         for _, r in df.iterrows():

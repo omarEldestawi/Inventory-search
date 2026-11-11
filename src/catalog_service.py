@@ -13,6 +13,7 @@ Provides centralized access to:
 from __future__ import annotations
 
 import copy
+import hashlib
 import logging
 import math
 import os
@@ -487,6 +488,21 @@ class CatalogCorrectionService:
             self._catalog_result = None
             return self.get_refreshed_catalog_result()
 
+    def apply_region_row_correction(self, region: ReviewIssue, bbox, field_updates: Dict[str, Any]) -> CatalogResult:
+        """Save one pharmacist-verified row within a still-unresolved image region."""
+        if region.identity is None or not (region.is_region_level or region.identity.is_region_issue) or not region.bbox or len(bbox) != 4:
+            raise ValueError("Select one row inside the image region")
+        left, top, right, bottom = (round(float(value), 2) for value in bbox)
+        x0, y0, x1, y1 = region.bbox
+        if not (x0 <= left < right <= x1 and y0 <= top < bottom <= y1):
+            raise ValueError("The selected row lies outside the image region")
+        location = [left, top, right, bottom]
+        digest = hashlib.sha256(repr(location).encode("ascii")).digest()
+        row_number = int.from_bytes(digest[:8], "big")
+        identity = region.identity
+        source_id = f"p{identity.page}_t{identity.table}_g{identity.group or 0}_r{row_number}"
+        return self.apply_field_correction(source_id, dict(field_updates, _manual_region_bbox=location))
+
     def exclude_row(
         self, source_id: str, reason: str = "manual_exclusion"
     ) -> CatalogResult:
@@ -752,7 +768,7 @@ class CatalogCorrectionService:
         else:
             # Check diagnostics for coordinates and raw cells
             raw_cells = []
-            bbox = None
+            bbox = field_updates.get("_manual_region_bbox")
             if base_res and base_res.diagnostics:
                 for p in getattr(base_res.diagnostics, "pages", []):
                     for g in getattr(p, "groups", []):
@@ -777,6 +793,9 @@ class CatalogCorrectionService:
 
         row_dict = self._build_canonical_row(field_updates)
         row_dict["_source_id"] = source_id
+        manual_region_bbox = field_updates.get("_manual_region_bbox")
+        if manual_region_bbox:
+            row_dict["_bbox"] = manual_region_bbox
 
         # Multi-layer stable row matching
         target_idx = None
@@ -789,7 +808,7 @@ class CatalogCorrectionService:
                 target_idx = updated_df.index[mask][0]
 
         # Strategy 2: Match on original item identity from baseline diagnostics
-        if target_idx is None and base_res and base_res.diagnostics:
+        if target_idx is None and not manual_region_bbox and base_res and base_res.diagnostics:
             for p in getattr(base_res.diagnostics, "pages", []):
                 for g in getattr(p, "groups", []):
                     for r in getattr(g, "rows", []):
@@ -806,7 +825,7 @@ class CatalogCorrectionService:
                     break
 
         # Strategy 3: Match on prior issue item name
-        if target_idx is None and eff_issue_id in issues:
+        if target_idx is None and not manual_region_bbox and eff_issue_id in issues:
             prev_item = issues[eff_issue_id].item or {}
             prev_name = prev_item.get("item_name")
             if prev_name and "item_name" in updated_df.columns:
@@ -815,7 +834,7 @@ class CatalogCorrectionService:
                     target_idx = updated_df.index[mask][0]
 
         # Strategy 4: Row index correlation from base_res accepted rows
-        if target_idx is None and base_res and base_res.diagnostics:
+        if target_idx is None and not manual_region_bbox and base_res and base_res.diagnostics:
             accepted_diag_rows = [
                 r for p in getattr(base_res.diagnostics, "pages", [])
                 for g in getattr(p, "groups", [])
@@ -829,7 +848,7 @@ class CatalogCorrectionService:
                     break
 
         # Strategy 5: Current item_name match (no-rename field edit fallback)
-        if target_idx is None and "item_name" in updated_df.columns:
+        if target_idx is None and not manual_region_bbox and "item_name" in updated_df.columns:
             name = row_dict["item_name"]
             mask = (updated_df["item_name"] == name)
             if mask.any():

@@ -203,6 +203,7 @@ class ProductGroup:
     code_col: Optional[int] = None
     bbox: Optional[List[float]] = None
     explicit_price_disc_headers: bool = False
+    aligned_encoded_headers: bool = False
 
     @property
     def is_valid(self) -> bool:
@@ -1182,6 +1183,61 @@ class CatalogImportMetadata(dict):
 
 
 
+def _apply_aligned_source_headers(page, table_obj, raw_data, group):
+    """Verify a repeated three-column group against a visible header above its first body row."""
+    if page is None or len(group.raw_cols) != 3:
+        return False
+    if group.explicit_price_disc_headers:
+        return group.aligned_encoded_headers
+    try:
+        from pymupdf import Rect
+    except ImportError:
+        return False
+
+    for raw, table_row in zip(raw_data[:10], table_obj.rows[:10]):
+        available = [col for col, cell in enumerate(table_row.cells)
+                     if cell and col < len(raw) and str(raw[col] or "").strip()]
+        if group.name_col not in available:
+            continue
+        name_index = available.index(group.name_col)
+        matches = []
+        for start in range(max(0, name_index - 2), min(name_index + 1, len(available) - 2)):
+            cols = available[start:start + 3]
+            if len(set(cols) & set(group.raw_cols)) < 2:
+                continue
+            if cols.index(group.name_col) == 1:
+                continue
+            numeric = [bool(re.fullmatch(r"\d+(?:[.,٫]\d+)?\s*%?", str(raw[col]).strip())) for col in cols]
+            if sum(numeric) != 2 or numeric[cols.index(group.name_col)]:
+                continue
+            cells = [table_row.cells[col] for col in cols]
+            header_text = [page.get_text("text", clip=Rect(x0, max(0, y0 - 22), x1, y0)).strip()
+                           for x0, y0, x1, _ in cells]
+            custom_roles = {"ا نلر": "price", "ممم": "discount", "انم ا مسف": "name"}
+            encoded = set(header_text) == custom_roles.keys()
+            roles = {}
+            for col, header in zip(cols, header_text):
+                options = {classify_column_role(line) for line in header.splitlines()}
+                options &= {"price", "discount", "name"}
+                if encoded:
+                    options = {custom_roles[header]}
+                if len(options) == 1:
+                    roles[next(iter(options))] = col
+            if roles.keys() == {"price", "discount", "name"} and roles["name"] == group.name_col:
+                matches.append((cols, roles, encoded))
+        if len(matches) == 1:
+            cols, roles, encoded = matches[0]
+            group.raw_cols = cols
+            group.price_col = roles["price"]
+            group.discount_col = roles["discount"]
+            group.explicit_price_disc_headers = True
+            group.aligned_encoded_headers = encoded
+            return encoded
+        if matches:
+            return False
+    return False
+
+
 def parse_structural_table(
     table_obj: Any,
     page_idx: int,
@@ -1191,6 +1247,7 @@ def parse_structural_table(
     sanity_checker: Optional[Any] = None,
     table_idx: int = 0,
     page_chars: Optional[List[Dict[str, Any]]] = None,
+    page: Any = None,
 ) -> Tuple[List[Dict[str, Any]], Optional[TableGeometry], Optional[List[ProductGroup]], Any]:
     """
     Extracts catalog items from a structural PDF table object, retaining cell bounding boxes,
@@ -1214,6 +1271,7 @@ def parse_structural_table(
     group_diagnostics_list: List[GroupDiagnostics] = []
 
     for group in groups:
+        encoded_header = _apply_aligned_source_headers(page, table_obj, raw_data, group)
         # Determine whether this specific group has a genuine header in row 0
         group_has_hdr = is_group_header_row(group, raw_data[0]) if raw_data else False
         start_row = 1 if group_has_hdr else 0
@@ -1244,7 +1302,8 @@ def parse_structural_table(
             row_bboxes = table_obj.rows[r_idx].cells if (hasattr(table_obj, "rows") and r_idx < len(table_obj.rows) and hasattr(table_obj.rows[r_idx], "cells")) else None
 
             item, outcome_reason, item_bbox = extract_item_from_group_row(
-                row, group, group_direction, warehouse_name, row_bboxes, sanity_checker, page_chars=page_chars
+                row, group, group_direction, warehouse_name, row_bboxes, sanity_checker,
+                page_chars=None if encoded_header else page_chars,
             )
 
             raw_cells_data = [row[c] for c in group.raw_cols if c < len(row)]
@@ -1280,6 +1339,7 @@ def parse_structural_table(
                         table=table_idx,
                         source_id=row_sid,
                         column_bounds=col_bounds_map if col_bounds_map else None,
+                        validation_results={"verified_column_roles": group.explicit_price_disc_headers},
                     )
                 )
                 page_items.append(item)
@@ -1336,6 +1396,7 @@ def parse_structural_table(
                         source_id=row_sid,
                         item=rej_item_dict,
                         column_bounds=col_bounds_map if col_bounds_map else None,
+                        validation_results={"verified_column_roles": group.explicit_price_disc_headers},
                     )
                 )
 

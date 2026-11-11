@@ -557,6 +557,13 @@ def inspect_catalog(catalog_file: str, refresh: bool = False, include_correction
                 from pdf_parser import PDFCatalogParser
             parser = PDFCatalogParser(norm)
             df = parser.parse()
+            from src.bench_trace import enabled, event
+            if enabled():
+                import json
+                result = CatalogResult.from_dataframe(df)
+                event("parse_end", path=norm, rows=json.loads(df.to_json(orient="records", force_ascii=False)),
+                      status=result.status if result else None,
+                      unresolved=[issue.to_dict() for issue in result.review_issues if not issue.resolved] if result else [])
         elif norm.lower().endswith(('.xlsx', '.xls', '.csv')):
             try:
                 from .pipeline import parse_excel_catalog
@@ -568,6 +575,13 @@ def inspect_catalog(catalog_file: str, refresh: bool = False, include_correction
     except Exception as exc:
         parse_err = str(exc)
         logger.debug(f"Catalog inspection failed for {norm}: {exc}")
+
+    if fp is not None and not fp.is_current(norm):
+        return CatalogResult(
+            dataframe=empty_df,
+            diagnostics=ImportDiagnostics(errors=["Catalog changed during inspection. Refresh to read the current file."]),
+            fingerprint=None,
+        )
 
     res = CatalogResult.from_dataframe(df)
     if res is None:
@@ -849,13 +863,14 @@ def reread_catalog_with_ocr(catalog_file: str, progress_callback=None) -> tuple[
         df = verified_prev.to_dataframe()
     elif not df.empty:
         logger.info(f"Successfully extracted {len(df)} items for {fname}")
-    elif prev_cached is not None:
+    elif prev_cached is not None and not norm_path.lower().endswith('.pdf'):
         global_catalog_cache.remove(norm_path)
 
     if df.empty and last_err:
         raise RuntimeError(last_err)
 
-    global_catalog_cache.set(norm_path, df)
+    if not norm_path.lower().endswith('.pdf'):
+        global_catalog_cache.set(norm_path, df)
     records = df.to_dict(orient="records") if not df.empty else []
     for rec in records:
         rec["name"] = rec.get("item_name", "")

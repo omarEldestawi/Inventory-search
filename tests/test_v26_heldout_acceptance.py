@@ -229,7 +229,8 @@ class TestAC2ScannedArabicCatalogRecovery(unittest.TestCase):
             self.skipTest(f"Scanned sample not found at {SCANNED_SAMPLE_PATH}")
 
         parser = PDFCatalogParser(SCANNED_SAMPLE_PATH)
-        df = parser.parse()
+        self.assertTrue(parser.parse().empty)
+        df = parser.parse_ocr()
 
         # Must recover at least 25 valid pharmaceutical rows automatically
         self.assertGreaterEqual(len(df), 25)
@@ -277,7 +278,7 @@ class TestAC3HeldOutBenchmarkPerformance(unittest.TestCase):
 
         # Run parser with Windows Media OCR as primary recognizer
         parser = PDFCatalogParser(SCANNED_SAMPLE_PATH, ocr_engine="windows")
-        df = parser.parse()
+        df = parser.parse_ocr()
 
         scanned_spec = self.heldout_ref["scanned_catalog"]
         verified_rows = scanned_spec["verified_rows"]
@@ -399,7 +400,7 @@ class TestAC3HeldOutBenchmarkPerformance(unittest.TestCase):
             p1_ref = json.load(f)["scanned_catalog_page1"]["verified_rows"]
 
         parser = PDFCatalogParser(page1_pdf, ocr_engine="windows")
-        df = parser.parse()
+        df = parser.parse_ocr()
 
         # 1-to-1 Spatial matching (match predictions to reference rows by vertical coordinate in PDF points)
         matched_pairs = []
@@ -476,7 +477,7 @@ class TestAC3HeldOutBenchmarkPerformance(unittest.TestCase):
 
         # 1. Run parser forcing RapidOCR only
         parser_rapid = PDFCatalogParser(SCANNED_SAMPLE_PATH, ocr_engine="rapidocr")
-        df_rapid = parser_rapid.parse()
+        df_rapid = parser_rapid.parse_ocr()
 
         meta_rapid = df_rapid.attrs.get("catalog_import")
         diag_rapid = meta_rapid.diagnostics
@@ -490,7 +491,7 @@ class TestAC3HeldOutBenchmarkPerformance(unittest.TestCase):
 
         # 2. Run parser forcing Windows Media OCR only
         parser_win = PDFCatalogParser(SCANNED_SAMPLE_PATH, ocr_engine="windows")
-        df_win = parser_win.parse()
+        df_win = parser_win.parse_ocr()
         win_engines = df_win["_ocr_engine_used"].unique().tolist()
         self.assertIn("windows_media_ocr", win_engines)
         self.assertEqual(len(df_win), 26, "Windows Media OCR extracts all 26 verified rows cleanly")
@@ -618,7 +619,7 @@ class TestAC5AccountedForOutcomes(unittest.TestCase):
             self.skipTest(f"Scanned sample not found at {SCANNED_SAMPLE_PATH}")
 
         parser = PDFCatalogParser(SCANNED_SAMPLE_PATH, ocr_engine="windows")
-        df = parser.parse()
+        df = parser.parse_ocr()
         meta = df.attrs.get("catalog_import")
         diag = meta.diagnostics
 

@@ -9,17 +9,9 @@ import re
 import logging
 import unicodedata
 from typing import Optional, List, Dict, Any, Tuple, Union
-import cv2
 import pymupdf
 import pandas as pd
 import numpy as np
-
-try:
-    from .image_table_detector import ImageTableDetector
-    from .ocr_engine import ArabicOCREngine
-except ImportError:
-    from image_table_detector import ImageTableDetector
-    from ocr_engine import ArabicOCREngine
 
 try:
     from .normalizer import (
@@ -79,6 +71,7 @@ try:
         CatalogResult,
         METADATA_KEY,
         build_source_id,
+        EXPLICIT_OCR_RECOVERY_CONFIG,
     )
     from .pdf_font_decoder import (
         inspect_and_repair_pdf_fonts,
@@ -109,6 +102,7 @@ except ImportError:
         CatalogResult,
         METADATA_KEY,
         build_source_id,
+        EXPLICIT_OCR_RECOVERY_CONFIG,
     )
     from pdf_font_decoder import (
         inspect_and_repair_pdf_fonts,
@@ -649,14 +643,29 @@ class PDFCatalogParser:
 
         return price_val, discount_val
 
-    def parse(self, file_path: Optional[str] = None) -> pd.DataFrame:
-        """Extract catalog items from PDF into a structured DataFrame."""
+    @staticmethod
+    def _deferred_raster_page(page, page_index, assessment):
+        row = RowDiagnostic(
+            page=page_index + 1, table=0, group=0, row=None, outcome="rejected",
+            reason="image_only_page_requires_review", bbox=list(page.rect),
+            raw_cells=["[image_only_page]"], is_region_issue=True,
+        )
+        return PageDiagnostics(
+            page=page_index + 1, strategy="image_only_deferred", page_classification="image_only",
+            selected_method="review", assessment_reasons=assessment.reasons,
+            groups=[GroupDiagnostics(group=0, strategy="image_only_deferred", rows=[row])],
+        )
+
+    def parse(self, file_path: Optional[str] = None, *, allow_ocr: bool = False) -> pd.DataFrame:
+        """Extract digitally verified catalog items and mark unresolved regions for Review."""
         if file_path is not None:
             self.pdf_path = file_path
             raw_name = os.path.splitext(os.path.basename(file_path))[0]
             self.warehouse_name = normalize_vendor_name(raw_name)
         if not self.pdf_path:
             raise ValueError("pdf_path must be provided either in __init__ or parse().")
+        from src.bench_trace import event
+        event("parse_start", path=self.pdf_path)
         items = []
         self.last_error = None
         self._doc_first_num_is_price = None
@@ -703,6 +712,9 @@ class PDFCatalogParser:
             if is_block_layout:
                 for page_idx, page in enumerate(doc):
                     assessment = assess_pdf_page(page, page_idx, font_diagnostics)
+                    if not allow_ocr and assessment.mode == "pure_raster":
+                        self._page_diagnostics.append(self._deferred_raster_page(page, page_idx, assessment))
+                        continue
                     block_items = self._process_page_blocks(page)
                     items.extend(block_items)
                     raw_accepted_count += len(block_items)
@@ -724,7 +736,16 @@ class PDFCatalogParser:
 
                     # Route pure raster / scanned image pages to ImageTableDetector + ArabicOCREngine
                     if getattr(assessment, "mode", "") == "pure_raster" or getattr(assessment, "classification", "") == "pure_raster":
+                        if not allow_ocr:
+                            self._page_diagnostics.append(self._deferred_raster_page(page, page_idx, assessment))
+                            continue
                         try:
+                            import cv2
+                            try:
+                                from .image_table_detector import ImageTableDetector
+                            except ImportError:
+                                from image_table_detector import ImageTableDetector
+
                             pix = page.get_pixmap(dpi=150)
                             img_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
                             if pix.n == 4:
@@ -919,7 +940,8 @@ class PDFCatalogParser:
                                         est_groups_to_pass = self._established_groups if (est_geom_to_pass is not None) else None
 
                                         p_items, new_geom, new_groups, t_diag = parse_structural_table(
-                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self, table_idx=t_idx, page_chars=page_chars
+                                            t, page_idx, self.warehouse_name, est_geom_to_pass, est_groups_to_pass, self,
+                                            table_idx=t_idx, page_chars=page_chars, page=page,
                                         )
 
                                         if has_multi_groups or (new_groups and any(g.is_valid for g in new_groups)):
@@ -1377,6 +1399,12 @@ class PDFCatalogParser:
             1 for p in self._page_diagnostics for g in p.groups for r in g.rows
             if getattr(r, "is_region_issue", False) and getattr(r, "outcome", "") not in ("accepted", "recovered", "corrected")
         )
+        fp = None
+        if self.pdf_path and os.path.exists(self.pdf_path):
+            if allow_ocr:
+                fp = FileFingerprint.from_path(self.pdf_path, recovery_config_hash=EXPLICIT_OCR_RECOVERY_CONFIG)
+            else:
+                fp = FileFingerprint.from_path(self.pdf_path)
 
         if not items:
             df = pd.DataFrame(columns=[
@@ -1392,14 +1420,13 @@ class PDFCatalogParser:
                 unresolved_region_count=unresolved_regions,
             )
             self._import_diagnostics = import_diag
-            fp = FileFingerprint.from_path(self.pdf_path) if self.pdf_path and os.path.exists(self.pdf_path) else None
             res = CatalogResult(dataframe=df, diagnostics=import_diag, fingerprint=fp)
             if res.review_issues and any(not iss.resolved for iss in res.review_issues):
                 try:
                     from .catalog_recovery import run_automatic_recovery
                 except ImportError:
                     from catalog_recovery import run_automatic_recovery
-                res = run_automatic_recovery(res, pdf_path=self.pdf_path)
+                res = run_automatic_recovery(res, pdf_path=self.pdf_path, allow_ocr=allow_ocr)
                 df = res.dataframe
 
             meta = CatalogImportMetadata(
@@ -1442,7 +1469,6 @@ class PDFCatalogParser:
             unresolved_region_count=unresolved_regions,
         )
         self._import_diagnostics = import_diag
-        fp = FileFingerprint.from_path(self.pdf_path) if self.pdf_path and os.path.exists(self.pdf_path) else None
         res = CatalogResult(dataframe=df, diagnostics=import_diag, fingerprint=fp)
 
         # Run deterministic automatic recovery on reviewable issues (R3)
@@ -1451,7 +1477,7 @@ class PDFCatalogParser:
                 from .catalog_recovery import run_automatic_recovery
             except ImportError:
                 from catalog_recovery import run_automatic_recovery
-            res = run_automatic_recovery(res, pdf_path=self.pdf_path)
+            res = run_automatic_recovery(res, pdf_path=self.pdf_path, allow_ocr=allow_ocr)
             df = res.dataframe
 
         if len(df) > 0 and 'warehouse_name' in df.columns:
@@ -2506,12 +2532,17 @@ class PDFCatalogParser:
             # - Discount is at offset [0, 32) from r.x0 (typically ~10pt)
             # - Public Price is at offset [32, 67) from r.x0 (typically ~36..61pt)
             # - Item Name starts at offset >= 67 from r.x0 (leftmost word in wide names starts at ~69pt)
-            c0_words = [w for w in cell_words if (w[0] - r.x0) < 32.0 and re.search(r'[\d\u0660-\u0669]', w[4])]
-            c1_words = [w for w in cell_words if 32.0 <= (w[0] - r.x0) < 67.0 and re.search(r'[\d\u0660-\u0669]', w[4])]
+            # Use each word's center so a name token that crosses the column boundary
+            # stays with its source cell instead of being concatenated into the price.
+            def column_offset(word):
+                return (word[0] + word[2]) / 2 - r.x0
+
+            c0_words = [w for w in cell_words if column_offset(w) < 32.0 and re.search(r'[\d\u0660-\u0669]', w[4])]
+            c1_words = [w for w in cell_words if 32.0 <= column_offset(w) < 67.0 and re.search(r'[\d\u0660-\u0669]', w[4])]
             name_words = [
                 w for w in cell_words
-                if (w[0] - r.x0) >= 67.0
-                or (32.0 <= (w[0] - r.x0) < 67.0 and not re.search(r'[\d\u0660-\u0669]', w[4]))
+                if column_offset(w) >= 67.0
+                or (32.0 <= column_offset(w) < 67.0 and not re.search(r'[\d\u0660-\u0669]', w[4]))
             ]
 
             if not c0_words or not c1_words or not name_words:
@@ -3510,7 +3541,7 @@ class PDFCatalogParser:
                 progress_callback(0.1, "جاري فحص صفحات الكتالوج وتحديد نوع الاستخراج...")
             except Exception:
                 pass
-        df = self.parse()
+        df = self.parse(allow_ocr=True)
         if df.empty and not self.last_error:
             self.last_error = f"No catalog items found in PDF ({os.path.basename(self.pdf_path or '')})."
         if progress_callback:

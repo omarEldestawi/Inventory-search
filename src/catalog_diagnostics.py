@@ -10,8 +10,9 @@ from typing import Any, Optional
 import pandas as pd
 import pymupdf
 
-PARSER_REVISION = "2026.11.08.1"
+PARSER_REVISION = "2026.11.11.1"
 METADATA_KEY = "catalog_import"
+EXPLICIT_OCR_RECOVERY_CONFIG = "v272_explicit_ocr"
 
 
 @dataclass(frozen=True)

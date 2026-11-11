@@ -23,7 +23,6 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
-import cv2
 import numpy as np
 import pandas as pd
 import pymupdf
@@ -44,8 +43,6 @@ try:
         unreverse_arabic_text,
         validate_catalog_item,
     )
-    from .image_table_detector import ImageTableDetector
-    from .ocr_engine import ArabicOCREngine
 except ImportError:
     from catalog_diagnostics import CatalogResult, ReviewIssue
     from catalog_reader import (
@@ -62,8 +59,6 @@ except ImportError:
         unreverse_arabic_text,
         validate_catalog_item,
     )
-    from image_table_detector import ImageTableDetector
-    from ocr_engine import ArabicOCREngine
 
 try:
     from .native_ocr.win_context_ocr import ContextWindowOCR
@@ -486,6 +481,8 @@ def deskew_and_enhance_image(img_np: np.ndarray, apply_clahe: bool = True) -> np
     if img_np is None or img_np.size == 0:
         return img_np
 
+    import cv2
+
     res = img_np.copy()
     gray = cv2.cvtColor(res, cv2.COLOR_RGB2GRAY) if len(res.shape) == 3 else res
 
@@ -529,6 +526,8 @@ def _evaluate_ocr_candidate_on_crop(
     """Runs OCR on cropped cell/row image and evaluates candidate item."""
     if img_np is None or img_np.size == 0:
         return None
+
+    import cv2
 
     # Establish whether target crop is physically blank using source ink evidence
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if len(img_np.shape) == 3 else img_np
@@ -763,6 +762,12 @@ def recover_by_ocr_ladder(
     """
     if not pdf_path and open_doc is None:
         return None
+
+    import cv2
+    try:
+        from .ocr_engine import ArabicOCREngine
+    except ImportError:
+        from ocr_engine import ArabicOCREngine
     
     # Target specific cell region if available, otherwise row bbox
     bbox = issue.region_bbox or issue.bbox
@@ -925,6 +930,12 @@ def recover_region_by_ocr(
     if not issue.identity:
         return []
 
+    import cv2
+    try:
+        from .image_table_detector import ImageTableDetector
+    except ImportError:
+        from image_table_detector import ImageTableDetector
+
     page_num = issue.identity.page
     bbox = issue.bbox
 
@@ -996,11 +1007,11 @@ def recover_region_by_ocr(
 
 
 def run_automatic_recovery(
-    catalog_result: CatalogResult, pdf_path: Optional[str] = None
+    catalog_result: CatalogResult, pdf_path: Optional[str] = None, *, allow_ocr: bool = False
 ) -> CatalogResult:
     """
-    Executes the 4-stage bounded deterministic recovery engine over all unresolved review issues:
-    1. Coordinate Re-extraction -> 2. Wrapped Text Reconstruction -> 3. Column Role Resolution -> 4. OCR Recovery Ladder.
+    Applies coordinate, wrapped text and column role recovery to unresolved issues.
+    OCR recovery is available to explicitly opted-in callers.
     Preserves all existing valid records and ensures idempotent execution.
     """
     if catalog_result is None:
@@ -1026,8 +1037,9 @@ def run_automatic_recovery(
         ("coordinate_reextraction", recover_by_coordinates),
         ("wrapped_text_reconstruction", recover_by_wrapped_text),
         ("column_role_resolution", recover_by_column_roles),
-        ("ocr_recovery_ladder", recover_by_ocr_ladder),
     ]
+    if allow_ocr:
+        strategies.append(("ocr_recovery_ladder", recover_by_ocr_ladder))
 
     open_doc = None
     if pdf_path and os.path.isfile(pdf_path):
@@ -1052,6 +1064,8 @@ def run_automatic_recovery(
                 or issue.source_id.endswith("_region")
             )
             if is_region:
+                if not allow_ocr:
+                    continue
                 if "ocr_recovery_ladder" not in issue.attempted_strategies:
                     issue.attempted_strategies.append("ocr_recovery_ladder")
                     attempted_count += 1
@@ -1111,6 +1125,7 @@ def run_automatic_recovery(
                     if valid:
                         issue.resolved = True
                         issue.provenance = "automatic_recovery"
+                        issue.extraction_method = candidate.get("_extraction_method", strat_name)
                         issue.item = candidate
                         issue.strategy_outcomes[strat_name] = "recovered"
                         recovered_count += 1
@@ -1141,13 +1156,18 @@ def run_automatic_recovery(
                                 "base_price": cand_price,
                                 "discount_rate": disc_val,
                                 "stock_status": bool(candidate.get("stock_status", True)),
+                            }
+                            source = {
                                 "_source_id": candidate.get("_source_id", src_id),
                                 "_bbox": candidate.get("_bbox", issue.bbox),
-                                "_raw_ocr_text": candidate.get("_raw_ocr_text", ""),
                                 "_search_normalized_text": candidate.get("_search_normalized_text", cand_norm),
-                                "_extraction_method": candidate.get("_extraction_method", "ocr_recovery_ladder"),
-                                "_ocr_engine_used": candidate.get("_ocr_engine_used", "windows_media_ocr"),
+                                "_extraction_method": issue.extraction_method,
                             }
+                            if strat_name == "ocr_recovery_ladder":
+                                source.update(_raw_ocr_text=candidate.get("_raw_ocr_text", ""),
+                                              _ocr_engine_used=candidate.get("_ocr_engine_used", "windows_media_ocr"))
+                            row_dict.update({key: value for key, value in source.items()
+                                             if allow_ocr or key in updated_df.columns})
                             updated_df = pd.concat([updated_df, pd.DataFrame([row_dict])], ignore_index=True)
                             existing_source_ids.add(src_id)
                     else:
@@ -1180,6 +1200,7 @@ def run_automatic_recovery(
                             r_diag.outcome = "recovered"
                             r_diag.attempted_strategies = list(iss.attempted_strategies)
                             r_diag.provenance = iss.provenance
+                            r_diag.extraction_method = iss.extraction_method
                             if iss.item and iss.item.get("item_name"):
                                 r_diag.item_name = iss.item["item_name"]
                 # When the whole group is accounted for, clear the old

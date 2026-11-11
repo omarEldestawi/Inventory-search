@@ -802,16 +802,6 @@ def run_procurement_pipeline(
                 try:
                     parser_inst = PDFCatalogParser(cat_file, warehouse_name=w_name)
                     df_cat = parser_inst.parse()
-                    # Fallback for scanned PDFs: if digital extraction yielded 0 items, attempt OCR extraction
-                    if df_cat.empty:
-                        logger.info(
-                            f"Digital extraction found 0 items for {base_name}. "
-                            f"Falling back to OCR extraction for scanned PDF..."
-                        )
-                        _notify(pct, f"مسح الكتالوج الممسوح ضوئياً بـ OCR: {w_name}...")
-                        df_cat = parser_inst.parse_ocr(progress_callback=progress_callback)
-                        if df_cat.empty and getattr(parser_inst, "last_error", None):
-                            logger.warning(f"OCR parsing for '{base_name}' reported: {parser_inst.last_error}")
                 except Exception as cat_err:
                     logger.warning(f"Error parsing PDF catalog '{base_name}': {cat_err}")
             elif df_cat.empty and cat_file.lower().endswith(('.xlsx', '.xls', '.csv')):
@@ -963,6 +953,8 @@ def run_procurement_pipeline(
                 logger.warning(f"Failed to load average discounts file '{target_avg_path}': {ad_err}")
                 avg_discounts_df = None
 
+        from src.bench_trace import event
+        event("allocation_start")
         current_stage = "allocation"
         diagnostics["stage"] = current_stage
         _notify(0.75, "جاري مطابقة الأصناف وتوزيعها على أعلى الخصومات... / Running allocation engine...")
@@ -1004,6 +996,8 @@ def run_procurement_pipeline(
         _notify(0.85, f"اكتمل التوزيع: تم تخصيص {matched} من {total_req} صنف بنجاح.")
         _check_cancellation()
 
+        event("allocation_end")
+        event("discounts_start")
         # Above-average discounts evaluation across reference dataset
         above_avg_df = pd.DataFrame()
         if avg_discounts_df is not None and not avg_discounts_df.empty:
@@ -1019,6 +1013,8 @@ def run_procurement_pipeline(
         per_wh_above_avg = getattr(above_avg_df, 'attrs', {}).get('per_warehouse', {})
         results['per_warehouse_above_average_discounts'] = per_wh_above_avg
 
+        event("discounts_end")
+        event("excel_start")
         # 5. Generate Arabic Excel Report
         current_stage = "report_generation"
         diagnostics["stage"] = current_stage
@@ -1035,6 +1031,7 @@ def run_procurement_pipeline(
         arabic_candidate = os.path.abspath(os.path.join(output_dir, expected_arabic_filename))
         arabic_report_path = arabic_candidate if os.path.exists(arabic_candidate) else primary_report_path
 
+        event("excel_end")
         current_stage = "completed"
         diagnostics["stage"] = current_stage
         _notify(1.0, "اكتملت العملية بنجاح! / Procurement pipeline completed successfully!")
