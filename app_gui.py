@@ -742,6 +742,12 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self.selected_issue: Optional[ReviewIssue] = None
         self.selected_source_id: Optional[str] = None
         self._current_ctk_image: Optional[ctk.CTkImage] = None
+        self._current_rendered_dims = None
+        self._preview_request = None
+        self._preview_running = False
+        self._preview_poll_id = None
+        self._preview_results = queue.Queue(maxsize=1)
+        self._preview_drag = None
         self._box_revision = 0
         self._box_results = queue.Queue(maxsize=1)
         self._box_pending = None
@@ -1287,29 +1293,71 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             if self.selected_issue.identity.page == self.current_page:
                 bbox_to_highlight = self.selected_issue.bbox or self.selected_issue.identity.bbox
 
-        img = render_pdf_page_with_highlight(
-            self.catalog_path,
-            page_number=self.current_page,
-            bbox=bbox_to_highlight,
-            dpi=150,
-            highlight_color=COLOR_DANGER,
-        )
+        request = (self.catalog_path, self.current_page, tuple(bbox_to_highlight or ()))
+        if request == self._preview_request:
+            return
+        if self._preview_request is not None and request[:2] != self._preview_request[:2]:
+            self.page_image_lbl.configure(image="")
+            self._current_ctk_image = None
+        self._preview_request = request
+        self._current_rendered_dims = None
+        self._preview_drag = None
+        if self._current_ctk_image is None:
+            self.page_image_lbl.configure(text="جاري تحميل المعاينة / Loading preview…")
+        if not self._preview_running:
+            self._launch_pdf_preview(request)
+
+    def _launch_pdf_preview(self, request):
+        self._preview_running = True
+        results = self._preview_results
+        path, page, bbox = request
+
+        def render():
+            img = None
+            try:
+                img = render_pdf_page_with_highlight(path, page, bbox, highlight_color=COLOR_DANGER)
+                if img is not None:
+                    height = max(1, round(520 * img.height / img.width))
+                    img = img.resize((520, height), Image.Resampling.LANCZOS)
+            except Exception:
+                logger.exception("Could not prepare Review preview for page %s", page)
+                img = None
+            results.put_nowait((request, img))
+
+        threading.Thread(target=render, name="ReviewPDFPreview", daemon=True).start()
+        self._preview_poll_id = self.after(15, self._poll_pdf_preview)
+
+    def _poll_pdf_preview(self):
+        self._preview_poll_id = None
+        try:
+            request, img = self._preview_results.get_nowait()
+        except queue.Empty:
+            self._preview_poll_id = self.after(15, self._poll_pdf_preview)
+            return
+        self._preview_running = False
+        if request != self._preview_request:
+            self._launch_pdf_preview(self._preview_request)
+            return
 
         if img is not None:
-            disp_w = 520
-            aspect = img.height / max(1, img.width)
-            disp_h = int(disp_w * aspect)
+            disp_w, disp_h = img.size
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(disp_w, disp_h))
             self._current_ctk_image = ctk_img
             self._current_rendered_dims = (disp_w, disp_h, img.info["pdf_page_rect"], img.info["pdf_inverse_rotation"])
             self.page_image_lbl.configure(image=ctk_img, text="")
         else:
+            self.page_image_lbl.configure(image="")
             self._current_ctk_image = None
             self._current_rendered_dims = None
             self.page_image_lbl.configure(
-                image=None,
                 text="📄 لا تتوفر معاينة بصرية لهذا المستند (ملف Excel أو تعذر العرض)\nVisual preview not available.",
             )
+
+    def destroy(self):
+        if self._preview_poll_id is not None:
+            self.after_cancel(self._preview_poll_id)
+            self._preview_poll_id = None
+        super().destroy()
 
     def _on_prev_page(self):
         if self.current_page > 1:
@@ -1468,13 +1516,14 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._on_read_highlighted_box_ocr()
 
     def _on_preview_drag_start(self, event):
-        self._drag_start_x = event.x
-        self._drag_start_y = event.y
+        if self._current_rendered_dims is not None:
+            self._preview_drag = (event.x, event.y)
 
     def _on_preview_drag_release(self, event):
-        if not hasattr(self, "_drag_start_x") or not hasattr(self, "_drag_start_y"):
+        drag, self._preview_drag = self._preview_drag, None
+        if drag is None:
             return
-        x0, y0 = self._drag_start_x, self._drag_start_y
+        x0, y0 = drag
         x1, y1 = event.x, event.y
         rx0, rx1 = min(x0, x1), max(x0, x1)
         ry0, ry1 = min(y0, y1), max(y0, y1)

@@ -647,7 +647,7 @@ class PDFCatalogParser:
     def _deferred_raster_page(page, page_index, assessment):
         row = RowDiagnostic(
             page=page_index + 1, table=0, group=0, row=None, outcome="rejected",
-            reason="image_only_page_requires_review", bbox=list(page.rect),
+            reason="image_only_page_requires_review", bbox=list(page.rect * page.derotation_matrix),
             raw_cells=["[image_only_page]"], is_region_issue=True,
         )
         return PageDiagnostics(
@@ -784,7 +784,7 @@ class PDFCatalogParser:
                                     row=None,
                                     outcome="rejected",
                                     reason="image_only_page_requires_review",
-                                    bbox=list(page.rect),
+                                    bbox=list(page.rect * page.derotation_matrix),
                                     raw_cells=["[image_only_page]"],
                                     is_region_issue=True,
                                     source_id=f"p{page_idx + 1}_t0_region",
@@ -1239,7 +1239,7 @@ class PDFCatalogParser:
                                             row=None,
                                             outcome="rejected",
                                             reason=reason_code,
-                                            bbox=list(page.rect),
+                                            bbox=list(page.rect * page.derotation_matrix),
                                             raw_cells=[page_text[:200] if page_text else "[image_only_page]"],
                                             is_region_issue=True,
                                             source_id=f"p{page_idx + 1}_t0_region",

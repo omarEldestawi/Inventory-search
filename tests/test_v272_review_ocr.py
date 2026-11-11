@@ -1,10 +1,14 @@
 import queue
 import subprocess
 import sys
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pymupdf
+from PIL import Image
+
+import app_gui
 
 from app_gui import CatalogReviewWindow
 from src.box_ocr_parser import BoxParseResult
@@ -44,6 +48,56 @@ def test_drag_maps_scaled_preview_without_starting_ocr():
     assert window._custom_drag_bbox == [10, 10, 30, 30]
     window._invalidate_box_ocr.assert_called_once()
     window._execute_box_ocr.assert_not_called()
+
+
+def test_preview_renders_off_tk_and_only_displays_latest_request(monkeypatch):
+    release_first = threading.Event()
+    first_started = threading.Event()
+    main_thread = threading.get_ident()
+    calls = []
+
+    def render(path, page, bbox, **kwargs):
+        calls.append((page, threading.get_ident()))
+        if page == 1:
+            first_started.set()
+            assert release_first.wait(5)
+        img = Image.new("RGB", (100, 200))
+        img.info.update(pdf_page_rect=(0, 0, 100, 200), pdf_inverse_rotation=(1, 0, 0, 1, 0, 0))
+        return img
+
+    monkeypatch.setattr(app_gui, "render_pdf_page_with_highlight", render)
+    window = SimpleNamespace(
+        catalog_path="catalog.pdf", current_page=1, total_pages=3, selected_issue=None,
+        page_info_lbl=Mock(), page_image_lbl=Mock(), after=Mock(),
+        _current_ctk_image=None, _preview_request=None, _preview_results=queue.Queue(1),
+        _preview_running=False, _preview_drag=(10, 20),
+    )
+    window._launch_pdf_preview = lambda request: CatalogReviewWindow._launch_pdf_preview(window, request)
+    window._poll_pdf_preview = lambda: CatalogReviewWindow._poll_pdf_preview(window)
+
+    CatalogReviewWindow._render_pdf_page(window)
+    try:
+        assert first_started.wait(5)
+        for page in (2, 3):
+            window.current_page = page
+            CatalogReviewWindow._render_pdf_page(window)
+        assert window._current_rendered_dims is None
+        assert window._preview_drag is None
+        assert [page for page, _ in calls] == [1]
+    finally:
+        release_first.set()
+
+    first = window._preview_results.get(timeout=5)
+    window._preview_results.put(first)
+    window._poll_pdf_preview()
+    assert window._current_ctk_image is None
+    latest = window._preview_results.get(timeout=5)
+    window._preview_results.put(latest)
+    window._poll_pdf_preview()
+    assert [page for page, _ in calls] == [1, 3]
+    assert all(thread != main_thread for _, thread in calls)
+    assert window._current_rendered_dims[:2] == (520, 1040)
+    window.page_image_lbl.configure.assert_called_with(image=window._current_ctk_image, text="")
 
 
 def test_stale_review_result_cannot_change_editor_or_publish_suggestions():

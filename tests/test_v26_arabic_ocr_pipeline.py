@@ -12,6 +12,7 @@ Covers:
 """
 import os
 import unittest
+from unittest.mock import patch
 import numpy as np
 import cv2
 import pymupdf
@@ -121,7 +122,25 @@ class TestScannedCatalogEndToEndExtraction(unittest.TestCase):
             self.skipTest(f"Sample file not found: {SCANNED_SAMPLE_PATH}")
 
         parser = PDFCatalogParser(SCANNED_SAMPLE_PATH)
-        df = parser.parse()
+        with (
+            patch("src.image_table_detector.ImageTableDetector") as raster_ocr,
+            patch("src.catalog_recovery.recover_by_ocr_ladder") as row_ocr,
+            patch("src.catalog_recovery.recover_region_by_ocr") as region_ocr,
+        ):
+            deferred = CatalogResult.from_dataframe(parser.parse())
+            self.assertIsNotNone(deferred)
+            self.assertTrue(deferred.dataframe.empty)
+            self.assertTrue(deferred.review_issues)
+            self.assertTrue(all(
+                issue.identity is not None and issue.identity.is_region_issue and not issue.resolved
+                and issue.rejection_reason == "image_only_page_requires_review"
+                for issue in deferred.review_issues
+            ))
+            raster_ocr.assert_not_called()
+            row_ocr.assert_not_called()
+            region_ocr.assert_not_called()
+
+        df = parser.parse(allow_ocr=True)
 
         # Must extract valid pharmaceutical rows
         self.assertGreaterEqual(len(df), 20)

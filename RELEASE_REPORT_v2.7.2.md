@@ -2,6 +2,16 @@
 
 The candidate is under verification on `release/v2.7.2`. Release approval requires the full regression suite, the remaining benchmark evidence, and the disposable-profile installer lifecycle checks.
 
+## Review follow-up
+
+- Full-page Review regions use unrotated source coordinates. Tests saved a row near the bottom of a 300×500 scanned page at both 90° and 270° rotation.
+- PDF preview rendering and resizing run in a background thread. Tk installs only the latest preview and ignores drag input while its coordinate mapping is unavailable.
+- The scanned sample test verifies text-only deferral with zero OCR calls, then runs explicit OCR and checks the original row-count, identity, price, and discount assertions.
+- The follow-up source run passed 67 focused tests.
+- The visible source test changed pages, dragged a box, and received Windows OCR suggestions. Maximum Tk heartbeat gaps were 402 ms on the early trial and 44 ms on the repeat. B8 remains open.
+
+The installer and package measurements below apply to the build before this follow-up. The Review changes have source verification.
+
 ## Source baselines
 
 Each source record contains five launches. Startup, private memory at 30 seconds, and digital parsing below are medians of the four subsequent trials. Every trial returned 571 digital fixture rows.

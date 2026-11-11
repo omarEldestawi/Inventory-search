@@ -75,6 +75,25 @@ def test_save_one_verified_row_leaves_the_scanned_page_in_review(ocr_calls, monk
     assert list(reloaded.dataframe['base_price']) == [12.50]
 
 
+@pytest.mark.parametrize("rotation", [90, 270])
+def test_rotated_scanned_region_accepts_row_in_source_coordinates(ocr_calls, monkeypatch, tmp_path, rotation):
+    monkeypatch.setenv("EPO_CORRECTIONS_DIR", str(tmp_path / "corrections"))
+    path = tmp_path / "rotated.pdf"
+    with pymupdf.open(FIXTURES / "test_scanned_page1.pdf") as source, pymupdf.open() as document:
+        page = document.new_page(width=300, height=500)
+        page.insert_image(page.rect, pixmap=source[0].get_pixmap())
+        page.set_rotation(rotation)
+        document.save(path)
+
+    service = CatalogCorrectionService(str(path))
+    issue, = service.get_refreshed_catalog_result().review_issues
+    assert list(issue.bbox) == [0, 0, 300, 500]
+    saved = service.apply_region_row_correction(issue, [40, 390, 185, 410], {
+        "item_name": "Verified sample tablet", "base_price": 12.50, "discount_rate": 0.25,
+    })
+    assert list(saved.dataframe["base_price"]) == [12.50]
+
+
 def test_name_digit_crossing_arwasoft_column_boundary_stays_out_of_price():
     page = Mock()
     page.get_drawings.return_value = [

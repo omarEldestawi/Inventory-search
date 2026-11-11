@@ -12,7 +12,7 @@
 | D3 | READY deadline opens the session breaker | Focused test passed |
 | D4 | Native stdout and stderr drains tested with a flooded stderr pipe | Focused test passed |
 | D5 | Startup breaker tested. Consecutive transport failures are counted. | Implemented |
-| D6 | Review render and OCR run off Tk. Native and fallback heartbeat samples captured. | Settled-window smoke passed, early-window stall recorded |
+| D6 | In the source follow-up, full-page preview rasterization and resizing, as well as box OCR, run off Tk. Tk installs only the latest preview. Tests cover stale results and rotated region corrections. | Source tests passed, early-window stall still recorded |
 | D7 | Real source Review clicks returned text suggestions from both native and disabled-native fallback | Source smoke passed |
 | D8 | `test_v272_box_ocr_parser.py` covers verified roles, ambiguity, decimal and RTL cases. Review presents suggestions separately. | Focused tests passed |
 | D9 | Startup warm-up removed. Clean app import leaves OCR modules unloaded. | Focused test passed |
@@ -28,7 +28,7 @@
 | B5 | Native READY in 0.148 s. | Pass |
 | B6 | Four valid 180 DPI native strip reads. Median 167 ms and p95 348 ms. | Pass |
 | B7 | One invalid PowerShell result and the valid sample medians were 177 ms PowerShell and 167 ms native. | Fail |
-| B8 | Settled visible Review gaps below 31 ms. An early click in the visible window measured a 511 ms heartbeat gap. | Fail |
+| B8 | The previous visible-window test recorded a 511 ms early gap. The source follow-up measured 402 ms early and 44 ms on the repeat through page navigation, drag, and real OCR. | Fail |
 | B9 | Audited installer 125.69 MiB. | Pass |
 | B10 | Audited portable bundle 405.6 MiB. | Pass |
 | B11 | Exactly one failed start. First call returned in 4.951 s including cleanup, next returned in 0.013 ms. | Pass |
