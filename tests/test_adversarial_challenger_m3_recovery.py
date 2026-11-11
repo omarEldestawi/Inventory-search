@@ -21,6 +21,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 import pymupdf
@@ -182,7 +183,12 @@ class TestAdversarialGeometryEdgeCases(unittest.TestCase):
             issues_by_source_id={iss.source_id: iss for iss in issues},
         )
 
-        recovered_res = run_automatic_recovery(res, pdf_path=self.pdf_path)
+        with patch("src.catalog_recovery.recover_by_ocr_ladder") as ocr:
+            digital = run_automatic_recovery(copy.deepcopy(res), pdf_path=self.pdf_path)
+            ocr.assert_not_called()
+            self.assertTrue(digital.dataframe.empty, "Unverified rows remain in Review during text-only recovery")
+
+        recovered_res = run_automatic_recovery(res, pdf_path=self.pdf_path, allow_ocr=True)
 
         # First issue should recover the row; remaining 2 overlapping issues must NOT append duplicate rows!
         augmentin_rows = recovered_res.dataframe[
