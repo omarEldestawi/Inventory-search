@@ -5,34 +5,34 @@
 | Phase 0 snapshot | `491e793` on `release/v2.7.2`, protected-file diff empty against `v2.7.1` | Recorded |
 | Phase 0 dependencies | `d62bfd0`, `pytest` and `psutil` installed under Python 3.12.10 | Recorded |
 | Original batch | Four PDFs from the slow-import diagnosis and user-confirmed `نواقص11-11.xlsx`, with hashes in `scratch/v272-baseline/inputs.json` | Inputs identified |
-| Section 0.1 | `scratch/v272-baseline/source_evidence.json` records financial column coordinates throughout the batch and 14 visually checked first-page rows | Baseline source evidence captured, candidate verification pending |
-| Section 0.2 | First packaged WIP trace in `scratch/v272-baseline/batch-first/events` recorded two parse starts for each of the four PDFs | Duplicate work reproduced, implementation and candidate checks pending |
-| D1 | Dead-worker lock and restart regression | Pending |
-| D2 | Request deadline and stalled-pipe test | Pending |
-| D3 | READY deadline and startup-failure test | Pending |
-| D4 | Stderr drain test | Pending |
-| D5 | Session circuit breaker test | Pending |
-| D6 | Review threading and actual Tk heartbeat | Pending |
-| D7 | Real Review action exercising clipped render and OCR | Pending |
-| D8 | `tests/test_v272_box_ocr_parser.py` covers financial roles, ambiguity, decimal and RTL cases | Parser tests passed, Review integration pending |
-| D9 | Startup OCR-idle test in source and package | Pending |
-| D10 | Startup import trace and lazy OpenCV test | Pending |
-| D11 | Base64 worker transport test | Pending |
-| D12 | Normal exit and `os._exit` worker ownership tests | Pending |
-| D13 | Bundle manifest and clean install or upgrade tests | Pending |
-| D14 | Source-hash rebuild and READY/exit smoke test | Pending |
-| B1 | `bench_v2.6.json` and `bench_v2.7.2_wip.json` contain five startup trials each | Baselines recorded, candidate pending |
-| B2 | Both source baseline records contain five 30-second private memory samples | Baselines recorded, candidate pending |
-| B3 | Both source baseline records contain five digital catalog trials with 571 rows each | Baselines recorded, candidate pending |
-| B4 | Comparable cold and warm explicit Review OCR in source and package | Pending |
-| B5 | Native worker READY timing | Pending |
-| B6 | Native 180 DPI strip p50 and p95 | Pending |
-| B7 | Matched uncached native and PowerShell strip timings | Pending |
-| B8 | Maximum actual Tk stall | Pending |
-| B9 | Installer size | Pending |
-| B10 | Distribution size | Pending |
-| B11 | Time spent on unavailable worker per session | Pending |
-| B12 | Orphan count after exit | Pending |
-| B13 | Automatic OCR invocation counts and scanned deferral | Pending |
-| B14 | Parse counts during optimization, error and replacement cases | Pending |
-| B15 | Packaged before/after timings, final Excel save and verified extraction | Pending |
+| Section 0.1 | `scratch/v272-baseline/source_evidence.json` records financial column coordinates and 14 visually checked first-page rows. Both final packaged runs invoked zero OCR during import and passed the financial and name checks. | Verified |
+| Section 0.2 | WIP parsed each PDF twice. Both final packaged runs parsed each PDF once and saved Excel. Tests cover stale success, stale failure, and repeated Run. | Verified |
+| D1 | Serialized requests and separately owned lifecycle locks. `test_v272_native_worker.py` exercises shutdown during a request. | Focused tests passed |
+| D2 | Absolute request deadline and bounded write, silent-response and partial-line tests | Focused tests passed |
+| D3 | READY deadline opens the session breaker | Focused test passed |
+| D4 | Native stdout and stderr drains tested with a flooded stderr pipe | Focused test passed |
+| D5 | Startup breaker tested. Consecutive transport failures are counted. | Implemented |
+| D6 | Review render and OCR run off Tk. Native and fallback heartbeat samples captured. | Settled-window smoke passed, early-window stall recorded |
+| D7 | Real source Review clicks returned text suggestions from both native and disabled-native fallback | Source smoke passed |
+| D8 | `test_v272_box_ocr_parser.py` covers verified roles, ambiguity, decimal and RTL cases. Review presents suggestions separately. | Focused tests passed |
+| D9 | Startup warm-up removed. Clean app import leaves OCR modules unloaded. | Focused test passed |
+| D10 | Lazy OpenCV and OCR imports verified in a fresh interpreter | Focused test passed |
+| D11 | Native worker accepts in-memory PNG payload with matching request ID | Source smoke passed |
+| D12 | Windows job object kills the fake worker on abrupt parent exit | Focused test passed, final packaged check pending |
+| D13 | Audited bundle is 405.6 MiB and installer is 125.69 MiB. Duplicate resource and user database preservation tests passed. | Disposable-profile lifecycle acceptance pending |
+| D14 | Source and compiler hashes, worker hash, READY, request ID and exit status checked by the build | Build smoke passed |
+| B1 | Five source trials per version. Subsequent median 4.39 s in both v2.6 and the candidate. | Pass |
+| B2 | Five 30-second private memory samples per version. Subsequent median 590.65 MiB versus 586.81 MiB on v2.6. | Pass |
+| B3 | Five candidate runs returned 571 rows each. Subsequent median 9.37 s versus a 26.05 s limit after removing repeated diagnostic copies during CLI output. | Pass |
+| B4 | Candidate Review action measured in source. WIP Review action fails before producing suggestions, leaving no comparable baseline. | Fail |
+| B5 | Native READY in 0.148 s. | Pass |
+| B6 | Four valid 180 DPI native strip reads. Median 167 ms and p95 348 ms. | Pass |
+| B7 | One invalid PowerShell result and the valid sample medians were 177 ms PowerShell and 167 ms native. | Fail |
+| B8 | Settled visible Review gaps below 31 ms. An early click in the visible window measured a 511 ms heartbeat gap. | Fail |
+| B9 | Audited installer 125.69 MiB. | Pass |
+| B10 | Audited portable bundle 405.6 MiB. | Pass |
+| B11 | Exactly one failed start. First call returned in 4.951 s including cleanup, next returned in 0.013 ms. | Pass |
+| B12 | Job-object tests exercised normal shutdown and abrupt `os._exit`. | Pass |
+| B13 | Zero automatic OCR calls in both frozen batch runs. Source tests exercised scanned deferral, refresh, correction reload, procurement fallback, and Review opening. | Pass |
+| B14 | One parse per PDF in both frozen runs. Source tests covered repeated Run, stale callbacks, and error recovery. | Pass in comparison; manual frozen replacement case pending |
+| B15 | Both frozen runs saved Excel and passed the source-evidence audit. Import and end-to-end processing improved in both comparisons. | Pass for the audited executable |

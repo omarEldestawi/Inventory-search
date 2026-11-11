@@ -1,4 +1,6 @@
-from scripts.bench_v272 import compare_evidence, summarize_trace
+import pytest
+
+from scripts.bench_v272 import compare_evidence, summarize_trace, validate_catalog_rows
 
 
 def test_missing_evidence_fails_every_gate():
@@ -63,3 +65,18 @@ def test_packaged_trace_counts_duplicate_parses_and_excludes_acknowledgment(tmp_
     assert trial['waiting_s'] == 5
     assert trial['processing_s'] == 15
     assert trial['excel_save_s'] == 3
+
+
+def test_source_audit_requires_a_located_review_issue_for_missing_financial_pair():
+    anchor = {'page': 1, 'printed_row': 1, 'printed_name': 'دواء ١٢ مل', 'price': 12.50, 'discount_percent': 25}
+    accepted_pair = {'price': 12.50, 'discount_percent': 25, 'price_bbox': [0, 0, 10, 10], 'discount_bbox': [10, 0, 20, 10]}
+    quarantined_pair = {'price': 53, 'discount_percent': 86, 'price_bbox': [0, 11, 10, 20], 'discount_bbox': [10, 11, 20, 20]}
+    evidence = {'anchors': [anchor], 'digital_financial_pairs': [
+        {'page': 1, 'groups': [{'paired_numeric_cells': [accepted_pair, quarantined_pair]}]}]}
+    issue = {'source_id': 'p1_t0_r2', 'page_number': 1, 'bbox': [0, 11, 20, 20], 'rejection_reason': 'invalid_discount_0.86'}
+    result = {'accepted_rows': 1, 'unresolved_rows': 1, 'status': 'partial', 'unresolved': [issue],
+              'observed_rows': [{'item_name': 'دواء 12 مل', 'base_price': 12.50, 'discount_rate': 0.25}]}
+    validate_catalog_rows(result, evidence)
+    issue['page_number'] = 2
+    with pytest.raises(ValueError, match='missing without a source-linked Review issue'):
+        validate_catalog_rows(result, evidence)

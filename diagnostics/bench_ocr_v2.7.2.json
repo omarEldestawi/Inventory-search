@@ -1,0 +1,74 @@
+{
+  "commit": "53a5f7ac8ee7fb415cb0098e11eea7fba6f9d4d3",
+  "windows": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "language_configuration": {
+    "native": "ar-SA with en-US pass when available",
+    "powershell": "ar-SA",
+    "platform": "Windows.Media.Ocr"
+  },
+  "source_evidence_sha256": "b5567a21a231ce6ff3695b93f277e3f2f57317b5b42c668ee8d1c6988fb757b2",
+  "executable_sha256": "4d6f5f81a4bca11191c4c7c6b43632694d0a4ce74e068619d8fdc161d469859a",
+  "native": {
+    "ready_s": 0.1478674000245519,
+    "sample_count": 4,
+    "attempts": 4,
+    "p50_s": 0.1672827999573201,
+    "p95_s": 0.34807579999323934,
+    "valid_sample_times_s": [
+      0.13599719997728243,
+      0.16366029996424913,
+      0.17090529995039105,
+      0.34807579999323934
+    ]
+  },
+  "powershell": {
+    "ready_s": 2.0680133999558166,
+    "sample_count": 3,
+    "attempts": 4,
+    "p50_s": 0.17710760002955794,
+    "p95_s": 0.4478844999684952,
+    "valid_sample_times_s": [
+      0.13349430001107976,
+      0.17710760002955794,
+      0.4478844999684952
+    ]
+  },
+  "matched_inputs": false,
+  "raw_strip_evidence": "scratch/v272-baseline/ocr-strip-events.json",
+  "review": {
+    "native": {
+      "source": {
+        "cold": {
+          "candidate_s": 0.5476918000495061,
+          "maximum_heartbeat_s": 0.017205100040882826,
+          "comparable": false,
+          "visible": true
+        },
+        "warm": {
+          "candidate_s": 0.1660849000327289,
+          "maximum_heartbeat_s": 0.016889700025785714,
+          "comparable": false,
+          "visible": true
+        }
+      }
+    },
+    "fallback": {
+      "source": {
+        "cold": {
+          "candidate_s": 5.303586499998346,
+          "maximum_heartbeat_s": 0.03290390002075583,
+          "comparable": false,
+          "visible": true
+        },
+        "warm": {
+          "candidate_s": 5.326860499975737,
+          "maximum_heartbeat_s": 0.031881900038570166,
+          "comparable": false,
+          "visible": true
+        }
+      }
+    },
+    "baseline_status": "WIP explicit Review action fails before producing suggestions"
+  }
+}

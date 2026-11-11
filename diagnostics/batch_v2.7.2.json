@@ -1,0 +1,143 @@
+{
+  "trials": [
+    {
+      "first_result_s": 4.3217056,
+      "inspection_s": 31.2130653,
+      "run_clicked_s": 0.8821137,
+      "waiting_s": 30.3309516,
+      "user_wait_s": 0.3229962,
+      "allocation_s": 73.4520729,
+      "reference_discounts_s": 23.7130787,
+      "excel_save_s": 5.3052319,
+      "elapsed_s": 155.3407658,
+      "processing_s": 155.0177696,
+      "saved_workbook": "scratch/v272-baseline/batch-current-first/events/workbook/Procurement_Order_Optimized_2026-11-11.xlsx",
+      "workbook_sha256": "5be878e37eb30c9e55377850d367a93bfa65b328a5f47af2d4c2675f31002a1e",
+      "catalogs": [
+        {
+          "sha256": "d99eb3012e117d259d302330a300a590c9fc351ce649d21c07242a3ecf29e911",
+          "parse_starts": 1,
+          "status": "partial",
+          "accepted_rows": 138,
+          "unresolved_rows": 3,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        },
+        {
+          "sha256": "87e709f5970517bc30900be0848b238220315d18e3f4ce42d471460fe0c24918",
+          "parse_starts": 1,
+          "status": "partial",
+          "accepted_rows": 599,
+          "unresolved_rows": 30,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        },
+        {
+          "sha256": "684665ad5a6b0481194a8f7957e1b4e9b084d28cfc72c3eda886ac167102dcca",
+          "parse_starts": 1,
+          "status": "complete",
+          "accepted_rows": 1788,
+          "unresolved_rows": 0,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        },
+        {
+          "sha256": "4e5ef0f5321b631f7e5d03c355a395af1397f9f7100a85689b926b1ca43337b4",
+          "parse_starts": 1,
+          "status": "partial",
+          "accepted_rows": 1368,
+          "unresolved_rows": 1,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        }
+      ],
+      "exit_code": 0,
+      "launch": "first",
+      "trace": "scratch/v272-baseline/batch-current-first/raw.json",
+      "gemini_attempted_offline": false
+    },
+    {
+      "first_result_s": 4.1951204,
+      "inspection_s": 29.7345229,
+      "run_clicked_s": 0.855744,
+      "waiting_s": 28.8787789,
+      "user_wait_s": 0.3183647,
+      "allocation_s": 73.1778198,
+      "reference_discounts_s": 23.8957514,
+      "excel_save_s": 5.3648321,
+      "elapsed_s": 153.6289934,
+      "processing_s": 153.31062870000002,
+      "saved_workbook": "scratch/v272-baseline/batch-current-subsequent/events/workbook/Procurement_Order_Optimized_2026-11-11.xlsx",
+      "workbook_sha256": "b2761ff6ef759de91fe62631a302d687f126c4aa804dd15bb5a5af5aab487ca7",
+      "catalogs": [
+        {
+          "sha256": "d99eb3012e117d259d302330a300a590c9fc351ce649d21c07242a3ecf29e911",
+          "parse_starts": 1,
+          "status": "partial",
+          "accepted_rows": 138,
+          "unresolved_rows": 3,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        },
+        {
+          "sha256": "87e709f5970517bc30900be0848b238220315d18e3f4ce42d471460fe0c24918",
+          "parse_starts": 1,
+          "status": "partial",
+          "accepted_rows": 599,
+          "unresolved_rows": 30,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        },
+        {
+          "sha256": "684665ad5a6b0481194a8f7957e1b4e9b084d28cfc72c3eda886ac167102dcca",
+          "parse_starts": 1,
+          "status": "complete",
+          "accepted_rows": 1788,
+          "unresolved_rows": 0,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        },
+        {
+          "sha256": "4e5ef0f5321b631f7e5d03c355a395af1397f9f7100a85689b926b1ca43337b4",
+          "parse_starts": 1,
+          "status": "partial",
+          "accepted_rows": 1368,
+          "unresolved_rows": 1,
+          "worker_starts": 0,
+          "ocr_calls": 0
+        }
+      ],
+      "exit_code": 0,
+      "launch": "subsequent",
+      "trace": "scratch/v272-baseline/batch-current-subsequent/raw.json",
+      "gemini_attempted_offline": false
+    }
+  ],
+  "runtime": "current frozen validation build",
+  "runtime_source_commit": "60b0d9a",
+  "source_scope": "Financial pairs found in the digitally readable source columns and 14 visually transcribed name anchors",
+  "input_sha256": [
+    "d99eb3012e117d259d302330a300a590c9fc351ce649d21c07242a3ecf29e911",
+    "87e709f5970517bc30900be0848b238220315d18e3f4ce42d471460fe0c24918",
+    "684665ad5a6b0481194a8f7957e1b4e9b084d28cfc72c3eda886ac167102dcca",
+    "4e5ef0f5321b631f7e5d03c355a395af1397f9f7100a85689b926b1ca43337b4",
+    "3cb094fc8500221ff2effdc3dce7b743b0f461010e598eacb74b0aab72bc7539"
+  ],
+  "executable_sha256": "94b4334686e9c15557577adf96892f5efc58648c09a825eedcd96f1d702a9f9f",
+  "medians": {
+    "first": {
+      "inspection_s": 31.2130653,
+      "processing_s": 155.0177696
+    },
+    "subsequent": {
+      "inspection_s": 29.7345229,
+      "processing_s": 153.31062870000002
+    }
+  },
+  "source_evidence_sha256": "0b7fcc4672655a8954aea1459f69a65a6670dccaa7c3f8ef9fb10b9124664e7b",
+  "source_checked": true,
+  "source_verified": true,
+  "source_discrepancies": [],
+  "source_evidence": "scratch/v272-baseline/source_evidence_release.json",
+  "checked_record": "scratch/v272-baseline/batch-current-audited.json"
+}

@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.7.2] - Unreleased
+
+### Added & Improved
+
+- PDF imports use digital extraction by default. Scanned pages and unresolved rows open in Review with their source locations.
+- Optimization waits for the selected catalog inspections and reuses their verified results.
+- Review reads a highlighted box on request with up to three rows of surrounding context. OCR suggestions require pharmacist confirmation before saving.
+- The native Windows OCR worker uses bounded requests, an in-memory image payload, and process ownership on exit. The `EPO_DISABLE_NATIVE_OCR` option uses the local RapidOCR fallback for Review. Native OCR depends on installed Windows recognition languages.
+- The bundle ships one copy of the required resources and initializes the medication database only when the user has no existing copy.
+
+- The subsequent packaged run of the original four PDFs took 29.73 seconds to inspect and 153.31 seconds to save Excel, down from 178.30 and 336.42 seconds in the WIP baseline. Each PDF was parsed once with zero import OCR calls. The candidate installer is 125.69 MiB.
+
 ## [2.7.1] - 2026-11-08
 
 ### 🚀 Added & Improved

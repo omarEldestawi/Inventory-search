@@ -1,6 +1,7 @@
 """Collect v2.7.2 source timings and evaluate release evidence on Windows."""
 
 import argparse
+from collections import Counter
 from contextlib import contextmanager
 import ctypes
 from ctypes import wintypes
@@ -17,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 
 import psutil
 
@@ -37,6 +39,7 @@ def read_json(path):
 
 @contextmanager
 def launched(command, root, directory, environment=None):
+    directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     state = directory / 'state'
     state.mkdir(exist_ok=False)
@@ -49,8 +52,11 @@ def launched(command, root, directory, environment=None):
         descendants = set()
 
         def remember_tree():
-            if child.is_running():
-                descendants.update(child.children(recursive=True))
+            try:
+                if child.is_running():
+                    descendants.update(child.children(recursive=True))
+            except psutil.NoSuchProcess:
+                pass
 
         try:
             yield child, started, remember_tree
@@ -299,6 +305,9 @@ def summarize_trace(events, catalogs, inputs_root):
 
 
 def validate_catalog_rows(observed, evidence):
+    if 'digital_financial_pairs' in evidence:
+        validate_financial_source_evidence(observed, evidence)
+        return
     expected = evidence['verified_rows']
     unresolved = evidence['unresolved_rows']
     if not expected and not unresolved:
@@ -321,6 +330,63 @@ def validate_catalog_rows(observed, evidence):
         raise ValueError('Catalog review status differs from verified source evidence')
 
 
+def validate_financial_source_evidence(observed, evidence):
+    """Check source-backed financial pairs and visually transcribed name anchors."""
+    def numeric_pair(price, percent):
+        return round(float(price), 6), round(float(percent), 6)
+
+    digits = str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹أإآةىی', '01234567890123456789اااهيي')
+
+    def name_key(name):
+        text = unicodedata.normalize('NFKC', name).translate(digits).replace('ـ', '').casefold()
+        return ''.join(char for char in text if char.isalnum())
+
+    actual = observed['observed_rows']
+    unresolved = observed['unresolved']
+    if observed['accepted_rows'] != len(actual) or observed['unresolved_rows'] != len(unresolved):
+        raise ValueError('Catalog evidence does not account for every recorded row')
+    if unresolved and observed['status'] not in {'partial', 'failed'}:
+        raise ValueError('Catalog status does not reflect unresolved rows')
+    if not evidence['anchors'] or not evidence['digital_financial_pairs']:
+        raise ValueError('Catalog is missing financial positions or transcribed name anchors')
+
+    accepted = Counter(numeric_pair(row['base_price'], 100 * row['discount_rate'])
+                       for row in actual if row.get('discount_rate') is not None)
+    source_rows = [(page['page'], row) for page in evidence['digital_financial_pairs']
+                   for group in page['groups'] for row in group['paired_numeric_cells']]
+    expected = Counter(numeric_pair(row['price'], row['discount_percent']) for _, row in source_rows)
+    missing = expected - accepted
+
+    def contains(container, position):
+        x = (position[0] + position[2]) / 2
+        y = (position[1] + position[3]) / 2
+        return container[0] <= x <= container[2] and container[1] <= y <= container[3]
+
+    accounted = set()
+    for page, row in source_rows:
+        pair = numeric_pair(row['price'], row['discount_percent'])
+        if not missing[pair]:
+            continue
+        for issue in unresolved:
+            box = issue.get('bbox')
+            reason = issue.get('rejection_reason', '')
+            identity = issue['source_id']
+            if (identity not in accounted and issue.get('page_number') == page and box and reason
+                    and contains(box, row['price_bbox']) and contains(box, row['discount_bbox'])):
+                missing[pair] -= 1
+                accounted.add(identity)
+                break
+    if any(missing.values()):
+        raise ValueError(f'{sum(missing.values())} verified financial pairs are missing without a source-linked Review issue')
+
+    observed_anchors = {(name_key(row['item_name']), *numeric_pair(row['base_price'], 100 * row['discount_rate']))
+                        for row in actual if row.get('discount_rate') is not None}
+    for anchor in evidence['anchors']:
+        key = (name_key(anchor['printed_name']), *numeric_pair(anchor['price'], anchor['discount_percent']))
+        if key not in observed_anchors:
+            raise ValueError(f'Verified source name or financial fields differ on page {anchor["page"]}, row {anchor["printed_row"]}')
+
+
 def batch(args):
     """Validate events exported by the packaged workflow and write its benchmark record."""
     manifest = read_json(args.inputs)
@@ -336,7 +402,7 @@ def batch(args):
     groups = {}
     source_discrepancies = []
     for entry in catalogs:
-        if not entry['verified_rows'] and not entry['unresolved_rows']:
+        if not entry.get('verified_rows') and not entry.get('unresolved_rows') and not entry.get('digital_financial_pairs'):
             raise ValueError('Source manifest requires verified rows or explained unresolved rows for each catalog')
     for trial in record['trials']:
         timings = ('first_result_s', 'inspection_s', 'waiting_s', 'allocation_s',
