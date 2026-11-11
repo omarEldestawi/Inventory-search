@@ -65,6 +65,14 @@ except ImportError:
     from image_table_detector import ImageTableDetector
     from ocr_engine import ArabicOCREngine
 
+try:
+    from .native_ocr.win_context_ocr import ContextWindowOCR
+except ImportError:
+    try:
+        from native_ocr.win_context_ocr import ContextWindowOCR
+    except ImportError:
+        ContextWindowOCR = None
+
 logger = logging.getLogger("CatalogRecovery")
 
 STANDARD_COLUMNS = [
@@ -516,6 +524,7 @@ def _evaluate_ocr_candidate_on_crop(
     default_wh: str,
     issue: ReviewIssue,
     engine_pref: str = "primary",
+    precomputed_boxes: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Runs OCR on cropped cell/row image and evaluates candidate item."""
     if img_np is None or img_np.size == 0:
@@ -530,7 +539,7 @@ def _evaluate_ocr_candidate_on_crop(
         # Source evidence confirms cell has no visible ink
         return None
 
-    boxes = ocr_engine.extract_text_boxes(img_np, engine=engine_pref)
+    boxes = precomputed_boxes if precomputed_boxes is not None else ocr_engine.extract_text_boxes(img_np, engine=engine_pref)
     if not boxes:
         return None
 
@@ -592,9 +601,9 @@ def _evaluate_ocr_candidate_on_crop(
     found_disc = existing_discount
     name_tokens: List[str] = []
 
-    is_name_issue = issue.rejection_reason in ("blank_name", "empty_name_cell", "name_too_short")
-    is_price_issue = issue.rejection_reason in ("missing_price", "invalid_price", "zero_price")
-    is_disc_issue = issue.rejection_reason in ("missing_discount", "invalid_discount")
+    is_name_issue = issue.rejection_reason in ("blank_name", "empty_name_cell", "name_too_short") or "name" in str(issue.rejection_reason)
+    is_price_issue = issue.rejection_reason in ("missing_price", "invalid_price", "zero_price") or "price" in str(issue.rejection_reason)
+    is_disc_issue = issue.rejection_reason in ("missing_discount", "invalid_discount") or "discount" in str(issue.rejection_reason)
 
     # Establish physical coordinates of the cropped region
     crop_w = float(img_np.shape[1])
@@ -614,13 +623,24 @@ def _evaluate_ocr_candidate_on_crop(
 
     column_bounds = getattr(issue, "column_bounds", None)
     if not is_targeted_single_cell and not column_bounds:
-        # Default Egyptian wholesaler RTL column bounds in PDF points
-        column_bounds = {
-            "discount": (crop_bbox[0], crop_bbox[0] + 0.28 * crop_w_pt),
-            "name": (crop_bbox[0] + 0.28 * crop_w_pt, crop_bbox[0] + 0.70 * crop_w_pt),
-            "code": (crop_bbox[0] + 0.70 * crop_w_pt, crop_bbox[0] + 0.86 * crop_w_pt),
-            "price": (crop_bbox[0] + 0.86 * crop_w_pt, crop_bbox[0] + crop_w_pt),
-        }
+        arabic_on_right = any(
+            bool(re.search(r"[؀-ۿ]", b.get("text", ""))) and ((b["bbox"][0] + b["bbox"][2]) / 2.0) > 0.45 * crop_w
+            for b in boxes
+        )
+        if arabic_on_right:
+            column_bounds = {
+                "price": (crop_bbox[0], crop_bbox[0] + 0.25 * crop_w_pt),
+                "discount": (crop_bbox[0] + 0.25 * crop_w_pt, crop_bbox[0] + 0.45 * crop_w_pt),
+                "name": (crop_bbox[0] + 0.45 * crop_w_pt, crop_bbox[0] + crop_w_pt),
+            }
+        else:
+            # Default Egyptian wholesaler RTL column bounds in PDF points
+            column_bounds = {
+                "discount": (crop_bbox[0], crop_bbox[0] + 0.28 * crop_w_pt),
+                "name": (crop_bbox[0] + 0.28 * crop_w_pt, crop_bbox[0] + 0.70 * crop_w_pt),
+                "code": (crop_bbox[0] + 0.70 * crop_w_pt, crop_bbox[0] + 0.86 * crop_w_pt),
+                "price": (crop_bbox[0] + 0.86 * crop_w_pt, crop_bbox[0] + crop_w_pt),
+            }
 
     price_tokens: List[Tuple[float, float]] = []  # (x_center_pt, val)
     disc_tokens: List[Tuple[float, float]] = []   # (x_center_pt, val)
@@ -799,13 +819,84 @@ def recover_by_ocr_ladder(
             if valid:
                 return cand1
 
-        # TIER 2: Secondary Engine (Windows Media OCR fast-path)
+        # TIER 2: Secondary Engine (Windows Media OCR fast-path + ±3-row context window)
         if ocr_engine.is_windows_ocr_available():
             cand2 = _evaluate_ocr_candidate_on_crop(img0, ocr_engine, default_wh, issue, engine_pref="secondary")
             if cand2:
                 valid, _ = validate_catalog_item(cand2)
                 if valid:
                     return cand2
+
+            # TIER 2B: PowerToys ±3-Row Vertical Context Window Expansion + Target Y-Band Filter
+            if ContextWindowOCR is not None:
+                try:
+                    ctx_ocr = ContextWindowOCR()
+                    if ctx_ocr.is_available():
+                        dpi_ctx = 180
+                        scale_pt_to_px = dpi_ctx / 72.0
+                        row_h_pt = max(10.0, float(bbox[3] - bbox[1]))
+                        ctx_rect = pymupdf.Rect(
+                            bbox[0] - 6.0,
+                            bbox[1] - 3.5 * row_h_pt,
+                            bbox[2] + 6.0,
+                            bbox[3] + 3.5 * row_h_pt,
+                        ) & page.rect
+                        if not ctx_rect.is_empty and ctx_rect.width >= 5 and ctx_rect.height >= 5:
+                            pix_ctx = page.get_pixmap(dpi=dpi_ctx, clip=ctx_rect)
+                            img_ctx = np.frombuffer(pix_ctx.samples, dtype=np.uint8).reshape(
+                                pix_ctx.height, pix_ctx.width, pix_ctx.n
+                            )
+                            if pix_ctx.n == 4:
+                                img_ctx = cv2.cvtColor(img_ctx, cv2.COLOR_RGBA2RGB)
+
+                            t_x0 = max(0.0, (bbox[0] - ctx_rect.x0) * scale_pt_to_px)
+                            t_y0 = max(0.0, (bbox[1] - ctx_rect.y0) * scale_pt_to_px)
+                            t_x1 = min(float(img_ctx.shape[1]), (bbox[2] - ctx_rect.x0) * scale_pt_to_px)
+                            t_y1 = min(float(img_ctx.shape[0]), (bbox[3] - ctx_rect.y0) * scale_pt_to_px)
+
+                            ctx_res = ctx_ocr.extract_target_box_with_context(
+                                img_ctx,
+                                target_bbox=(t_x0, t_y0, t_x1, t_y1),
+                                context_rows_above=3,
+                                context_rows_below=3,
+                            )
+                            filtered_words = ctx_res.get("words", [])
+                            if filtered_words:
+                                synth_boxes = []
+                                for fw in filtered_words:
+                                    wb = fw.get("bbox", [0.0, 0.0, 0.0, 0.0])
+                                    synth_boxes.append(
+                                        {
+                                            "text": fw.get("text", ""),
+                                            "raw_text": fw.get("text", ""),
+                                            "confidence": None,
+                                            "bbox": [
+                                                max(0.0, float(wb[0]) - t_x0),
+                                                max(0.0, float(wb[1]) - t_y0),
+                                                max(0.0, float(wb[2]) - t_x0),
+                                                max(0.0, float(wb[3]) - t_y0),
+                                            ],
+                                            "engine": "windows_media_ocr_context",
+                                        }
+                                    )
+                                target_crop_img = img_ctx[
+                                    max(0, int(t_y0)) : min(img_ctx.shape[0], max(int(t_y0) + 1, int(t_y1))),
+                                    max(0, int(t_x0)) : min(img_ctx.shape[1], max(int(t_x0) + 1, int(t_x1))),
+                                ]
+                                cand_ctx = _evaluate_ocr_candidate_on_crop(
+                                    target_crop_img,
+                                    ocr_engine,
+                                    default_wh,
+                                    issue,
+                                    engine_pref="secondary",
+                                    precomputed_boxes=synth_boxes,
+                                )
+                                if cand_ctx:
+                                    valid, _ = validate_catalog_item(cand_ctx)
+                                    if valid:
+                                        return cand_ctx
+                except Exception as ctx_exc:
+                    logger.debug("Tier 2B context OCR recovery failed: %s", ctx_exc)
 
         return None
     except Exception as exc:

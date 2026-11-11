@@ -809,6 +809,42 @@ class PDFCatalogParser:
                         if sina_items:
                             page_items.extend(sina_items)
                             raw_accepted_count += len(sina_items)
+
+                    # 1b. 3-Column ArwaSoft Drawn Rectangle Extractor (e.g. Zahra Pharm, Pharmacist Benha)
+                    is_arwasoft_3col = self._is_arwasoft_3col_page(page)
+                    if is_arwasoft_3col and not page_items:
+                        rect_items, rect_diags = self._extract_arwasoft_3col_rects(
+                            page, page_idx=page_idx, return_diagnostics=True
+                        )
+                        if rect_items:
+                            for it in rect_items:
+                                it['_page'] = page_idx
+                            items.extend(rect_items)
+                            raw_accepted_count += len(rect_items)
+                            self._page_diagnostics.append(
+                                PageDiagnostics(
+                                    page=page_idx + 1,
+                                    strategy="arwasoft_3col_rects",
+                                    expected_count_known=True,
+                                    accepted_rows=len(rect_items),
+                                    groups=[
+                                        GroupDiagnostics(
+                                            group=0,
+                                            strategy="arwasoft_3col_rects",
+                                            candidate_rows=len(rect_diags) if rect_diags else len(rect_items),
+                                            accepted_rows=len(rect_items),
+                                            rejected_rows=max(0, (len(rect_diags) if rect_diags else len(rect_items)) - len(rect_items)),
+                                            unprocessed_rows=0,
+                                            rows=rect_diags if rect_diags else [],
+                                        )
+                                    ],
+                                    page_classification=assessment.classification,
+                                    selected_method="arwasoft_3col_rects",
+                                    assessment_reasons=assessment.reasons,
+                                    font_repaired=assessment.font_repaired,
+                                )
+                            )
+                            continue
                     
                     if not page_items:
                         tables = page.find_tables()
@@ -1136,7 +1172,7 @@ class PDFCatalogParser:
                         
                         # Dynamically detect 2-column ArwaSoft pages from geometry where PyMuPDF only found the left table (Xmax <= 315)
                         is_page_arwasoft_2col = is_arwasoft_2col or (
-                            not is_cure and not is_makramy and not is_sina and not is_dar_fouad and
+                            not is_cure and not is_makramy and not is_sina and not is_dar_fouad and not is_arwasoft_3col and
                             tables is not None and len(tables.tables) > 0 and
                             all(t.bbox[2] <= 315 for t in tables.tables) and
                             any(t.bbox[0] < 60 and len(t.rows) >= 5 for t in tables.tables)
@@ -1848,7 +1884,10 @@ class PDFCatalogParser:
                                     item_name, price_val, discount_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
                                 )
                                 has_susp, _ = has_suspicious_characters(item_name)
-                                if has_susp or is_catalog_noise(item_name) or discount_val <= 0.0 or discount_val > 0.85 or price_val <= 0.0 or price_val >= 10000.0:
+                                disc_cell_raw = parts[1] if case_a_first_is_price else parts[0]
+                                is_valid_zero = (discount_val == 0.0 and is_explicit_zero_discount(disc_cell_raw))
+                                valid_discount = (0.0 < discount_val <= 0.85) or is_valid_zero
+                                if has_susp or is_catalog_noise(item_name) or not valid_discount or price_val <= 0.0 or price_val >= 10000.0:
                                     continue
                                 norm_name = normalize_arabic_text(item_name)
                                 dosage, unit_size = parse_dosage_and_pack(item_name)
@@ -2375,7 +2414,39 @@ class PDFCatalogParser:
             return []
         return self._extract_items_from_blocks(blocks)
 
-    def _extract_arwasoft_3col_rects(self, page) -> list:
+    def _is_arwasoft_3col_page(self, page) -> bool:
+        """
+        Detects if a page has 3-column ArwaSoft accounting drawn rectangles
+        (width ~181.6pt, spanning across the page horizontally).
+        """
+        try:
+            drawings = page.get_drawings()
+        except Exception:
+            return False
+        if not drawings:
+            return False
+        rw_count = 0
+        min_x = 9999.0
+        max_x = -9999.0
+        for d in drawings:
+            r = d.get("rect")
+            if r is not None:
+                rw = r.x1 - r.x0
+                rh = r.y1 - r.y0
+                if 150.0 <= rw <= 200.0 and 10.0 <= rh <= 30.0 and 85.0 <= r.y0 <= 800.0:
+                    rw_count += 1
+                    if r.x0 < min_x:
+                        min_x = r.x0
+                    if r.x0 > max_x:
+                        max_x = r.x0
+        if rw_count >= 5 and min_x < 100.0 and max_x > 350.0:
+            self._doc_is_arwasoft_3col = True
+            return True
+        if getattr(self, "_doc_is_arwasoft_3col", False) and rw_count >= 1 and min_x < 450.0:
+            return True
+        return False
+
+    def _extract_arwasoft_3col_rects(self, page, page_idx: int = 0, return_diagnostics: bool = False):
         """
         Extracts items from 3-column ArwaSoft accounting catalogs (e.g. Zahra Pharm / تحديث زهره.pdf)
         where each item row is enclosed in a drawn vector rectangle (width ~181.6 pt, height ~14.2 pt)
@@ -2384,9 +2455,9 @@ class PDFCatalogParser:
         try:
             drawings = page.get_drawings()
         except Exception:
-            return []
+            return ([], []) if return_diagnostics else []
         if not drawings:
-            return []
+            return ([], []) if return_diagnostics else []
 
         raw_rects = []
         for d in drawings:
@@ -2398,7 +2469,7 @@ class PDFCatalogParser:
                     raw_rects.append(r)
 
         if not raw_rects:
-            return []
+            return ([], []) if return_diagnostics else []
 
         # Deduplicate rectangles by rounded coordinates
         seen_rects = set()
@@ -2410,14 +2481,14 @@ class PDFCatalogParser:
                 unique_rects.append(r)
 
         if len(unique_rects) < 3:
-            return []
+            return ([], []) if return_diagnostics else []
 
         # Sort in natural RTL column reading order: Right column (x0~401), Middle (x0~216), Left (x0~31), then top-to-bottom
         unique_rects.sort(key=lambda r: (-round(r.x0 / 50.0), round(r.y0, 1)))
 
         words = page.get_text("words")
         if not words:
-            return []
+            return ([], []) if return_diagnostics else []
 
         candidate_rows = []
         batch_records = []
@@ -2480,18 +2551,19 @@ class PDFCatalogParser:
             raw_name = unicodedata.normalize('NFKD', " ".join(line_strs).strip())
             raw_name = decode_custom_catalog_glyphs(raw_name)
             raw_name = fix_arwasoft_arabic_numbers(raw_name)
-            if is_catalog_noise(raw_name) or len(raw_name) < 2:
+            if is_catalog_noise(raw_name) or len(raw_name) < 2 or is_genuine_header_cell(raw_name):
                 continue
 
             item_name = fix_arabic_bidi_if_needed(raw_name)
             v0 = self._extract_raw_float(c0_str)
             v1 = self._extract_raw_float(c1_str)
-            candidate_rows.append((c0_str, c1_str, v0, v1, item_name))
+            r_bbox = [float(r.x0), float(r.y0), float(r.x1), float(r.y1)]
+            candidate_rows.append((r_bbox, c0_str, c1_str, v0, v1, item_name))
             if v0 > 0.0 and v1 > 0.0:
                 batch_records.append((v0, v1, item_name))
 
         if not candidate_rows:
-            return []
+            return ([], []) if return_diagnostics else []
 
         first_is_price = self._should_swap_price_and_discount(
             batch_records,
@@ -2499,24 +2571,29 @@ class PDFCatalogParser:
         )
 
         items = []
-        for c0_str, c1_str, v0, v1, item_name in candidate_rows:
+        row_diags = []
+        for r_idx, (r_bbox, c0_str, c1_str, v0, v1, item_name) in enumerate(candidate_rows):
             if first_is_price:
                 p_val = self._parse_price(c0_str)
                 disc_val = parse_discount(c1_str)
                 raw_p_num, raw_d_num = v0, v1
+                disc_str = c1_str
             else:
                 disc_val = parse_discount(c0_str)
                 p_val = self._parse_price(c1_str)
                 raw_d_num, raw_p_num = v0, v1
+                disc_str = c0_str
 
             p_val, disc_val = self._sanity_check_item_price_and_discount(
                 item_name, p_val, disc_val, raw_price_num=raw_p_num, raw_disc_num=raw_d_num
             )
-            if 0 < disc_val <= 0.85 and 0 < p_val < 10000.0:
+            is_valid_zero = (disc_val == 0.0 and is_explicit_zero_discount(disc_str))
+            valid_discount = (0 < disc_val <= 0.85) or is_valid_zero
+            if valid_discount and 0 < p_val < 10000.0:
                 norm_name = normalize_arabic_text(item_name)
                 dosage, unit_size = parse_dosage_and_pack(item_name)
                 if len(norm_name) >= 2:
-                    items.append({
+                    it = {
                         'warehouse_name': self.warehouse_name,
                         'item_name': item_name,
                         'normalized_name': norm_name,
@@ -2525,7 +2602,36 @@ class PDFCatalogParser:
                         'base_price': p_val,
                         'discount_rate': disc_val,
                         'stock_status': True
-                    })
+                    }
+                    items.append(it)
+                    if return_diagnostics:
+                        row_diags.append(RowDiagnostic(
+                            page=page_idx + 1,
+                            table=0,
+                            group=0,
+                            row=r_idx,
+                            outcome="accepted",
+                            bbox=r_bbox,
+                            raw_cells=[item_name, str(p_val), str(disc_val)],
+                            item_name=item_name,
+                            source_id=f"p{page_idx + 1}_t0_g0_r{r_idx}",
+                            item=it,
+                        ))
+            elif return_diagnostics:
+                row_diags.append(RowDiagnostic(
+                    page=page_idx + 1,
+                    table=0,
+                    group=0,
+                    row=r_idx,
+                    outcome="rejected",
+                    reason="invalid_discount_or_price",
+                    bbox=r_bbox,
+                    raw_cells=[item_name, str(v0), str(v1)],
+                    item_name=item_name,
+                    source_id=f"p{page_idx + 1}_t0_g0_r{r_idx}",
+                ))
+        if return_diagnostics:
+            return items, row_diags
         return items
 
     def _extract_cure_right_column(self, page) -> list:

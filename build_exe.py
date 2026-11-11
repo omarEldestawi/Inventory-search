@@ -24,15 +24,61 @@ def safe_rmtree(path):
     except Exception:
         subprocess.run(["powershell", "-NoProfile", "-Command", f"Remove-Item -Recurse -Force '{path}'"], capture_output=True)
 
+def ensure_native_ocr_worker():
+    """Compiles PowerToysOcrWorker.cs via csc.exe if PowerToysOcrWorker.exe is missing or older."""
+    cs_path = os.path.join("src", "native_ocr", "PowerToysOcrWorker.cs")
+    exe_path = os.path.join("src", "native_ocr", "PowerToysOcrWorker.exe")
+    if not os.path.exists(cs_path):
+        return
+    needs_build = False
+    if not os.path.exists(exe_path):
+        needs_build = True
+    elif os.path.getmtime(cs_path) > os.path.getmtime(exe_path):
+        needs_build = True
+
+    if needs_build:
+        print("Compiling PowerToysOcrWorker.cs via csc.exe...")
+        csc_exe = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+        if not os.path.isfile(csc_exe):
+            csc_exe = r"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+        if os.path.isfile(csc_exe):
+            compile_cmd = [
+                csc_exe, "/nologo", "/optimize+", "/target:exe",
+                f"/out:{exe_path}",
+                r"/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.WindowsRuntime.dll",
+                r"/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.dll",
+                r"/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Threading.Tasks.dll",
+                r"/r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Web.Extensions.dll",
+                r"/r:C:\Windows\System32\WinMetadata\Windows.Foundation.winmd",
+                r"/r:C:\Windows\System32\WinMetadata\Windows.Globalization.winmd",
+                r"/r:C:\Windows\System32\WinMetadata\Windows.Graphics.winmd",
+                r"/r:C:\Windows\System32\WinMetadata\Windows.Media.winmd",
+                r"/r:C:\Windows\System32\WinMetadata\Windows.Security.winmd",
+                r"/r:C:\Windows\System32\WinMetadata\Windows.Storage.winmd",
+                cs_path
+            ]
+            res = subprocess.run(compile_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"Warning: csc.exe build failed: {res.stderr}")
+            else:
+                print("Successfully compiled PowerToysOcrWorker.exe.")
+
 def build():
+    ensure_native_ocr_worker()
     dist_dir = os.path.join("dist", "EgyptianPharmaOptimizer")
     safe_rmtree(dist_dir)
     datas = []
+    binaries = []
 
     def add_data_item(src: str, dst: str):
         """Helper to add items to PyInstaller datas using cross-platform os.pathsep."""
         if os.path.exists(src):
             datas.append(f"{src}{os.pathsep}{dst}")
+
+    # Native OCR Worker binary
+    worker_exe = os.path.join("src", "native_ocr", "PowerToysOcrWorker.exe")
+    if os.path.exists(worker_exe):
+        binaries.append(f"{worker_exe}{os.pathsep}src/native_ocr")
 
     # 1. CustomTkinter assets
     try:
@@ -104,6 +150,9 @@ def build():
     for d in datas:
         cmd.extend(["--add-data", d])
 
+    for b in binaries:
+        cmd.extend(["--add-binary", b])
+
     cmd.append("app_gui.py")
 
     print("Running PyInstaller...")
@@ -139,6 +188,18 @@ def build():
         shutil.copytree("src", os.path.join(dist_root, "src"), dirs_exist_ok=True)
         if os.path.isdir(dist_internal):
             shutil.copytree("src", os.path.join(dist_internal, "src"), dirs_exist_ok=True)
+
+    # 5. Native OCR Worker binary
+    worker_exe = os.path.join("src", "native_ocr", "PowerToysOcrWorker.exe")
+    if os.path.exists(worker_exe):
+        for target_dir in [
+            os.path.join(dist_root, "src", "native_ocr"),
+            os.path.join(dist_internal, "src", "native_ocr"),
+            os.path.join(dist_root, "assets", "bin"),
+            os.path.join(dist_internal, "assets", "bin"),
+        ]:
+            os.makedirs(target_dir, exist_ok=True)
+            shutil.copy2(worker_exe, os.path.join(target_dir, "PowerToysOcrWorker.exe"))
 
     print("PyInstaller build succeeded. Output located at dist/EgyptianPharmaOptimizer/")
 

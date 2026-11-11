@@ -236,8 +236,8 @@ class CatalogCorrectionService:
                 elif len(source_ids) > 0:
                     source_ids_mapped = []
                     diag_map = {r.item_name: r.source_id for p in base_res.diagnostics.pages for g in p.groups for r in g.rows if r.outcome == "accepted" and getattr(r, "item_name", None)}
-                    for idx, row in current_df.iterrows():
-                        nm = row.get("item_name")
+                    item_names = current_df["item_name"].tolist() if "item_name" in current_df.columns else []
+                    for idx, nm in enumerate(item_names):
                         if nm in diag_map:
                             source_ids_mapped.append(diag_map[nm])
                         elif idx < len(source_ids):

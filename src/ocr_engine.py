@@ -45,6 +45,14 @@ except ImportError:
             return t[::-1] if any('\u0600' <= c <= '\u06ff' for c in t) else t
         EASTERN_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
 
+try:
+    from .native_ocr.win_context_ocr import ContextWindowOCR
+except ImportError:
+    try:
+        from native_ocr.win_context_ocr import ContextWindowOCR
+    except ImportError:
+        ContextWindowOCR = None
+
 logger = logging.getLogger("ArabicOCREngine")
 
 # Process-wide cached state
@@ -307,6 +315,16 @@ class ArabicOCREngine:
             _WINDOWS_OCR_AVAILABLE = False
             return False
 
+        if ContextWindowOCR is not None:
+            try:
+                ctx_ocr = ContextWindowOCR()
+                if ctx_ocr.is_available():
+                    self._windows_ocr_available = True
+                    _WINDOWS_OCR_AVAILABLE = True
+                    return True
+            except Exception:
+                pass
+
         try:
             cmd = [
                 "powershell",
@@ -454,6 +472,52 @@ class ArabicOCREngine:
         with _OCR_CACHE_LOCK:
             if cache_key in _OCR_CACHE:
                 return [dict(b) for b in _OCR_CACHE[cache_key]]
+
+        # Fast-path: Native PowerToysOcrWorker.exe (dual ar-SA + en-US, HighQualityBicubic 2x + 16px pad)
+        if ContextWindowOCR is not None:
+            try:
+                ctx_ocr = ContextWindowOCR()
+                if ctx_ocr.is_available():
+                    resp = ctx_ocr.recognize_image(img_np, upscale=True, padding=16)
+                    if isinstance(resp, dict) and resp.get("status") == "ok":
+                        boxes = []
+                        for line in resp.get("lines", []):
+                            words = line.get("words", [])
+                            if len(words) > 1:
+                                for w in words:
+                                    w_txt = str(w.get("text", "")).translate(EASTERN_ARABIC_DIGITS).strip()
+                                    wb = w.get("bbox", [0.0, 0.0, 0.0, 0.0])
+                                    if w_txt and len(wb) >= 4:
+                                        boxes.append(
+                                            {
+                                                "text": w_txt,
+                                                "raw_text": w_txt,
+                                                "confidence": None,
+                                                "bbox": [float(wb[0]), float(wb[1]), float(wb[2]), float(wb[3])],
+                                                "engine": "windows_media_ocr",
+                                            }
+                                        )
+                            else:
+                                line_text = str(line.get("text", "")).translate(EASTERN_ARABIC_DIGITS).strip()
+                                bbox = line.get("bbox", [0.0, 0.0, 0.0, 0.0])
+                                if line_text and len(bbox) >= 4:
+                                    boxes.append(
+                                        {
+                                            "text": line_text,
+                                            "raw_text": line_text,
+                                            "confidence": None,
+                                            "bbox": [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
+                                            "words": words,
+                                            "engine": "windows_media_ocr",
+                                        }
+                                    )
+                        with _OCR_CACHE_LOCK:
+                            if len(_OCR_CACHE) >= _MAX_CACHE_ENTRIES:
+                                _OCR_CACHE.clear()
+                            _OCR_CACHE[cache_key] = boxes
+                        return boxes
+            except Exception as exc:
+                logger.warning("Native PowerToysOcrWorker fast-path failed: %s; falling back to PowerShell worker", exc)
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_f:
             tmp_path = tmp_f.name

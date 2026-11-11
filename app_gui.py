@@ -809,6 +809,8 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             font=get_font(12),
         )
         self.page_image_lbl.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.page_image_lbl.bind("<ButtonPress-1>", self._on_preview_drag_start)
+        self.page_image_lbl.bind("<ButtonRelease-1>", self._on_preview_drag_release)
 
     def _build_right_pane(self):
         right_frame = ctk.CTkFrame(self, corner_radius=6)
@@ -965,6 +967,16 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         )
         self.row_crop_lbl.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 6))
         self._current_crop_ctk_image: Optional[ctk.CTkImage] = None
+
+        self.read_box_btn = ctk.CTkButton(
+            self.editor_frame,
+            text="🔍 قراءة المستطيل بمحرك PowerToys OCR / Read Highlighted Box (PowerToys OCR)",
+            font=get_font(10, "bold"),
+            fg_color=COLOR_CATALOG_BADGE,
+            hover_color="#0369A1",
+            command=self._on_read_highlighted_box_ocr,
+        )
+        self.read_box_btn.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 6))
 
         # Action Buttons
         btn_grid = ctk.CTkFrame(right_frame, fg_color="transparent")
@@ -1200,6 +1212,15 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self.price_var.set(price_val)
         self.disc_var.set(disc_val)
         self.stock_var.set("متوفر (Available)" if stock_bool else "غير متوفر (Out of stock)")
+        self._custom_drag_bbox = None
+
+        if (not name_val or not price_val) and (crop_bbox is not None):
+            if hasattr(self, "explanation_lbl"):
+                curr_txt = self.explanation_lbl.cget("text")
+                if "PowerToys OCR" not in curr_txt:
+                    self.explanation_lbl.configure(
+                        text=f"{curr_txt}\n💡 تلميح: انقر على '🔍 قراءة المستطيل بمحرك PowerToys OCR' أدناه أو اسحب بالماوس لاستخراج البيانات."
+                    )
 
         self._render_pdf_page()
         self._run_inline_validation()
@@ -1236,8 +1257,8 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             text=f"صفحة {self.current_page} من {self.total_pages} / Page {self.current_page} of {self.total_pages}"
         )
 
-        bbox_to_highlight = None
-        if self.selected_issue and self.selected_issue.identity:
+        bbox_to_highlight = getattr(self, "_custom_drag_bbox", None)
+        if not bbox_to_highlight and self.selected_issue and self.selected_issue.identity:
             if self.selected_issue.identity.page == self.current_page:
                 bbox_to_highlight = self.selected_issue.bbox or self.selected_issue.identity.bbox
 
@@ -1255,9 +1276,11 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             disp_h = int(disp_w * aspect)
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(disp_w, disp_h))
             self._current_ctk_image = ctk_img
+            self._current_rendered_dims = (disp_w, disp_h, img.width, img.height)
             self.page_image_lbl.configure(image=ctk_img, text="")
         else:
             self._current_ctk_image = None
+            self._current_rendered_dims = None
             self.page_image_lbl.configure(
                 image=None,
                 text="📄 لا تتوفر معاينة بصرية لهذا المستند (ملف Excel أو تعذر العرض)\nVisual preview not available.",
@@ -1414,7 +1437,11 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             res_rec = run_automatic_recovery(self.catalog_result, self.catalog_path)
             self.catalog_result = res_rec
             self.service._base_catalog_result = res_rec
-            self.service._apply_active_corrections()
+            # Rebuild from the recovered base so persisted mappings, field edits,
+            # and exclusions are reapplied. CatalogCorrectionService has no
+            # _apply_active_corrections() method.
+            self.service._catalog_result = None
+            self.catalog_result = self.service.get_refreshed_catalog_result()
             self._refresh_issue_list()
             self._update_summary_label()
             self._render_pdf_page()
@@ -1429,6 +1456,242 @@ class CatalogReviewWindow(ctk.CTkToplevel):
                 self.explanation_lbl.configure(
                     text=f"⚠️ تعذر استرداد أصناف إضافية تلقائياً: {e}",
                     text_color=COLOR_WARN_BADGE,
+                )
+
+    def _on_preview_drag_start(self, event):
+        self._drag_start_x = event.x
+        self._drag_start_y = event.y
+
+    def _on_preview_drag_release(self, event):
+        if not hasattr(self, "_drag_start_x") or not hasattr(self, "_drag_start_y"):
+            return
+        x0, y0 = self._drag_start_x, self._drag_start_y
+        x1, y1 = event.x, event.y
+        rx0, rx1 = min(x0, x1), max(x0, x1)
+        ry0, ry1 = min(y0, y1), max(y0, y1)
+        # Only treat as bounding box if drag was >= 15px wide and >= 8px tall
+        if (rx1 - rx0) < 15 or (ry1 - ry0) < 8:
+            return
+        self._ocr_custom_preview_box(rx0, ry0, rx1, ry1)
+
+    def _ocr_custom_preview_box(self, rx0: float, ry0: float, rx1: float, ry1: float):
+        """Maps user dragged rectangle on page_image_lbl to PDF coordinates and runs PowerToys OCR."""
+        dims = getattr(self, "_current_rendered_dims", None)
+        if not dims or not self.catalog_path or not self.catalog_path.lower().endswith(".pdf"):
+            return
+
+        disp_w, disp_h, img_w, img_h = dims
+        scale_x = img_w / max(1.0, float(disp_w))
+        scale_y = img_h / max(1.0, float(disp_h))
+
+        try:
+            import numpy as np
+            import cv2
+            doc = pymupdf.open(self.catalog_path)
+            p_idx = max(0, min(self.current_page - 1, len(doc) - 1))
+            page = doc[p_idx]
+            pt_to_img_x = img_w / max(1.0, float(page.rect.width))
+            pt_to_img_y = img_h / max(1.0, float(page.rect.height))
+
+            pt_x0 = (rx0 * scale_x) / pt_to_img_x
+            pt_y0 = (ry0 * scale_y) / pt_to_img_y
+            pt_x1 = (rx1 * scale_x) / pt_to_img_x
+            pt_y1 = (ry1 * scale_y) / pt_to_img_y
+            doc.close()
+
+            custom_bbox = [pt_x0, pt_y0, pt_x1, pt_y1]
+            self._custom_drag_bbox = custom_bbox
+            self._render_pdf_page()
+            self._execute_box_ocr(custom_bbox)
+        except Exception as exc:
+            logger.warning("Error mapping custom preview box: %s", exc)
+
+    def _on_read_highlighted_box_ocr(self):
+        """Runs ContextWindowOCR on the currently highlighted row/box."""
+        crop_bbox = getattr(self, "_custom_drag_bbox", None)
+        if not crop_bbox and self.selected_issue:
+            crop_bbox = self.selected_issue.bbox or (self.selected_issue.identity.bbox if self.selected_issue.identity else None)
+
+        if not crop_bbox:
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text="⚠️ يرجى تحديد صف من القائمة أو سحب مربع بالماوس على المعاينة أولاً",
+                    text_color=COLOR_WARN_BADGE,
+                )
+            return
+
+        self._execute_box_ocr(crop_bbox)
+
+    def _execute_box_ocr(self, crop_bbox: List[float]):
+        """Executes PowerToys ContextWindowOCR on the specified bbox and fills the editor fields."""
+        if not self.catalog_path or not os.path.isfile(self.catalog_path) or not self.catalog_path.lower().endswith(".pdf"):
+            return
+
+        try:
+            from src.native_ocr.win_context_ocr import ContextWindowOCR
+        except ImportError:
+            ContextWindowOCR = None
+
+        if ContextWindowOCR is None:
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text="⚠️ وحدة ContextWindowOCR غير متوفرة",
+                    text_color=COLOR_DANGER,
+                )
+            return
+
+        ctx_ocr = ContextWindowOCR()
+        if not ctx_ocr.is_available():
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text="⚠️ محرك PowerToys OCR غير متاح على هذا النظام",
+                    text_color=COLOR_WARN_BADGE,
+                )
+            return
+
+        if hasattr(self, "explanation_lbl"):
+            self.explanation_lbl.configure(
+                text="🔄 جاري القراءة بمحرك PowerToys OCR مع سياق ±3 صفوف...",
+                text_color=COLOR_ACCENT,
+            )
+            self.update_idletasks()
+
+        try:
+            doc = pymupdf.open(self.catalog_path)
+            p_idx = max(0, min(self.current_page - 1, len(doc) - 1))
+            page = doc[p_idx]
+            pix = page.get_pixmap(dpi=180)
+            page_img = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.height, pix.width, pix.n))
+            if pix.n == 4:
+                page_img = cv2.cvtColor(page_img, cv2.COLOR_RGBA2RGB)
+            elif pix.n == 1:
+                page_img = cv2.cvtColor(page_img, cv2.COLOR_GRAY2RGB)
+
+            scale_x = pix.width / max(1.0, float(page.rect.width))
+            scale_y = pix.height / max(1.0, float(page.rect.height))
+            px_bbox = (
+                float(crop_bbox[0]) * scale_x,
+                float(crop_bbox[1]) * scale_y,
+                float(crop_bbox[2]) * scale_x,
+                float(crop_bbox[3]) * scale_y,
+            )
+            doc.close()
+
+            res = ctx_ocr.extract_target_box_with_context(
+                full_page_img=page_img,
+                target_bbox=px_bbox,
+                context_rows_above=3,
+                context_rows_below=3,
+                vertical_tolerance_ratio=0.35,
+            )
+
+            target_text = res.get("text", "").strip()
+            words = res.get("words", [])
+
+            if not target_text and not words:
+                if hasattr(self, "explanation_lbl"):
+                    self.explanation_lbl.configure(
+                        text="⚠️ لم يتم رصد نصوص واضحة داخل هذا المستطيل / No text detected",
+                        text_color=COLOR_WARN_BADGE,
+                    )
+                return
+
+            # Robust horizontal column clustering and BiDi word grouping
+            try:
+                from src.native_ocr.win_context_ocr import _sort_words_bidi
+            except ImportError:
+                _sort_words_bidi = lambda ws: ws
+
+            cand_price = None
+            cand_disc = None
+            name_tokens = []
+
+            # Sort words along X axis
+            words_by_x = sorted(words, key=lambda w: w.get("bbox", [0])[0])
+            clusters = []
+            if words_by_x:
+                curr_c = [words_by_x[0]]
+                for w in words_by_x[1:]:
+                    prev = curr_c[-1]
+                    prev_b = prev.get("bbox", [0, 0, 0, 0])
+                    curr_b = w.get("bbox", [0, 0, 0, 0])
+                    gap = curr_b[0] - prev_b[2]
+                    avg_h = ((prev_b[3] - prev_b[1]) + (curr_b[3] - curr_b[1])) / 2.0
+                    if gap > 1.2 * avg_h:
+                        clusters.append(curr_c)
+                        curr_c = [w]
+                    else:
+                        curr_c.append(w)
+                clusters.append(curr_c)
+
+            name_parts = []
+            numeric_clusters = []
+
+            for c in clusters:
+                c_texts = [str(w.get("text", "")).strip() for w in c if str(w.get("text", "")).strip()]
+                has_letters = any(bool(re.search(r"[a-zA-Z\u0600-\u06ff]", t)) for t in c_texts)
+                if has_letters:
+                    sorted_c = _sort_words_bidi(c)
+                    name_parts.append(" ".join(str(w.get("text", "")).strip() for w in sorted_c))
+                else:
+                    joined_num = " ".join(c_texts).strip()
+                    norm_num = joined_num.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")).replace(",", ".")
+                    numeric_clusters.append((norm_num, c[0].get("bbox", [0])[0]))
+
+            if numeric_clusters:
+                parsed_nums = []
+                for n_str, x_pos in numeric_clusters:
+                    has_pct = "%" in n_str
+                    clean_str = n_str.replace("%", "").strip()
+                    try:
+                        v = float(clean_str)
+                        parsed_nums.append((v, has_pct, x_pos))
+                    except ValueError:
+                        pass
+
+                # If any has explicit %, it is discount
+                for v, has_pct, x_pos in parsed_nums:
+                    if has_pct and cand_disc is None:
+                        cand_disc = v / 100.0 if v > 1.0 else v
+
+                unassigned = [item for item in parsed_nums if not item[1]]
+                if len(unassigned) >= 2:
+                    # Sort by value: larger is price, smaller (<= 85) is discount
+                    v1, _, x1 = unassigned[0]
+                    v2, _, x2 = unassigned[1]
+                    p_val = max(v1, v2)
+                    d_val = min(v1, v2)
+                    if cand_price is None and 1.0 <= p_val < 10000.0:
+                        cand_price = p_val
+                    if cand_disc is None and 0.0 <= d_val <= 85.0:
+                        cand_disc = d_val / 100.0 if d_val >= 1.0 else d_val
+                elif len(unassigned) == 1:
+                    v, _, _ = unassigned[0]
+                    if cand_price is None and 1.0 <= v < 10000.0:
+                        cand_price = v
+                    elif cand_disc is None and 0.0 <= v <= 85.0:
+                        cand_disc = v / 100.0 if v >= 1.0 else v
+
+            new_name = " ".join(name_parts).strip() or target_text
+            if new_name:
+                self.name_var.set(new_name)
+            if cand_price is not None:
+                self.price_var.set(str(cand_price))
+            if cand_disc is not None:
+                self.disc_var.set(str(round(cand_disc * 100.0, 2)) if cand_disc > 0 else "0")
+
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text=f"✓ تم استخراج النص بواسطة PowerToys OCR: '{target_text}'",
+                    text_color=COLOR_SUCCESS,
+                )
+            self._run_inline_validation()
+        except Exception as exc:
+            logger.warning("Error executing box OCR: %s", exc)
+            if hasattr(self, "explanation_lbl"):
+                self.explanation_lbl.configure(
+                    text=f"⚠️ خطأ أثناء قراءة المستطيل: {exc}",
+                    text_color=COLOR_DANGER,
                 )
 
     def _on_replace_with_clearer_source(self):
@@ -1892,7 +2155,7 @@ class PharmaProcurementApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("نظام المشتريات الصيدلانية v2.7.1 / Egyptian Pharma Procurement Optimizer v2.7.1")
+        self.title("نظام المشتريات الصيدلانية v2.7.2 / Egyptian Pharma Procurement Optimizer v2.7.2")
         self.geometry("1200x780")
         self.minsize(980, 660)
 
@@ -1938,7 +2201,7 @@ class PharmaProcurementApp(ctk.CTk):
         self._pending_catalog_review: Optional[str] = None
 
         # Auto-Update Manager (Silent WiFi Background Checking & Downloading)
-        self.app_version = "2.7.1"
+        self.app_version = "2.7.2"
         self.updater = AutoUpdateManager(current_version=self.app_version)
 
         # Update initial validation and state
@@ -2132,7 +2395,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         app_info_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.7.1 Windows 11 Edition • Engine Ready",
+            text="v2.7.2 Windows 11 Edition • Engine Ready",
             font=get_font(9),
             text_color=("gray50", "gray50"),
             anchor="center"
@@ -2217,7 +2480,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         self.top_update_btn = ctk.CTkButton(
             self.toolbar_frame,
-            text="🔄 التحديثات / Updates (v2.7.1)",
+            text="🔄 التحديثات / Updates (v2.7.2)",
             font=get_font(11, "bold"),
             width=165,
             fg_color=("gray75", "gray25"),
@@ -3160,7 +3423,7 @@ class PharmaProcurementApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="النسخة المثبتة حالياً: v2.7.1 Windows 11 Edition",
+            text="النسخة المثبتة حالياً: v2.7.2 Windows 11 Edition",
             font=get_font(11),
             text_color=("gray40", "gray60"),
             anchor="w"

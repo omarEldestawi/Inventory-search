@@ -1,7 +1,7 @@
 ; Inno Setup 6 Script for Egyptian Pharma Procurement Optimizer
 #define MyAppName "Egyptian Pharma Procurement Optimizer"
 #define MyAppArabicName "نظام المشتريات الصيدلانية"
-#define MyAppVersion "2.7.1"
+#define MyAppVersion "2.7.2"
 #ifndef AppBuildDir
   #define AppBuildDir "dist\EgyptianPharmaOptimizer"
 #endif

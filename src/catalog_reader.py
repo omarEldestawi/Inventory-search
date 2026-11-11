@@ -1023,6 +1023,10 @@ def extract_item_from_group_row(
 
     price_val = extract_raw_float_value(raw_price_cell)
     discount_val = parse_discount(raw_discount_cell)
+    if discount_val == 0.0 and not is_explicit_zero_discount(raw_discount_cell):
+        raw_d_num_early = extract_raw_float_value(raw_discount_cell)
+        if 0.85 < raw_d_num_early <= 1.0:
+            discount_val = round(raw_d_num_early / 100.0, 4)
 
     # 3. Handle stock status
     stock_status = True
@@ -1253,6 +1257,15 @@ def parse_structural_table(
                 row=r_idx,
             )
 
+            col_bounds_map = {}
+            if row_bboxes:
+                if group.name_col is not None and group.name_col < len(row_bboxes) and row_bboxes[group.name_col]:
+                    col_bounds_map["name"] = (float(row_bboxes[group.name_col][0]), float(row_bboxes[group.name_col][2]))
+                if group.price_col is not None and group.price_col < len(row_bboxes) and row_bboxes[group.price_col]:
+                    col_bounds_map["price"] = (float(row_bboxes[group.price_col][0]), float(row_bboxes[group.price_col][2]))
+                if group.discount_col is not None and group.discount_col < len(row_bboxes) and row_bboxes[group.discount_col]:
+                    col_bounds_map["discount"] = (float(row_bboxes[group.discount_col][0]), float(row_bboxes[group.discount_col][2]))
+
             if item is not None:
                 group_diag.accepted_rows += 1
                 group_diag.rows.append(
@@ -1266,6 +1279,7 @@ def parse_structural_table(
                         item_name=item["item_name"],
                         table=table_idx,
                         source_id=row_sid,
+                        column_bounds=col_bounds_map if col_bounds_map else None,
                     )
                 )
                 page_items.append(item)
@@ -1276,9 +1290,21 @@ def parse_structural_table(
                 rej_d = parse_discount(str(disc_val)) if disc_val is not None else 0.0
                 if rej_d == 0.0 and rej_d_raw > 85.0:
                     rej_d = round(rej_d_raw / 100.0, 4)
+                elif rej_d == 0.0 and 0.85 < rej_d_raw <= 1.0:
+                    rej_d = round(rej_d_raw / 100.0, 4)
+
+                disp_item_name = raw_item_name
+                if disp_item_name:
+                    cleaned_disp = re.sub(r"^\s*[\u1800-\u18af\s]+\n", "", disp_item_name)
+                    decoded_disp = decode_custom_catalog_glyphs(cleaned_disp)
+                    if group_direction == "reversed" or is_arabic_text_reversed(decoded_disp):
+                        disp_item_name = unreverse_arabic_text(decoded_disp, force_reverse=True)
+                    else:
+                        disp_item_name = unreverse_arabic_text(decoded_disp, force_reverse=False)
+
                 rej_item_dict = {
                     "warehouse_name": warehouse_name,
-                    "item_name": raw_item_name,
+                    "item_name": disp_item_name or raw_item_name,
                     "base_price": rej_p,
                     "discount_rate": rej_d,
                 } if raw_item_name else None
@@ -1305,10 +1331,11 @@ def parse_structural_table(
                         bbox=item_bbox,
                         region_bbox=target_cell_bbox or item_bbox,
                         raw_cells=raw_cells_data,
-                        item_name=raw_item_name,
+                        item_name=disp_item_name or raw_item_name,
                         table=table_idx,
                         source_id=row_sid,
                         item=rej_item_dict,
+                        column_bounds=col_bounds_map if col_bounds_map else None,
                     )
                 )
 
