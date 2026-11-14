@@ -270,6 +270,30 @@ def is_group_header_row(group: ProductGroup, row: List[Any]) -> bool:
     return header_cell_count > 0 and header_cell_count >= product_cell_count
 
 
+def _get_table_extract(table_obj: Any) -> Any:
+    cached = getattr(table_obj, "_cached_extract", None)
+    if cached is not None:
+        return cached
+    raw = table_obj.extract()
+    try:
+        table_obj._cached_extract = raw
+    except Exception:
+        pass
+    return raw
+
+
+def _get_table_rows(table_obj: Any) -> Any:
+    cached = getattr(table_obj, "_cached_rows", None)
+    if cached is not None:
+        return cached
+    rows = table_obj.rows if hasattr(table_obj, "rows") else None
+    try:
+        table_obj._cached_rows = rows
+    except Exception:
+        pass
+    return rows
+
+
 def analyze_table_geometry(
     table_obj: Any,
     established_layout: Optional[TableGeometry] = None
@@ -279,10 +303,11 @@ def analyze_table_geometry(
     and prunes header-only structural slots confirmed to have 0 body cells.
     Persists established layout across compatible continuation and partial final pages.
     """
-    if table_obj is None or not hasattr(table_obj, "rows") or len(table_obj.rows) < 1:
+    t_rows = _get_table_rows(table_obj) if table_obj is not None else None
+    if table_obj is None or not t_rows or len(t_rows) < 1:
         return None
 
-    raw_data = table_obj.extract()
+    raw_data = _get_table_extract(table_obj)
     if not raw_data or len(raw_data) < 1:
         return None
 
@@ -292,7 +317,7 @@ def analyze_table_geometry(
 
     # Count body cells across body rows and extract col_bboxes across all rows
     col_bboxes: List[Optional[Tuple[float, float, float, float]]] = [None] * num_cols
-    for r in table_obj.rows:
+    for r in t_rows:
         if hasattr(r, "cells") and r.cells:
             for c_idx, cell in enumerate(r.cells):
                 if c_idx < num_cols and cell is not None:
@@ -1153,6 +1178,10 @@ class CatalogImportMetadata(dict):
         self.fingerprint = fingerprint
         self.acknowledgment_token = acknowledgment_token
 
+    def __deepcopy__(self, memo):
+        memo[id(self)] = self
+        return self
+
     @property
     def status(self) -> str:
         return getattr(self.diagnostics, "status", "unknown")
@@ -1258,7 +1287,8 @@ def parse_structural_table(
     except ImportError:
         from catalog_diagnostics import GroupDiagnostics, PageDiagnostics, RowDiagnostic, build_source_id
 
-    raw_data = table_obj.extract()
+    raw_data = _get_table_extract(table_obj)
+    t_rows = _get_table_rows(table_obj)
     geometry = analyze_table_geometry(table_obj, established_layout=established_layout)
     if not geometry:
         return [], established_layout, established_groups, PageDiagnostics(page=page_idx + 1, strategy="empty")
@@ -1299,7 +1329,7 @@ def parse_structural_table(
                 continue
 
             group_diag.candidate_rows += 1
-            row_bboxes = table_obj.rows[r_idx].cells if (hasattr(table_obj, "rows") and r_idx < len(table_obj.rows) and hasattr(table_obj.rows[r_idx], "cells")) else None
+            row_bboxes = t_rows[r_idx].cells if (t_rows and r_idx < len(t_rows) and hasattr(t_rows[r_idx], "cells")) else None
 
             item, outcome_reason, item_bbox = extract_item_from_group_row(
                 row, group, group_direction, warehouse_name, row_bboxes, sanity_checker,

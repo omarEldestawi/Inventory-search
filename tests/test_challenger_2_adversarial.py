@@ -496,8 +496,14 @@ class TestChallenger2ReconciliationAndEdgeCases(unittest.TestCase):
 
         # Invariant 5: Table provenance strings
         strategies = [g.strategy for g in p1.groups]
-        self.assertIn("structural_table_t0", strategies)
-        self.assertIn("structural_table_t1", strategies)
+        self.assertTrue(any(s.startswith("structural_table_t0") for s in strategies), f"structural_table_t0 not in {strategies}")
+        self.assertTrue(any(s.startswith("structural_table_t1") for s in strategies), f"structural_table_t1 not in {strategies}")
+        self.assertTrue(any(s.startswith("legacy_table_t0") for s in strategies), f"legacy_table_t0 not in {strategies}")
+        # Verify group qualification is preserved
+        self.assertIn("structural_table_t0_g0", strategies)
+        self.assertIn("structural_table_t0_g1", strategies)
+        self.assertIn("structural_table_t1_g0", strategies)
+        self.assertIn("structural_table_t1_g1", strategies)
         self.assertIn("legacy_table_t0", strategies)
 
     def test_adv_10_missing_name_cell_and_blank_rows_accounting(self):
@@ -639,17 +645,19 @@ class TestChallenger2ReconciliationAndEdgeCases(unittest.TestCase):
         col_w = [45, 45, 180, 45, 45, 180]
         hdr = ['Disc', 'Price', 'Item Name', 'Disc', 'Price', 'Item Name']
 
-        # Catalog A: 1 valid, 1 rejected
+        # Catalog A: 2 valid, 1 rejected
         t_a = _make_grid_table([
             hdr,
-            ['10%', '50.00', 'Panadol Extra 500mg', '15%', '', 'Rejected Med A'],
+            ['10%', '50.00', 'Panadol Extra 500mg', '15%', '40.00', 'Cataflam 50mg'],
+            ['10%', '50.00', 'Congestal 500mg', '15%', '', 'Rejected Med A'],
         ], col_w)
         _build_pdf(cat_a_path, [t_a])
 
-        # Catalog B: 1 valid, 1 rejected (different med)
+        # Catalog B: 2 valid, 1 rejected (different med)
         t_b = _make_grid_table([
             hdr,
-            ['12%', '45.00', 'Brufen 400mg', '18%', '', 'Rejected Med B'],
+            ['12%', '45.00', 'Brufen 400mg', '14%', '60.00', 'Voltaren 100mg'],
+            ['12%', '45.00', 'Antinal 200mg', '18%', '', 'Rejected Med B'],
         ], col_w)
         _build_pdf(cat_b_path, [t_b])
 

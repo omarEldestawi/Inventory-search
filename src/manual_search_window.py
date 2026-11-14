@@ -100,6 +100,7 @@ class ManualSearchWindow(ctk.CTkToplevel):
         self._debounce_timer: Optional[str] = None
         self._poll_timer: Optional[str] = None
         self._cancelled: bool = False
+        self._item_pool: List[str] = []
 
         self._job_lock = threading.Lock()
         self._job_queue: queue.Queue = queue.Queue(maxsize=1)
@@ -211,7 +212,8 @@ class ManualSearchWindow(ctk.CTkToplevel):
             anchor="e",
         )
         self.benchmark_disclaimer.pack(side="right", padx=12, pady=6)
-        # Initially hidden
+        # Keep benchmark card statically gridded so Row 1->Row 2 geometry never shifts during renders
+        self.benchmark_frame.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 6))
 
         # -------------------------------------------------------------
         # Row 2: Tabular Results (ttk.Treeview with Scrollbar)
@@ -241,6 +243,8 @@ class ManualSearchWindow(ctk.CTkToplevel):
 
         self.tree.grid(row=0, column=0, sticky="nsew", padx=(2, 0), pady=2)
         scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 2), pady=2)
+        self._item_pool = [self.tree.insert("", "end", values=("", "", "", "", "")) for _ in range(100)]
+        self.tree.detach(*self._item_pool)
 
         # -------------------------------------------------------------
         # Row 3: Status & Diagnostics Footer Bar
@@ -458,13 +462,11 @@ class ManualSearchWindow(ctk.CTkToplevel):
             bench_text = f"📊 متوسط الخصم المرجعي للصنف ({q_name}): {pct_str}"
             if self.benchmark_label.cget("text") != bench_text:
                 self.benchmark_label.configure(text=bench_text)
-            if not self.benchmark_frame.winfo_ismapped():
-                self.benchmark_frame.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 6))
         else:
-            if self.benchmark_frame.winfo_ismapped():
-                self.benchmark_frame.grid_remove()
+            if self.benchmark_label.cget("text") != "":
+                self.benchmark_label.configure(text="")
 
-        # 2. Table Render (100-row cap with in-place item recycling)
+        # 2. Table Render (100-row cap with in-place item recycling and pooled nodes)
         display_slice = res.candidates[:100]
         existing_children = self.tree.get_children()
         n_curr = len(existing_children)
@@ -486,28 +488,45 @@ class ManualSearchWindow(ctk.CTkToplevel):
             for item in display_slice
         ]
 
-        # Temporarily decouple scrollbar callback and detach from grid to avoid layout thrashing
+        # Temporarily decouple scrollbar callback without unmapping Treeview from grid
         sb = self.tree.cget("yscrollcommand")
         if sb:
             self.tree.configure(yscrollcommand="")
-        self.tree.grid_remove()
         try:
             # Update existing rows in place without Tcl node allocation churn
             min_count = min(n_curr, n_new)
             for i in range(min_count):
                 self.tree.item(existing_children[i], values=formatted_rows[i])
 
-            # Insert deficit rows if new results exceed current count
+            # Reattach pre-allocated pool nodes if new results exceed current count
             if n_new > n_curr:
+                existing_set = set(existing_children)
+                detached_pool = [iid for iid in self._item_pool if iid not in existing_set]
+                pool_idx = 0
                 for i in range(n_curr, n_new):
-                    self.tree.insert("", "end", values=formatted_rows[i])
-            # Delete surplus rows if new results are fewer than current count
+                    if pool_idx < len(detached_pool):
+                        iid = detached_pool[pool_idx]
+                        pool_idx += 1
+                        try:
+                            self.tree.item(iid, values=formatted_rows[i])
+                            self.tree.reattach(iid, "", "end")
+                            continue
+                        except tk.TclError:
+                            pass
+                    iid = self.tree.insert("", "end", values=formatted_rows[i])
+                    self._item_pool.append(iid)
+            # Detach surplus pool rows if new results are fewer than current count
             elif n_curr > n_new:
-                self.tree.delete(*existing_children[n_new:])
+                pool_set = set(self._item_pool)
+                to_detach = [iid for iid in existing_children[n_new:] if iid in pool_set]
+                to_delete = [iid for iid in existing_children[n_new:] if iid not in pool_set]
+                if to_detach:
+                    self.tree.detach(*to_detach)
+                if to_delete:
+                    self.tree.delete(*to_delete)
         finally:
             if sb:
                 self.tree.configure(yscrollcommand=sb)
-            self.tree.grid(row=0, column=0, sticky="nsew", padx=(2, 0), pady=2)
 
         # 3. Status text
         if res.error:

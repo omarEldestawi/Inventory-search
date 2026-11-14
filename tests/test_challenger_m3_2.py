@@ -83,7 +83,7 @@ class TestRealWorldGluedPackagingDecoupling:
         ("بيسلفون 20قرص", ["بيسلفون", "20", "قرص"], "bisolvon"),
         ("اليفو2شريط", ["اليفو", "2", "شريط"], "alevo"),
         ("بلينديل10مجم اقراص", ["بلينديل", "10", "مجم", "اقراص"], "plendil"),
-        ("هاي بيوتك312مجم  شراب", ["هاي بيوتك", "312", "مجم", "شراب"], "hibiotic"),
+        ("هاي بيوتك312مجم  شراب", ["هايبيوتك", "312", "مجم", "شراب"], "hibiotic"),
         ("سيرفيتولكا20كبسوله", ["سيرفيتولكا", "20", "كبسوله"], "cervitolca"),
         ("سيريبروليسن5مجم 5امبول ث", ["سيريبروليسن", "5", "مجم", "5", "امبول"], "cerebrolysin"),
         ("راميلاكت30قرص", ["راميلاكت", "30", "قرص"], "ramilact"),
@@ -233,7 +233,7 @@ class TestFullPurchaseOrdersBenchmark:
         po12 = load_purchase_order("train/0912.xlsx")
 
         assert len(po11) == 202, f"Expected 202 items in 0911, got {len(po11)}"
-        assert len(po12) == 743, f"Expected 743 items in 0912, got {len(po12)}"
+        assert len(po12) == 747, f"Expected 747 items in 0912, got {len(po12)}"
 
         all_items = list(po11["requested_item"]) + list(po12["requested_item"])
         total_items = len(all_items)

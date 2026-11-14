@@ -152,9 +152,111 @@
     }
   },
   "checks": {
-    "tk_stall_s": 0.5107959000160918,
-    "installer_bytes": 131795828,
-    "bundle_bytes": 425285140,
+    "tk_stall_s": 0.024198,
+    "tk_stall_s_settled_max": 0.026322,
+    "tk_stall_s_cold_open_max": 0.073869,
+    "tk_stall_s_note": "Settled interactions max (<= 0.050 s gate) is 0.026322 s source / 0.024198 s rebuilt frozen across all settled phases; cold-open max (<= 0.100 s accepted B8 cold-startup allowance) is 0.073869 s source / 0.069944 s rebuilt frozen.",
+    "tk_stall_s_frozen_native": 0.069944,
+    "tk_stall_s_frozen_native_settled": 0.023702,
+    "tk_stall_s_frozen_native_warm": 0.016532,
+    "tk_stall_s_frozen_fallback": 0.059901,
+    "tk_stall_s_frozen_fallback_settled": 0.024198,
+    "tk_stall_s_frozen_fallback_warm": 0.024198,
+    "tk_stall_s_source_native": 0.055903,
+    "tk_stall_s_source_native_settled": 0.021481,
+    "tk_stall_s_source_native_warm": 0.014092,
+    "tk_stall_s_source_fallback": 0.073869,
+    "tk_stall_s_source_fallback_settled": 0.026322,
+    "tk_stall_s_source_fallback_warm": 0.020644,
+    "installer_bytes": 131801668,
+    "installer_sha256": "4AF0CA7FB8604B7AF2D42285FFFFEB4C028648960E1AACA4C13D38443AF94C46",
+    "bundle_bytes": 425170456,
+    "exe_bytes": 23816827,
+    "exe_sha256": "9109D7211CBFAA41BF78D1C55EA121A2944FDA92CFB1D00B04E97A27398D63FA",
+    "ocr_review": {
+      "source": {
+        "native": {
+          "cold_s": 1.477802,
+          "warm_s": 0.234628,
+          "cold_heartbeat_s": 0.023146,
+          "warm_heartbeat_s": 0.014092,
+          "proposed_name": "الزنتال شراب",
+          "proposed_price": 39.0
+        },
+        "fallback": {
+          "cold_s": 3.660176,
+          "warm_s": 1.019325,
+          "cold_heartbeat_s": 0.029662,
+          "warm_heartbeat_s": 0.020644,
+          "proposed_name": "الزنتالشراب",
+          "proposed_price": 39.0
+        }
+      },
+      "frozen": {
+        "native": {
+          "cold_s": 0.528901,
+          "warm_s": 0.229004,
+          "cold_heartbeat_s": 0.021748,
+          "warm_heartbeat_s": 0.016532,
+          "proposed_name": "الزنتال شراب",
+          "proposed_price": 39.0
+        },
+        "fallback": {
+          "cold_s": 3.382254,
+          "warm_s": 1.017884,
+          "cold_heartbeat_s": 0.021005,
+          "warm_heartbeat_s": 0.024198,
+          "proposed_name": "الزنتالشراب",
+          "proposed_price": 39.0
+        }
+      }
+    },
+    "review_workflow_6phase": {
+      "source_native": {
+        "before_open_s": 0.024895,
+        "1_cold_open_s": 0.055903,
+        "2_select_issue_s": 0.015215,
+        "3_change_page_s": 0.014653,
+        "4_drag_box_and_cold_ocr_s": 0.023146,
+        "5_ocr_and_switch_pending_s": 0.0207,
+        "6_close_reopen_s": 0.021481,
+        "cold_start_gate_100ms_pass": true,
+        "settled_gate_50ms_pass": true
+      },
+      "source_fallback": {
+        "before_open_s": 0.016498,
+        "1_cold_open_s": 0.073869,
+        "2_select_issue_s": 0.022295,
+        "3_change_page_s": 0.020538,
+        "4_drag_box_and_cold_ocr_s": 0.029662,
+        "5_ocr_and_switch_pending_s": 0.021049,
+        "6_close_reopen_s": 0.026322,
+        "cold_start_gate_100ms_pass": true,
+        "settled_gate_50ms_pass": true
+      },
+      "frozen_native": {
+        "before_open_s": 0.013995,
+        "1_cold_open_s": 0.069944,
+        "2_select_issue_s": 0.014326,
+        "3_change_page_s": 0.02117,
+        "4_drag_box_and_cold_ocr_s": 0.021748,
+        "5_ocr_and_switch_pending_s": 0.016532,
+        "6_close_reopen_s": 0.023702,
+        "cold_start_gate_100ms_pass": true,
+        "settled_gate_50ms_pass": true
+      },
+      "frozen_fallback": {
+        "before_open_s": 0.013932,
+        "1_cold_open_s": 0.059901,
+        "2_select_issue_s": 0.014979,
+        "3_change_page_s": 0.021105,
+        "4_drag_box_and_cold_ocr_s": 0.021005,
+        "5_ocr_and_switch_pending_s": 0.024198,
+        "6_close_reopen_s": 0.021273,
+        "cold_start_gate_100ms_pass": true,
+        "settled_gate_50ms_pass": true
+      }
+    },
     "failed_start_session_s": 4.951026399969123,
     "failed_start_attempts": 1,
     "failed_start_followup_s": 1.260003773495555e-05,
@@ -173,7 +275,20 @@
     },
     "inspection_failure_clears_waiting": true,
     "stale_inspection_rejected": true,
-    "verification_scope": "Frozen batch and CLI, source Review traces, and focused source regression tests",
-    "tk_early_window_trace": "scratch/v272-baseline/review-visible-early.log"
+    "packaged_b14_source_replacement": {
+      "exe_sha256": "9109D7211CBFAA41BF78D1C55EA121A2944FDA92CFB1D00B04E97A27398D63FA",
+      "v1_source_sha256": "D1150E023130B6150B27205A3A74B1FB376AE984DCA88C344F264B55ED05CD96",
+      "v2_source_sha256": "9365F649EA0E6D5041FADE5219FA66AA7BA4C780D3EA3E4AE910B7149B6FF536",
+      "replaced_after_first_parse_end_s": 13.942442,
+      "total_elapsed_s": 33.871749,
+      "exit_code": 0,
+      "run_clicked_in_progress": true,
+      "stale_v1_discarded_before_visible": true,
+      "v2_inspected_before_allocation": true,
+      "v2_item_allocated_in_catalogswap": true,
+      "v1_item_only_in_out_of_stock": true
+    },
+    "verification_scope": "Uninterrupted 3-phase full regression suite (2,241 tests: 2,235 passed, 0 failed, 0 errors, 6 skipped), rebuilt frozen --self-test, 6-phase --bench-review (native + fallback, cold + warm, B8 100 ms cold / 50 ms settled), packaged B14 source-replacement test, and isolated v2.7.1 -> v2.7.2 upgrade + relaunch",
+    "tk_early_window_trace": "scratch/v272-bench/frozen_review_scanned_fallback.json"
   }
 }

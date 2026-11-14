@@ -597,6 +597,15 @@ def compare_evidence(base, candidate, ocr, before, after):
 
     def ocr_review():
         review = ocr.get('review', {})
+        if any(backend in review for backend in ('native', 'fallback')):
+            for backend in ('native', 'fallback'):
+                backend_review = review.get(backend, {})
+                for mode in ('source', 'frozen'):
+                    for temperature in ('cold', 'warm'):
+                        result = backend_review.get(mode, {}).get(temperature, {})
+                        if result.get('comparable') is not True or not bounded(result, 'candidate_s', result.get('baseline_s')):
+                            return False
+            return True
         for mode in ('source', 'frozen'):
             for temperature in ('cold', 'warm'):
                 result = review.get(mode, {}).get(temperature, {})

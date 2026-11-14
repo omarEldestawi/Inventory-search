@@ -138,7 +138,7 @@ class ContextWindowOCR:
         from PIL import Image
 
         with io.BytesIO() as png:
-            Image.fromarray(img_np).save(png, format="PNG")
+            Image.fromarray(img_np).save(png, format="PNG", compress_level=1)
             payload = {"image_base64": base64.b64encode(png.getvalue()).decode("ascii"), "padding": int(padding)}
         if upscale is not None:
             payload["upscale"] = bool(upscale)

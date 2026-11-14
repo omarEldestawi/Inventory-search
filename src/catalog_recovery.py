@@ -229,7 +229,7 @@ def recover_by_coordinates(
 
     for w in words:
         tok = w[4].strip()
-        if not tok or is_genuine_header_cell(tok) or is_catalog_noise(tok):
+        if not tok or is_genuine_header_cell(tok) or (is_catalog_noise(tok) and not (issue.rejection_reason == "missing_price" and getattr(issue, "column_bounds", None))):
             continue
 
         w_mid_x = (w[0] + w[2]) / 2.0
@@ -920,6 +920,7 @@ def recover_region_by_ocr(
     pdf_path: Optional[str],
     default_wh: str = "",
     open_doc: Optional[Any] = None,
+    ocr_engine_preference: str = "primary",
 ) -> List[Dict[str, Any]]:
     """
     Executes bounded OCR table recovery on an unmapped or image-only region.
@@ -967,8 +968,9 @@ def recover_region_by_ocr(
         if pix0.n == 4:
             img0 = cv2.cvtColor(img0, cv2.COLOR_RGBA2RGB)
 
+        pref = (ocr_engine_preference or "primary").strip() or "primary"
         accepted0, _, _ = detector.extract_table_records(
-            img0, page_idx=page_idx, warehouse_name=default_wh, scale_to_pt=scale_to_pt_150, ocr_engine_preference="primary"
+            img0, page_idx=page_idx, warehouse_name=default_wh, scale_to_pt=scale_to_pt_150, ocr_engine_preference=pref
         )
         if len(accepted0) >= 1:
             return accepted0
@@ -982,17 +984,18 @@ def recover_region_by_ocr(
 
         enhanced1 = deskew_and_enhance_image(img1, apply_clahe=True)
         accepted1, _, _ = detector.extract_table_records(
-            enhanced1, page_idx=page_idx, warehouse_name=default_wh, scale_to_pt=scale_to_pt_200, ocr_engine_preference="primary"
+            enhanced1, page_idx=page_idx, warehouse_name=default_wh, scale_to_pt=scale_to_pt_200, ocr_engine_preference=pref
         )
         if len(accepted1) >= 1:
             return accepted1
 
-        # Tier 2: Secondary engine
-        accepted2, _, _ = detector.extract_table_records(
-            img0, page_idx=page_idx, warehouse_name=default_wh, scale_to_pt=scale_to_pt_150, ocr_engine_preference="secondary"
-        )
-        if len(accepted2) >= 1:
-            return accepted2
+        # Tier 2: Secondary engine (only when caller did not request a strict single engine)
+        if pref.lower() in ("primary", "auto"):
+            accepted2, _, _ = detector.extract_table_records(
+                img0, page_idx=page_idx, warehouse_name=default_wh, scale_to_pt=scale_to_pt_150, ocr_engine_preference="secondary"
+            )
+            if len(accepted2) >= 1:
+                return accepted2
 
         return []
     except Exception as exc:
@@ -1007,7 +1010,11 @@ def recover_region_by_ocr(
 
 
 def run_automatic_recovery(
-    catalog_result: CatalogResult, pdf_path: Optional[str] = None, *, allow_ocr: bool = False
+    catalog_result: CatalogResult,
+    pdf_path: Optional[str] = None,
+    *,
+    allow_ocr: bool = False,
+    ocr_engine_preference: str = "primary",
 ) -> CatalogResult:
     """
     Applies coordinate, wrapped text and column role recovery to unresolved issues.
@@ -1070,7 +1077,9 @@ def run_automatic_recovery(
                     issue.attempted_strategies.append("ocr_recovery_ladder")
                     attempted_count += 1
 
-                reg_items = recover_region_by_ocr(issue, pdf_path, default_wh, open_doc=open_doc)
+                reg_items = recover_region_by_ocr(
+                    issue, pdf_path, default_wh, open_doc=open_doc, ocr_engine_preference=ocr_engine_preference
+                )
                 if reg_items:
                     issue.resolved = True
                     issue.provenance = "ocr_recovery_ladder"

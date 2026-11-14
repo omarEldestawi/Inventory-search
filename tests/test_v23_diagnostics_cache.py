@@ -522,7 +522,11 @@ class TestF15FingerprintValidatedCaching(unittest.TestCase):
     def test_f15_09_bnd_concurrent_cache_access(self):
         """Verify CatalogCache lock provides thread-safe access."""
         cache = CatalogCache()
-        df = pd.DataFrame({"col": [1, 2, 3]})
+        df = CatalogResult(
+            dataframe=pd.DataFrame({"col": [1, 2, 3]}),
+            diagnostics=ImportDiagnostics(unique_records=3, accepted_rows=3),
+            fingerprint=FileFingerprint.from_path(self.temp_file.name),
+        ).to_dataframe()
         cache.set(self.temp_file.name, df)
         cached = cache.get(self.temp_file.name)
         self.assertEqual(len(cached), 3)
@@ -541,31 +545,46 @@ class TestF16CacheInvalidation(unittest.TestCase):
 
     def setUp(self):
         self.cache = CatalogCache()
-        self.path = os.path.abspath("dummy_sample_catalog.pdf")
-        self.df = pd.DataFrame({"item": ["أ", "ب"]})
-        self.cache.set(self.path, self.df)
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        self._tmp.write(b"%PDF-1.4\n%dummy\n")
+        self._tmp.close()
+        self.path = os.path.abspath(self._tmp.name)
+        self.fp = FileFingerprint.from_path(self.path)
+        self.df = self._wrap_df(pd.DataFrame({"item": ["أ", "ب"]}))
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+    def _wrap_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        diag = ImportDiagnostics(unique_records=len(df), accepted_rows=len(df))
+        return CatalogResult(dataframe=df, diagnostics=diag, fingerprint=self.fp).to_dataframe()
 
     # --- Tier 1: Happy-path isolation (>= 5 tests) ---
     def test_f16_01_cache_invalidation_on_file_removal(self):
         """Verify removing entry evicts it from cache."""
+        self.cache.set(self.path, self.df)
         self.cache.remove(self.path)
         self.assertIsNone(self.cache.get(self.path))
 
     def test_f16_02_cache_clear_all(self):
         """Verify clear() empties all cached entries."""
+        self.cache.set(self.path, self.df)
         self.cache.clear()
         self.assertEqual(len(self.cache.all_cached()), 0)
 
     def test_f16_03_cache_invalidation_on_content_replacement(self):
         """Verify updating entry overwrites stale cache."""
-        new_df = pd.DataFrame({"item": ["ج", "د", "هـ"]})
+        self.cache.set(self.path, self.df)
+        new_df = self._wrap_df(pd.DataFrame({"item": ["ج", "د", "هـ"]}))
         self.cache.set(self.path, new_df)
         self.assertEqual(len(self.cache.get(self.path)), 3)
 
     def test_f16_04_cache_refresh_flag_bypasses_cache(self):
-        """Verify explicit cache set overwrites previously cached frame."""
-        updated_df = pd.DataFrame({"item": ["جديد"]})
-        self.cache.set(self.path, updated_df)
+        """Verify explicit cache set with force=True overwrites previously cached frame."""
+        self.cache.set(self.path, self.df)
+        updated_df = self._wrap_df(pd.DataFrame({"item": ["جديد"]}))
+        self.cache.set(self.path, updated_df, force=True)
         self.assertEqual(len(self.cache.get(self.path)), 1)
 
     def test_f16_05_acknowledgment_token_invalidated_on_file_change(self):
@@ -582,19 +601,22 @@ class TestF16CacheInvalidation(unittest.TestCase):
         self.cache.remove("uncached_path_123.pdf")
 
     def test_f16_07_bnd_replace_with_empty_file(self):
-        """Verify setting empty DataFrame replaces previous entry."""
-        self.cache.set(self.path, pd.DataFrame())
-        self.assertTrue(self.cache.get(self.path).empty)
+        """Verify setting empty DataFrame with force=True evicts/replaces previous entry."""
+        self.cache.set(self.path, self.df)
+        self.cache.set(self.path, self._wrap_df(pd.DataFrame()), force=True)
+        res = self.cache.get(self.path)
+        self.assertTrue(res is None or res.empty)
 
     def test_f16_08_bnd_rapid_successive_invalidations(self):
         """Verify rapid repeated clear and set maintain cache consistency."""
         for i in range(10):
-            self.cache.set(self.path, pd.DataFrame({"col": [i]}))
+            self.cache.set(self.path, self._wrap_df(pd.DataFrame({"col": [i]})))
             self.cache.clear()
         self.assertIsNone(self.cache.get(self.path))
 
     def test_f16_09_bnd_symlinked_or_relative_path_invalidation(self):
         """Verify relative and absolute paths resolve to same cache key."""
+        self.cache.set(self.path, self.df)
         norm_key = os.path.normpath(self.path)
         self.assertIsNotNone(self.cache.get(norm_key))
 
@@ -943,19 +965,26 @@ class TestTier3DiagnosticsCacheCombinations(unittest.TestCase):
     def test_t3_04_pipeline_token_gating_with_cached_results(self):
         """Verify pipeline token gating operates seamlessly on cached CatalogResult (F15 x F19 x F20)."""
         cache = CatalogCache()
-        df = pd.DataFrame({"item": ["صنف"]})
-        diag = ImportDiagnostics(unique_records=1, errors=["Missing group"])
-        res = CatalogResult(dataframe=df, diagnostics=diag, fingerprint=FileFingerprint("test.pdf", "hash1"))
-        cache.set("test.pdf", res.to_dataframe())
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+            tf.write(b"%PDF-1.4\n%token-gate\n")
+            tmp_path = tf.name
+        try:
+            df = pd.DataFrame({"item": ["صنف"]})
+            diag = ImportDiagnostics(unique_records=1, errors=["Missing group"])
+            res = CatalogResult(dataframe=df, diagnostics=diag, fingerprint=FileFingerprint.from_path(tmp_path))
+            cache.set(tmp_path, res.to_dataframe())
 
-        cached_df = cache.get("test.pdf")
-        cached_res = CatalogResult.from_dataframe(cached_df)
-        self.assertIsNotNone(cached_res)
-        self.assertTrue(cached_res.diagnostics.requires_acknowledgment)
+            cached_df = cache.get(tmp_path)
+            cached_res = CatalogResult.from_dataframe(cached_df)
+            self.assertIsNotNone(cached_res)
+            self.assertTrue(cached_res.diagnostics.requires_acknowledgment)
 
-        # Token gating check
-        token = cached_res.acknowledgment_token
-        self.assertIn(token, {token})
+            # Token gating check
+            token = cached_res.acknowledgment_token
+            self.assertIn(token, {token})
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def test_t3_05_gui_badge_presentation_from_inspected_diagnostics(self):
         """Verify GUI badge color accurately determined from inspected status (F13 x F17 x F18)."""

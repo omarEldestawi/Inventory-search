@@ -859,6 +859,12 @@ def run_procurement_pipeline(
                 all_catalogs.append(df_cat)
                 diagnostics["catalogs_processed"] += 1
 
+        if not all_catalogs:
+            raise ValueError(
+                "Failed to extract valid catalog items from any of the provided catalog files. "
+                "Consolidated catalog inventory contains 0 valid items. Procurement execution blocked."
+            )
+
         consolidated_inventory = _build_consolidated_inventory(
             all_catalogs,
             allow_partial_imports=allow_partial_imports,
@@ -1048,7 +1054,14 @@ def run_procurement_pipeline(
             'diagnostics': diagnostics,
         }
 
-    except PipelineExecutionError:
+    except PipelineExecutionError as p_exc:
+        if not p_exc.diagnostics:
+            diagnostics["error_type"] = type(p_exc).__name__
+            diagnostics["error_message"] = str(p_exc)
+            p_exc.diagnostics = diagnostics
+        elif "stage" not in p_exc.diagnostics:
+            p_exc.diagnostics.setdefault("stage", current_stage)
+            p_exc.diagnostics.setdefault("error_message", str(p_exc))
         raise
     except InterruptedError:
         logger.info("Procurement pipeline was cancelled by caller.")

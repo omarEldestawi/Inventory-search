@@ -77,6 +77,7 @@ try:
     )
     from src.updater import AutoUpdateManager
     from src.manual_search_window import ManualSearchWindow
+    from src.box_ocr_service import render_pdf_page_with_highlight, render_pdf_row_crop
 except ImportError:
     from controller import (
         classify_files,
@@ -113,6 +114,21 @@ except ImportError:
     )
     from updater import AutoUpdateManager
     from manual_search_window import ManualSearchWindow
+    from box_ocr_service import render_pdf_page_with_highlight, render_pdf_row_crop
+
+
+_DEFAULT_RENDER_PAGE_FN = render_pdf_page_with_highlight
+_DEFAULT_RENDER_ROW_FN = render_pdf_row_crop
+
+
+class _PrecheckedFingerprint:
+    """Lightweight fingerprint proxy whose disk hash check already ran in the worker process."""
+
+    def __init__(self, current: bool):
+        self._current = bool(current)
+
+    def is_current(self, _path=None) -> bool:
+        return self._current
 
 
 from src.bench_trace import event as bench_event, setup_app as bench_setup_app
@@ -403,106 +419,6 @@ class FileListModel:
         return True, "جاهز للبدء والتوزيع / Ready to optimize"
 
 
-def render_pdf_page_with_highlight(
-    pdf_path: str,
-    page_number: int = 1,
-    bbox: Optional[List[float]] = None,
-    dpi: int = 150,
-    highlight_color: str = "#DC2626",
-    highlight_width: int = 4,
-) -> Optional[Image.Image]:
-    """
-    Renders a PDF page to a PIL Image at specified DPI (default 150),
-    and highlights the provided bounding box [x0, y0, x1, y1] if given.
-    Returns None if file is missing, not a PDF, or rendering fails.
-    """
-    if not pdf_path or not os.path.isfile(pdf_path):
-        return None
-    if not pdf_path.lower().endswith(".pdf"):
-        return None
-    try:
-        doc = pymupdf.open(pdf_path)
-        if len(doc) == 0:
-            doc.close()
-            return None
-        # Clamped 0-indexed page
-        p_idx = max(0, min(page_number - 1, len(doc) - 1))
-        page = doc[p_idx]
-        pix = page.get_pixmap(dpi=dpi)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        img.info["pdf_page_rect"] = tuple(page.rect)
-        img.info["pdf_inverse_rotation"] = tuple(page.derotation_matrix)
-
-        if bbox and len(bbox) >= 4:
-            scale_x = pix.width / max(1.0, float(page.rect.width))
-            scale_y = pix.height / max(1.0, float(page.rect.height))
-            rotated = pymupdf.Rect(bbox).normalize() * page.rotation_matrix
-            rx0, ry0, rx1, ry1 = (
-                rotated.x0 * scale_x, rotated.y0 * scale_y,
-                rotated.x1 * scale_x, rotated.y1 * scale_y,
-            )
-
-            # Ensure minimal visibility
-            if rx1 - rx0 < 10:
-                rx1 = rx0 + 10
-            if ry1 - ry0 < 10:
-                ry1 = ry0 + 10
-
-            draw = ImageDraw.Draw(img)
-            # Outer primary rectangle (red/amber)
-            draw.rectangle([rx0, ry0, rx1, ry1], outline=highlight_color, width=highlight_width)
-            # Inner contrasting border for dark or light PDF page backgrounds
-            inner_color = "#D97706" if highlight_color != "#D97706" else "#F59E0B"
-            draw.rectangle([rx0 + 2, ry0 + 2, rx1 - 2, ry1 - 2], outline=inner_color, width=max(1, highlight_width // 2))
-
-        doc.close()
-        return img
-    except Exception as exc:
-        logger.warning(f"Error rendering PDF page {page_number} for {pdf_path}: {exc}")
-        return None
-
-
-def render_pdf_row_crop(
-    pdf_path: str,
-    page_number: int = 1,
-    bbox: Optional[List[float]] = None,
-    dpi: int = 180,
-    pad: float = 6.0,
-    max_size: Optional[Tuple[int, int]] = None,
-) -> Optional[Image.Image]:
-    """
-    Renders a cropped PIL Image of a specific row/region bounding box [x0, y0, x1, y1]
-    from the source PDF page for side-by-side display next to editable fields.
-    """
-    if not pdf_path or not os.path.isfile(pdf_path) or not pdf_path.lower().endswith(".pdf"):
-        return None
-    if not bbox or len(bbox) < 4:
-        return None
-    try:
-        with pymupdf.open(pdf_path) as doc:
-            if not len(doc):
-                return None
-            page = doc[max(0, min(page_number - 1, len(doc) - 1))]
-            x0, y0, x1, y1 = pymupdf.Rect(bbox[:4]).normalize()
-            source_clip = pymupdf.Rect(x0 - pad, y0 - pad, x1 + pad, y1 + pad)
-            source_clip &= page.rect * page.derotation_matrix
-            if source_clip.width < 12 or source_clip.height < 8:
-                return None
-            clip = source_clip * page.rotation_matrix & page.rect
-            if max_size:
-                scale = min(dpi / 72, max_size[0] / clip.width, max_size[1] / clip.height)
-                pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), clip=clip)
-            else:
-                pix = page.get_pixmap(dpi=dpi, clip=clip)
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        if max_size:
-            img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        return img
-    except Exception as exc:
-        logger.debug(f"Error rendering PDF row crop on page {page_number} for {pdf_path}: {exc}")
-        return None
-
-
 class ColumnMappingPreviewModal(ctk.CTkToplevel):
     """
     Interactive modal displaying prospective column mapping transformations
@@ -517,6 +433,8 @@ class ColumnMappingPreviewModal(ctk.CTkToplevel):
         on_applied_callback: Optional[Callable[[], None]] = None,
     ):
         super().__init__(parent)
+        # Prevent CustomTkinter's delayed 200ms synchronous .ico load from stalling early Review interaction.
+        self._iconbitmap_method_called = True
         self.service = service
         self.table_id = table_id
         self.on_applied_callback = on_applied_callback
@@ -730,12 +648,18 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         service: Optional[CatalogCorrectionService] = None,
     ):
         super().__init__(parent)
+        # Prevent CustomTkinter's delayed 200ms synchronous .ico load from stalling early Review interaction.
+        self._iconbitmap_method_called = True
+        self._enable_incremental_open = True
+        self._pooled_owner = None
+        self._yield_ui()
         self.catalog_path = os.path.normpath(os.path.abspath(catalog_path))
         self.filename = os.path.basename(self.catalog_path)
         self.on_done_callback = on_done_callback
 
         self.service = service if service is not None else CatalogCorrectionService(self.catalog_path)
         self.catalog_result = self.service.get_refreshed_catalog_result()
+        self._yield_ui()
 
         # Page navigation state
         self.current_page = 1
@@ -747,6 +671,8 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._preview_request = None
         self._displayed_row_preview = None
         self._preview_running = False
+        self._preview_thread = None
+        self._preview_page_publish_pending = False
         self._preview_poll_id = None
         self._preview_results = queue.Queue(maxsize=1)
         self._preview_drag = None
@@ -754,40 +680,240 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._box_results = queue.Queue(maxsize=1)
         self._box_pending = None
         self._box_running = False
+        self._box_poll_id = None
         self._box_suggestion = None
+        self._loading_issue = False
+        self._last_page_info_text = None
+        self._last_val_state = None
+        self._last_box_sug_text = ""
+        self._last_use_sug_state = "disabled"
 
-        try:
-            if self.catalog_path.lower().endswith(".pdf") and os.path.isfile(self.catalog_path):
-                doc = pymupdf.open(self.catalog_path)
-                self.total_pages = max(1, len(doc))
-                doc.close()
-        except Exception:
-            self.total_pages = 1
+        self._update_total_pages()
 
-        self.title(f"مراجعة وتصحيح الكتالوج - {self.filename} / Catalog Review & Correction")
+        self._last_title_text = f"مراجعة وتصحيح الكتالوج - {self.filename} / Catalog Review & Correction"
+        self.title(self._last_title_text)
         self.geometry("1240x800")
         self.minsize(980, 650)
         try:
             self.transient(parent)
-            self.grab_set()
         except Exception:
             pass
 
-        self.grid_columnconfigure(0, weight=5)  # Left Pane: PDF Preview
-        self.grid_columnconfigure(1, weight=5)  # Right Pane: Issues & Editor
+        self.grid_columnconfigure(0, weight=5, uniform="review_pane")  # Left Pane: PDF Preview
+        self.grid_columnconfigure(1, weight=5, uniform="review_pane")  # Right Pane: Issues & Editor
         self.grid_rowconfigure(0, weight=1)
 
+        self._yield_ui()
         self._build_left_pane()
+        self._yield_ui()
         self._build_right_pane()
+        self._yield_ui()
 
         # Populate initial list and select first unresolved issue if available
         self._refresh_issue_list()
         self._update_summary_label()
         self._select_first_unresolved_or_render()
+        try:
+            self.grab_set()
+        except Exception:
+            pass
+
+    def _yield_ui(self):
+        if isinstance(self, tk.Misc) and getattr(self, "_enable_incremental_open", True):
+            try:
+                self.update()
+            except Exception:
+                pass
+
+    def _update_total_pages(self):
+        try:
+            if self.catalog_path.lower().endswith(".pdf") and os.path.isfile(self.catalog_path):
+                with pymupdf.open(self.catalog_path) as doc:
+                    self.total_pages = max(1, len(doc))
+            else:
+                self.total_pages = 1
+        except Exception:
+            self.total_pages = 1
+
+    def _fast_set_label_pil_image(self, lbl, pil_im: Optional[Image.Image], empty_text: str = ""):
+        if pil_im is None:
+            if getattr(lbl, "_fast_photo", None) is not None and not empty_text:
+                return
+            lbl._fast_photo = None
+            lbl._fast_photo_size = None
+            try:
+                if isinstance(getattr(lbl, "_image", None), ctk.CTkImage):
+                    lbl.configure(image="", text=empty_text)
+                else:
+                    lbl._text = empty_text
+                    lbl._label.configure(image="", text=empty_text)
+            except Exception:
+                lbl.configure(image="", text=empty_text)
+            return
+        prev_photo = getattr(lbl, "_fast_photo", None)
+        prev_size = getattr(lbl, "_fast_photo_size", None)
+        if prev_photo is not None and prev_size == pil_im.size:
+            prev_photo.paste(pil_im)
+            if getattr(lbl, "_text", "") != "":
+                lbl._text = ""
+                lbl._label.configure(text="")
+            return
+        photo = ImageTk.PhotoImage(pil_im, master=lbl)
+        lbl._fast_photo = photo
+        lbl._fast_photo_size = pil_im.size
+        lbl._text = ""
+        lbl._label.configure(image=photo, text="")
+
+    @staticmethod
+    def _fast_set_label_text(lbl, text: str, text_color=None):
+        if not isinstance(lbl, tk.Misc) or getattr(lbl, "_label", None) is None:
+            kwargs = {"text": text}
+            if text_color is not None:
+                kwargs["text_color"] = text_color
+            lbl.configure(**kwargs)
+            return
+        if text_color is not None and getattr(lbl, "_fast_color_val", None) != text_color:
+            lbl._fast_color_val = text_color
+            lbl.configure(text_color=text_color)
+        if getattr(lbl, "_fast_text_val", None) != text:
+            lbl._fast_text_val = text
+            lbl._text = text
+            lbl._label.configure(text=text)
+
+    @classmethod
+    def open_or_reuse(
+        cls,
+        parent,
+        catalog_path: str,
+        on_done_callback: Optional[Callable[[CatalogResult], None]] = None,
+        service: Optional[CatalogCorrectionService] = None,
+    ) -> "CatalogReviewWindow":
+        pooled = getattr(parent, "_pooled_review_window", None)
+        if pooled is not None:
+            try:
+                if pooled.winfo_exists():
+                    pooled.rebind_review(catalog_path, on_done_callback=on_done_callback, service=service)
+                    return pooled
+            except Exception:
+                pass
+            parent._pooled_review_window = None
+        win = cls(parent, catalog_path, on_done_callback=on_done_callback, service=service)
+        win._pooled_owner = parent
+        if parent is not None:
+            parent._pooled_review_window = win
+            try:
+                win.protocol("WM_DELETE_WINDOW", win.close_for_reopen)
+            except Exception:
+                pass
+        return win
+
+    def close_for_reopen(self):
+        if self._preview_poll_id is not None:
+            try:
+                self.after_cancel(self._preview_poll_id)
+            except Exception:
+                pass
+            self._preview_poll_id = None
+        if getattr(self, "_box_poll_id", None) is not None:
+            try:
+                self.after_cancel(self._box_poll_id)
+            except Exception:
+                pass
+            self._box_poll_id = None
+        self._preview_running = False
+        self._preview_page_publish_pending = False
+        self._box_running = False
+        self._box_pending = None
+        self._box_revision += 1
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        try:
+            self.attributes("-alpha", 0.0)
+            self.lower()
+        except Exception:
+            try:
+                self.withdraw()
+            except Exception:
+                pass
+        owner = getattr(self, "_pooled_owner", None) or getattr(self, "master", None)
+        if owner is not None:
+            owner._pooled_review_window = self
+
+    def rebind_review(
+        self,
+        catalog_path: str,
+        on_done_callback: Optional[Callable[[CatalogResult], None]] = None,
+        service: Optional[CatalogCorrectionService] = None,
+    ):
+        for attr in ("_preview_poll_id", "_box_poll_id"):
+            pid = getattr(self, attr, None)
+            if pid is not None:
+                try:
+                    self.after_cancel(pid)
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+        for q in (self._preview_results, self._box_results):
+            while True:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    break
+
+        self.catalog_path = os.path.normpath(os.path.abspath(catalog_path))
+        self.filename = os.path.basename(self.catalog_path)
+        self.on_done_callback = on_done_callback
+        self.service = service if service is not None else CatalogCorrectionService(self.catalog_path)
+        self.catalog_result = self.service.get_refreshed_catalog_result()
+
+        self.current_page = 1
+        self._update_total_pages()
+        self.selected_issue = None
+        self.selected_source_id = None
+        self._current_ctk_image = None
+        self._current_rendered_dims = None
+        self._preview_request = None
+        self._displayed_row_preview = None
+        self._preview_running = False
+        self._preview_page_publish_pending = False
+        self._preview_drag = None
+        self._box_revision += 1
+        self._box_pending = None
+        self._box_running = False
+        self._box_suggestion = None
+        self._custom_drag_bbox = None
+        self._last_page_info_text = None
+        self._last_val_state = None
+
+        new_title = f"مراجعة وتصحيح الكتالوج - {self.filename} / Catalog Review & Correction"
+        if getattr(self, "_last_title_text", None) != new_title:
+            self._last_title_text = new_title
+            self.title(new_title)
+        if hasattr(self, "title_lbl"):
+            CatalogReviewWindow._fast_set_label_text(self.title_lbl, f"مراجعة الكتالوج: {self.filename}")
+        self._invalidate_box_ocr()
+        self._yield_ui()
+        self._refresh_issue_list()
+        self._update_summary_label()
+        self._yield_ui()
+        self._select_first_unresolved_or_render()
+        try:
+            if self.master is not None:
+                self.transient(self.master)
+            self.attributes("-alpha", 1.0)
+            if self.state() == "withdrawn":
+                self.deiconify()
+            self.lift()
+            self.grab_set()
+        except Exception:
+            pass
 
     def _build_left_pane(self):
         left_frame = ctk.CTkFrame(self, corner_radius=6)
         left_frame.grid(row=0, column=0, sticky="nsew", padx=(15, 8), pady=15)
+        left_frame.grid_propagate(False)
         left_frame.grid_columnconfigure(0, weight=1)
         left_frame.grid_rowconfigure(1, weight=1)
 
@@ -797,10 +923,11 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         nav_bar.grid_columnconfigure(1, weight=1)
 
         self.prev_btn = ctk.CTkButton(
-            nav_bar, text="◀ السابق / Prev", width=95, font=get_font(11),
+            nav_bar, text="< السابق / Prev", width=95, font=get_font(11),
             command=self._on_prev_page
         )
         self.prev_btn.grid(row=0, column=0, sticky="w")
+        self._yield_ui()
 
         self.page_info_lbl = ctk.CTkLabel(
             nav_bar,
@@ -809,22 +936,26 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             anchor="center",
         )
         self.page_info_lbl.grid(row=0, column=1, sticky="ew")
+        self._yield_ui()
 
         self.next_btn = ctk.CTkButton(
-            nav_bar, text="التالي / Next ▶", width=95, font=get_font(11),
+            nav_bar, text="التالي / Next >", width=95, font=get_font(11),
             command=self._on_next_page
         )
         self.next_btn.grid(row=0, column=2, sticky="e")
+        self._yield_ui()
 
-        # Scrollable container for PDF Page Preview
-        self.preview_scroll = ctk.CTkScrollableFrame(left_frame, corner_radius=6)
+        # Container for PDF Page Preview
+        self.preview_scroll = ctk.CTkFrame(left_frame, corner_radius=6)
         self.preview_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.preview_scroll.grid_propagate(False)
         self.preview_scroll.grid_columnconfigure(0, weight=1)
         self.preview_scroll.grid_rowconfigure(0, weight=1)
+        self._yield_ui()
 
         self.page_image_lbl = ctk.CTkLabel(
             self.preview_scroll,
-            text="📄 جاري تحميل المعاينة البصرية...\nLoading visual preview...",
+            text="جاري تحميل المعاينة البصرية...\nLoading visual preview...",
             font=get_font(12),
         )
         self.page_image_lbl.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
@@ -834,21 +965,23 @@ class CatalogReviewWindow(ctk.CTkToplevel):
     def _build_right_pane(self):
         right_frame = ctk.CTkFrame(self, corner_radius=6)
         right_frame.grid(row=0, column=1, sticky="nsew", padx=(8, 15), pady=15)
+        right_frame.grid_propagate(False)
         right_frame.grid_columnconfigure(0, weight=1)
         right_frame.grid_rowconfigure(1, weight=1)
+        self._yield_ui()
 
         # Header with Outcome Summary
         header_f = ctk.CTkFrame(right_frame, fg_color="transparent")
         header_f.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
         header_f.grid_columnconfigure(0, weight=1)
 
-        title_lbl = ctk.CTkLabel(
+        self.title_lbl = ctk.CTkLabel(
             header_f,
-            text=f"📦 مراجعة الكتالوج: {self.filename}",
+            text=f"مراجعة الكتالوج: {self.filename}",
             font=get_font(13, "bold"),
             anchor="w",
         )
-        title_lbl.grid(row=0, column=0, sticky="w")
+        self.title_lbl.grid(row=0, column=0, sticky="w")
 
         self.outcome_summary_lbl = ctk.CTkLabel(
             header_f,
@@ -858,10 +991,12 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             anchor="w",
         )
         self.outcome_summary_lbl.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        self._yield_ui()
 
         # Issue List Table
         issue_container = ctk.CTkFrame(right_frame, corner_radius=6)
         issue_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        issue_container.grid_propagate(False)
         issue_container.grid_columnconfigure(0, weight=1)
         issue_container.grid_rowconfigure(0, weight=1)
 
@@ -889,6 +1024,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         sc_x.grid(row=1, column=0, sticky="ew")
 
         self.issue_tree.bind("<<TreeviewSelect>>", self._on_issue_selected)
+        self._yield_ui()
 
         # Candidate Item Editor
         self.editor_frame = ctk.CTkFrame(right_frame, corner_radius=6)
@@ -897,7 +1033,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         ed_title = ctk.CTkLabel(
             self.editor_frame,
-            text="✏️ تعديل وتصحيح الصنف / Candidate Item Editor (Manual Editing Optional)",
+            text="تعديل وتصحيح الصنف / Candidate Item Editor (Manual Editing Optional)",
             font=get_font(12, "bold"),
             anchor="w",
         )
@@ -905,7 +1041,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         zero_transcription_lbl = ctk.CTkLabel(
             self.editor_frame,
-            text="💡 التعديل اليدوي اختياري بالكامل: لن يُطلب منك كتابة أي صنف يدوياً. الأصناف غير المؤكدة تظل مستبعدة تماماً من أمر الشراء.",
+            text="التعديل اليدوي اختياري بالكامل: لن يُطلب منك كتابة أي صنف يدوياً. الأصناف غير المؤكدة تظل مستبعدة تماماً من أمر الشراء.",
             font=get_font(9, "bold"),
             text_color=("gray40", "gray60"),
             anchor="w",
@@ -940,6 +1076,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             lbl.grid(row=row, column=0, sticky="w", padx=10, pady=3)
             entry = ctk.CTkEntry(self.editor_frame, textvariable=var, font=get_font(11), width=width or 250)
             entry.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=3)
+            self._yield_ui()
             return entry
 
         self.name_entry = _add_field(3, "اسم الصنف / Item Name:", self.name_var)
@@ -956,6 +1093,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             width=200,
         )
         self.stock_menu.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=3)
+        self._yield_ui()
 
         # Inline validation feedback
         self.inline_validation_lbl = ctk.CTkLabel(
@@ -977,6 +1115,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             justify="left",
         )
         self.explanation_lbl.grid(row=8, column=0, columnspan=2, sticky="w", padx=10, pady=(2, 2))
+        self._yield_ui()
 
         self.row_crop_lbl = ctk.CTkLabel(
             self.editor_frame,
@@ -986,16 +1125,25 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         )
         self.row_crop_lbl.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 6))
         self._current_crop_ctk_image: Optional[ctk.CTkImage] = None
+        if isinstance(self, tk.Misc):
+            try:
+                rscale = max(1.0, float(self.row_crop_lbl._get_widget_scaling()))
+            except Exception:
+                rscale = 1.0
+            blank_row = Image.new("RGB", (max(1, round(460 * rscale)), max(1, round(110 * rscale))), (240, 240, 240))
+            self._fast_set_label_pil_image(self.row_crop_lbl, blank_row)
+        self._yield_ui()
 
         self.read_box_btn = ctk.CTkButton(
             self.editor_frame,
-            text="🔍 قراءة المستطيل / Read Highlighted Box with OCR",
+            text="قراءة المستطيل / Read Highlighted Box with OCR",
             font=get_font(10, "bold"),
             fg_color=COLOR_CATALOG_BADGE,
             hover_color="#0369A1",
             command=self._on_read_highlighted_box_ocr,
         )
         self.read_box_btn.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 6))
+        self._yield_ui()
 
         self.box_suggestions_lbl = ctk.CTkLabel(self.editor_frame, text="", wraplength=460, justify="left")
         self.box_suggestions_lbl.grid(row=11, column=0, columnspan=2, sticky="w", padx=10)
@@ -1004,6 +1152,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             command=self._use_box_suggestions, state="disabled",
         )
         self.use_box_suggestions_btn.grid(row=12, column=0, columnspan=2, sticky="ew", padx=10, pady=3)
+        self._yield_ui()
 
         # Action Buttons
         btn_grid = ctk.CTkFrame(right_frame, fg_color="transparent")
@@ -1012,58 +1161,64 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         self.apply_btn = ctk.CTkButton(
             btn_grid,
-            text="✓ حفظ التصحيح / Save Correction",
+            text="حفظ التصحيح / Save Correction",
             font=get_font(11, "bold"),
             fg_color=COLOR_ORDER_BADGE,
             hover_color="#047857",
             command=self._on_apply_correction,
         )
         self.apply_btn.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
+        self._yield_ui()
 
         self.exclude_btn = ctk.CTkButton(
             btn_grid,
-            text="🚫 استبعاد / Exclude",
+            text="استبعاد / Exclude",
             font=get_font(11),
             fg_color=COLOR_DANGER,
             command=self._on_exclude_row,
         )
         self.exclude_btn.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
+        self._yield_ui()
 
         self.revert_row_btn = ctk.CTkButton(
             btn_grid,
-            text="↩️ تراجع عن الصف / Revert",
+            text="تراجع عن الصف / Revert",
             font=get_font(11),
             fg_color=("gray65", "gray35"),
             command=self._on_revert_row,
         )
         self.revert_row_btn.grid(row=0, column=2, padx=3, pady=3, sticky="ew")
+        self._yield_ui()
 
         self.mapping_btn = ctk.CTkButton(
             btn_grid,
-            text="🗺️ خريطة الأعمدة / Mapping",
+            text="خريطة الأعمدة / Mapping",
             font=get_font(11),
             fg_color=COLOR_ACCENT,
             command=self._on_preview_column_mapping,
         )
         self.mapping_btn.grid(row=0, column=3, padx=3, pady=3, sticky="ew")
+        self._yield_ui()
 
         self.reset_btn = ctk.CTkButton(
             btn_grid,
-            text="🔄 استعادة الأصلي / Reset",
+            text="استعادة الأصلي / Reset",
             font=get_font(11),
             fg_color=("gray70", "gray30"),
             command=self._on_reset_corrections,
         )
         self.reset_btn.grid(row=0, column=4, padx=3, pady=3, sticky="ew")
+        self._yield_ui()
 
         self.leave_btn = ctk.CTkButton(
             btn_grid,
-            text="⏩ تركه بدون حل / Skip",
+            text="تركه بدون حل / Skip",
             font=get_font(11),
             fg_color=("gray60", "gray40"),
             command=self._on_leave_unresolved,
         )
         self.leave_btn.grid(row=0, column=5, padx=3, pady=3, sticky="ew")
+        self._yield_ui()
 
         # Recovery & Alternative Source Bar
         alt_bar = ctk.CTkFrame(right_frame, fg_color="transparent")
@@ -1079,10 +1234,11 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             command=self._on_auto_retry_alternative,
         )
         self.auto_retry_btn.grid(row=0, column=0, padx=3, sticky="ew")
+        self._yield_ui()
 
         self.replace_source_btn = ctk.CTkButton(
             alt_bar,
-            text="📄 استبدال بمصدر أوضح\nReplace with Clearer Source",
+            text="استبدال بمصدر أوضح\nReplace with Clearer Source",
             font=get_font(10, "bold"),
             fg_color=("gray75", "gray35"),
             hover_color=("gray65", "gray45"),
@@ -1090,6 +1246,7 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             command=self._on_replace_with_clearer_source,
         )
         self.replace_source_btn.grid(row=0, column=1, padx=3, sticky="ew")
+        self._yield_ui()
 
         # Bottom Close Button
         done_bar = ctk.CTkFrame(right_frame, fg_color="transparent")
@@ -1098,31 +1255,34 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         done_btn = ctk.CTkButton(
             done_bar,
-            text="🏁 إنهاء وإغلاق / Done & Close",
+            text="إنهاء وإغلاق / Done & Close",
             font=get_font(12, "bold"),
             fg_color=COLOR_CATALOG_BADGE,
             height=32,
             command=self._on_done,
         )
         done_btn.grid(row=0, column=0, sticky="ew")
+        self._yield_ui()
 
     def _refresh_issue_list(self):
         self.issue_tree.delete(*self.issue_tree.get_children())
         issues = self.catalog_result.review_issues
-        for iss in issues:
+        for idx, iss in enumerate(issues):
             sid = iss.source_id
             page = iss.identity.page if iss.identity else 1
             tbl = iss.identity.table if iss.identity else 0
             row = iss.identity.row if (iss.identity and iss.identity.row is not None) else "منطقة"
-            status = "محلول ✓" if iss.resolved else "غير محلول ⚠️"
+            status = "محلول" if iss.resolved else "غير محلول !"
             if iss.provenance == "automatic_recovery":
-                status = "مسترد تلقائياً ✓"
+                status = "مسترد تلقائياً"
             elif iss.provenance == "manual_correction":
-                status = "مصحح يدوياً ✓"
+                status = "مصحح يدوياً"
             elif iss.provenance == "manual_exclusion":
-                status = "مستبعد يدوياً 🚫"
+                status = "مستبعد يدوياً"
             reason = iss.rejection_reason or ""
             self.issue_tree.insert("", "end", iid=sid, values=(sid, page, tbl, row, status, reason))
+            if idx % 8 == 7:
+                self._yield_ui()
 
     def _update_summary_label(self):
         issues = self.catalog_result.review_issues
@@ -1130,8 +1290,9 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         man_corr = sum(1 for i in issues if i.resolved and i.provenance == "manual_correction")
         unres = sum(1 for i in issues if not i.resolved)
         accepted = len(self.catalog_result.dataframe)
-        self.outcome_summary_lbl.configure(
-            text=f"📊 إجمالي المعتمد: {accepted} صنف | استرداد تلقائي: {auto_rec} | تصحيح يدوي: {man_corr} | غير محلول: {unres}"
+        self._fast_set_label_text(
+            self.outcome_summary_lbl,
+            f"إجمالي المعتمد: {accepted} صنف | استرداد تلقائي: {auto_rec} | تصحيح يدوي: {man_corr} | غير محلول: {unres}",
         )
 
     def _select_first_unresolved_or_render(self):
@@ -1158,6 +1319,8 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         if not sel:
             return
         sid = sel[0]
+        if sid == self.selected_source_id:
+            return
         issue = self.catalog_result.issues_by_source_id.get(sid)
         if not issue:
             for iss in self.catalog_result.review_issues:
@@ -1188,10 +1351,10 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         elif "missing_name" in reason_txt:
             reason_desc = "اسم الدواء مفقود أو غير محدد"
 
-        self.raw_cells_lbl.configure(text=f"الخلايا المستخرجة / Raw cells: [{raw_str}] | التشخيص: {reason_desc}")
-        if hasattr(self, "explanation_lbl"):
-            plain = getattr(issue, "plain_explanation", None) or reason_desc
-            self.explanation_lbl.configure(text=f"💡 التشخيص: {plain} (التعديل اليدوي اختياري — الصف مستبعد تلقائياً)")
+        CatalogReviewWindow._fast_set_label_text(
+            self.raw_cells_lbl,
+            f"الخلايا المستخرجة / Raw cells: [{raw_str}] | التشخيص: {reason_desc}",
+        )
 
         crop_bbox = issue.bbox or (issue.identity.bbox if issue.identity else None)
 
@@ -1214,19 +1377,23 @@ class CatalogReviewWindow(ctk.CTkToplevel):
                     name_val = s
                     break
 
-        self.name_var.set(name_val)
-        self.price_var.set(price_val)
-        self.disc_var.set(disc_val)
-        self.stock_var.set("متوفر (Available)" if stock_bool else "غير متوفر (Out of stock)")
-        self._custom_drag_bbox = None
+        if hasattr(self, "explanation_lbl"):
+            plain = getattr(issue, "plain_explanation", None) or reason_desc
+            expl_text = f"التشخيص: {plain} (التعديل اليدوي اختياري — الصف مستبعد تلقائياً)"
+            if (not name_val or not price_val) and (crop_bbox is not None) and "PowerToys OCR" not in expl_text:
+                expl_text = f"{expl_text}\nتلميح: حدد المستطيل ثم اضغط قراءة المستطيل."
+            CatalogReviewWindow._fast_set_label_text(self.explanation_lbl, expl_text, text_color=COLOR_WARN_BADGE)
 
-        if (not name_val or not price_val) and (crop_bbox is not None):
-            if hasattr(self, "explanation_lbl"):
-                curr_txt = self.explanation_lbl.cget("text")
-                if "PowerToys OCR" not in curr_txt:
-                    self.explanation_lbl.configure(
-                        text=f"{curr_txt}\n💡 تلميح: حدد المستطيل ثم اضغط قراءة المستطيل."
-                    )
+        self._loading_issue = True
+        try:
+            self.name_var.set(name_val)
+            self.price_var.set(price_val)
+            self.disc_var.set(disc_val)
+            self.stock_var.set("متوفر (Available)" if stock_bool else "غير متوفر (Out of stock)")
+        finally:
+            self._loading_issue = False
+        self._custom_drag_bbox = None
+        self._invalidate_box_ocr()
 
         self._render_pdf_page()
         self._run_inline_validation()
@@ -1255,21 +1422,19 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         valid, err = validate_catalog_item(candidate)
         if valid:
-            self.inline_validation_lbl.configure(
-                text="✓ البيانات صالحة للاعتماد / Valid candidate item",
-                text_color=COLOR_SUCCESS,
-            )
+            target_state = ("البيانات صالحة للاعتماد / Valid candidate item", COLOR_SUCCESS)
         else:
-            self.inline_validation_lbl.configure(
-                text=f"✕ خطأ في التحقق: {err} / Validation error",
-                text_color=COLOR_DANGER,
-            )
+            target_state = (f"خطأ في التحقق: {err} / Validation error", COLOR_DANGER)
+        if getattr(self, "_last_val_state", None) != target_state:
+            self._last_val_state = target_state
+            CatalogReviewWindow._fast_set_label_text(self.inline_validation_lbl, target_state[0], text_color=target_state[1])
         return valid, err, candidate
 
     def _render_pdf_page(self):
-        self.page_info_lbl.configure(
-            text=f"صفحة {self.current_page} من {self.total_pages} / Page {self.current_page} of {self.total_pages}"
-        )
+        info_txt = f"صفحة {self.current_page} من {self.total_pages} / Page {self.current_page} of {self.total_pages}"
+        if getattr(self, "_last_page_info_text", None) != info_txt:
+            self._last_page_info_text = info_txt
+            CatalogReviewWindow._fast_set_label_text(self.page_info_lbl, info_txt)
 
         bbox_to_highlight = getattr(self, "_custom_drag_bbox", None)
         if not bbox_to_highlight and self.selected_issue and self.selected_issue.identity:
@@ -1290,28 +1455,69 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             return
         previous_page, previous_row = self._preview_request or (None, None)
         if row_request != previous_row:
-            self.row_crop_lbl.configure(image="")
+            if not (isinstance(self, tk.Misc) and getattr(self.row_crop_lbl, "_fast_photo", None) is not None):
+                self.row_crop_lbl.configure(image="")
             self._displayed_row_preview = None
         if page_request != previous_page:
-            if previous_page and page_request[:2] != previous_page[:2]:
-                self.page_image_lbl.configure(image="")
-                self._current_ctk_image = None
+            if not isinstance(self, tk.Misc) or getattr(self.page_image_lbl, "_fast_photo", None) is None:
+                if previous_page and page_request[:2] != previous_page[:2]:
+                    self.page_image_lbl.configure(image="")
+                    self._current_ctk_image = None
+                if self._current_ctk_image is None:
+                    self.page_image_lbl.configure(text="جاري تحميل المعاينة / Loading preview...")
             self._current_rendered_dims = None
             self._preview_drag = None
-            if self._current_ctk_image is None:
-                self.page_image_lbl.configure(text="جاري تحميل المعاينة / Loading preview…")
         self._preview_request = request
-        if not self._preview_running:
+        if not getattr(self, "_preview_running", False):
             self._launch_pdf_preview(request)
 
     def _launch_pdf_preview(self, request):
         self._preview_running = True
         results = self._preview_results
         (path, page, bbox), row_request = request
-        if row_request == self._displayed_row_preview:
+        if row_request == getattr(self, "_displayed_row_preview", None):
             row_request = None
 
+        use_worker = (
+            isinstance(self, tk.Misc)
+            and render_pdf_page_with_highlight is _DEFAULT_RENDER_PAGE_FN
+            and render_pdf_row_crop is _DEFAULT_RENDER_ROW_FN
+        )
+        page_scale = 1.0
+        row_scale = 1.0
+        if use_worker:
+            try:
+                page_scale = float(self.page_image_lbl._get_widget_scaling())
+            except Exception:
+                page_scale = 1.0
+            try:
+                row_scale = float(self.row_crop_lbl._get_widget_scaling())
+            except Exception:
+                row_scale = 1.0
+
         def render():
+            if use_worker:
+                try:
+                    from src.box_ocr_service import get_review_process_worker
+
+                    status, payload = get_review_process_worker().call(
+                        ("preview", (path, page, bbox), row_request, COLOR_DANGER, page_scale, row_scale)
+                    )
+                    if status != "ok":
+                        raise RuntimeError(str(payload))
+                    psize, pbytes, info, disp_size, rsize, rbytes = payload
+                    img = Image.frombytes("RGB", psize, pbytes) if psize and pbytes else None
+                    if img is not None:
+                        img.info.update(info)
+                        img.info["_logical_size"] = disp_size
+                    row_img = Image.frombytes("RGB", rsize, rbytes) if rsize and rbytes else None
+                except Exception:
+                    logger.exception("Could not prepare Review preview for page %s", page)
+                    img = None
+                    row_img = None
+                results.put_nowait((request, img, row_request, row_img))
+                return
+
             img = None
             try:
                 img = render_pdf_page_with_highlight(path, page, bbox, highlight_color=COLOR_DANGER)
@@ -1327,7 +1533,8 @@ class CatalogReviewWindow(ctk.CTkToplevel):
                 row_img = render_pdf_row_crop(row_path, row_page, row_bbox, max_size=(460, 110))
             results.put_nowait((request, img, row_request, row_img))
 
-        threading.Thread(target=render, name="ReviewPDFPreview", daemon=True).start()
+        self._preview_thread = threading.Thread(target=render, name="ReviewPDFPreview", daemon=True)
+        self._preview_thread.start()
         self._preview_poll_id = self.after(15, self._poll_pdf_preview)
 
     def _poll_pdf_preview(self):
@@ -1338,33 +1545,76 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             self._preview_poll_id = self.after(15, self._poll_pdf_preview)
             return
         self._preview_running = False
+
+        if not isinstance(self, tk.Misc):
+            if row_request and row_request == self._preview_request[1]:
+                self._displayed_row_preview = row_request
+                if row_img is not None:
+                    crop = ctk.CTkImage(light_image=row_img, dark_image=row_img, size=row_img.size)
+                    self.row_crop_lbl.configure(image=crop, text="")
+            if request != self._preview_request:
+                self._launch_pdf_preview(self._preview_request)
+                return
+            if img is not None:
+                disp_w, disp_h = img.size
+                ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(disp_w, disp_h))
+                self._current_ctk_image = ctk_img
+                self._current_rendered_dims = (disp_w, disp_h, img.info["pdf_page_rect"], img.info["pdf_inverse_rotation"])
+                self.page_image_lbl.configure(image=ctk_img, text="")
+            else:
+                self.page_image_lbl.configure(image="")
+                self._current_ctk_image = None
+                self._current_rendered_dims = None
+                self.page_image_lbl.configure(
+                    text="لا تتوفر معاينة بصرية لهذا المستند (ملف Excel أو تعذر العرض)\nVisual preview not available.",
+                )
+            return
+
         if row_request and row_request == self._preview_request[1]:
             self._displayed_row_preview = row_request
             if row_img is not None:
-                crop = ctk.CTkImage(light_image=row_img, dark_image=row_img, size=row_img.size)
-                self.row_crop_lbl.configure(image=crop, text="")
+                self._fast_set_label_pil_image(self.row_crop_lbl, row_img)
         if request != self._preview_request:
             self._launch_pdf_preview(self._preview_request)
             return
 
+        self._preview_page_publish_pending = True
+        self.after(12, lambda req=request, im=img: self._publish_preview_page(req, im))
+
+    def _publish_preview_page(self, request, img):
+        self._preview_page_publish_pending = False
+        if request != self._preview_request:
+            return
         if img is not None:
-            disp_w, disp_h = img.size
-            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(disp_w, disp_h))
-            self._current_ctk_image = ctk_img
+            disp_w, disp_h = img.info.get("_logical_size", img.size)
+            self._current_ctk_image = None
             self._current_rendered_dims = (disp_w, disp_h, img.info["pdf_page_rect"], img.info["pdf_inverse_rotation"])
-            self.page_image_lbl.configure(image=ctk_img, text="")
+            self._fast_set_label_pil_image(self.page_image_lbl, img)
         else:
-            self.page_image_lbl.configure(image="")
             self._current_ctk_image = None
             self._current_rendered_dims = None
-            self.page_image_lbl.configure(
-                text="📄 لا تتوفر معاينة بصرية لهذا المستند (ملف Excel أو تعذر العرض)\nVisual preview not available.",
+            self._fast_set_label_pil_image(
+                self.page_image_lbl,
+                None,
+                empty_text="لا تتوفر معاينة بصرية لهذا المستند (ملف Excel أو تعذر العرض)\nVisual preview not available.",
             )
 
     def destroy(self):
-        if self._preview_poll_id is not None:
-            self.after_cancel(self._preview_poll_id)
+        if getattr(self, "_preview_poll_id", None) is not None:
+            try:
+                self.after_cancel(self._preview_poll_id)
+            except Exception:
+                pass
             self._preview_poll_id = None
+        if getattr(self, "_box_poll_id", None) is not None:
+            try:
+                self.after_cancel(self._box_poll_id)
+            except Exception:
+                pass
+            self._box_poll_id = None
+        owner = getattr(self, "_pooled_owner", None) or getattr(self, "master", None)
+        if owner is not None and getattr(owner, "_pooled_review_window", None) is self:
+            owner._pooled_review_window = None
         super().destroy()
 
     def _on_prev_page(self):
@@ -1518,7 +1768,10 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             except Exception as e:
                 logger.debug(f"on_done_callback error: {e}")
 
-        self.destroy()
+        if getattr(self, "_pooled_owner", None) is not None:
+            self.close_for_reopen()
+        else:
+            self.destroy()
 
     def _on_auto_retry_alternative(self):
         self._on_read_highlighted_box_ocr()
@@ -1572,8 +1825,9 @@ class CatalogReviewWindow(ctk.CTkToplevel):
 
         if not crop_bbox:
             if hasattr(self, "explanation_lbl"):
-                self.explanation_lbl.configure(
-                    text="⚠️ يرجى تحديد صف من القائمة أو سحب مربع بالماوس على المعاينة أولاً",
+                CatalogReviewWindow._fast_set_label_text(
+                    self.explanation_lbl,
+                    "! يرجى تحديد صف من القائمة أو سحب مربع بالماوس على المعاينة أولاً",
                     text_color=COLOR_WARN_BADGE,
                 )
             return
@@ -1585,10 +1839,16 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._box_pending = None
         self._box_suggestion = None
         if hasattr(self, "box_suggestions_lbl"):
-            self.box_suggestions_lbl.configure(text="")
-            self.use_box_suggestions_btn.configure(state="disabled")
+            if getattr(self, "_last_box_sug_text", None) != "":
+                self._last_box_sug_text = ""
+                CatalogReviewWindow._fast_set_label_text(self.box_suggestions_lbl, "")
+            if getattr(self, "_last_use_sug_state", None) != "disabled":
+                self._last_use_sug_state = "disabled"
+                self.use_box_suggestions_btn.configure(state="disabled")
 
     def _on_editor_changed(self):
+        if getattr(self, "_loading_issue", False):
+            return
         self._invalidate_box_ocr()
         self._run_inline_validation()
 
@@ -1611,7 +1871,9 @@ class CatalogReviewWindow(ctk.CTkToplevel):
             roles = {role: (x0, crop_bbox[1], x1, crop_bbox[3])
                      for role, (x0, x1) in issue.column_bounds.items()}
         self._box_pending = (identity, fingerprint, tuple(crop_bbox), roles, associated)
-        self.box_suggestions_lbl.configure(text="جاري قراءة المستطيل / Reading selected box…")
+        wait_txt = "جاري قراءة المستطيل / Reading selected box..."
+        self._last_box_sug_text = wait_txt
+        CatalogReviewWindow._fast_set_label_text(self.box_suggestions_lbl, wait_txt)
         if not self._box_running:
             self._launch_box_ocr()
 
@@ -1620,24 +1882,37 @@ class CatalogReviewWindow(ctk.CTkToplevel):
         self._box_pending = None
         self._box_running = True
         results = self._box_results
+        use_worker = isinstance(self, tk.Misc)
 
         def read_box():
             try:
-                from src.box_ocr_service import run_box_ocr
+                import src.box_ocr_service as bos
 
-                outcome = run_box_ocr(identity[0], identity[2] - 1, bbox, column_roles=roles)
+                if use_worker and bos.run_box_ocr is bos._ORIGINAL_RUN_BOX_OCR:
+                    status, payload = bos.get_review_process_worker().call(
+                        ("ocr", identity[0], identity[2] - 1, bbox, roles, fingerprint, os.environ.get("EPO_FORCE_RAPID_FALLBACK"))
+                    )
+                    if status != "ok":
+                        raise RuntimeError(str(payload))
+                    outcome, fp_ok = payload
+                    fp_out = _PrecheckedFingerprint(fp_ok) if fingerprint is not None else None
+                else:
+                    outcome = bos.run_box_ocr(identity[0], identity[2] - 1, bbox, column_roles=roles)
+                    fp_out = fingerprint
             except Exception as exc:
                 outcome = {"ok": False, "error": str(exc)}
-            results.put_nowait((identity, fingerprint, outcome, associated))
+                fp_out = fingerprint
+            results.put_nowait((identity, fp_out, outcome, associated))
 
         threading.Thread(target=read_box, name="ReviewBoxOCR", daemon=True).start()
-        self.after(25, self._poll_box_ocr)
+        self._box_poll_id = self.after(25, self._poll_box_ocr)
 
     def _poll_box_ocr(self):
+        self._box_poll_id = None
         try:
             identity, fingerprint, outcome, associated = self._box_results.get_nowait()
         except queue.Empty:
-            self.after(25, self._poll_box_ocr)
+            self._box_poll_id = self.after(25, self._poll_box_ocr)
             return
         self._box_running = False
         if identity == self._box_editor_context() and fingerprint and fingerprint.is_current(self.catalog_path):
@@ -1649,12 +1924,16 @@ class CatalogReviewWindow(ctk.CTkToplevel):
                     "Discount %": result.discount_percent,
                 }
                 fields = ", ".join(f"{key}: {value}" for key, value in suggestion.items() if value is not None)
-                self.box_suggestions_lbl.configure(text=" | ".join(filter(None, (outcome["backend"], fields, *result.notes))))
+                sug_txt = " | ".join(filter(None, (outcome["backend"], fields, *result.notes)))
+                self._last_box_sug_text = sug_txt
+                CatalogReviewWindow._fast_set_label_text(self.box_suggestions_lbl, sug_txt)
                 if fields and associated:
                     self._box_suggestion = (identity, result)
+                    self._last_use_sug_state = "normal"
                     self.use_box_suggestions_btn.configure(state="normal")
             else:
-                self.box_suggestions_lbl.configure(text=outcome["error"])
+                self._last_box_sug_text = outcome["error"]
+                CatalogReviewWindow._fast_set_label_text(self.box_suggestions_lbl, outcome["error"])
         if self._box_pending is not None:
             self._launch_box_ocr()
 
@@ -1778,6 +2057,8 @@ class ConsolidatedImportSummaryDialog(ctk.CTkToplevel):
         on_action: Optional[Callable[[str, Optional[str]], None]] = None,
     ):
         super().__init__(parent)
+        # Prevent CustomTkinter's delayed 200ms synchronous .ico load from stalling early Review interaction.
+        self._iconbitmap_method_called = True
         self.catalogs_summary = list(catalogs_summary)
         self.on_action = on_action
         self.selected_action = "cancel"
@@ -2718,7 +2999,9 @@ class PharmaProcurementApp(ctk.CTk):
             self._render_file_list()
             self._update_ui_state()
 
-        review_win = CatalogReviewWindow(self, norm_path, on_done_callback=_on_review_done, service=service)
+        review_win = CatalogReviewWindow.open_or_reuse(
+            self, norm_path, on_done_callback=_on_review_done, service=service
+        )
         return review_win
 
     def _open_manual_search_window(self) -> ManualSearchWindow:
@@ -2885,8 +3168,17 @@ class PharmaProcurementApp(ctk.CTk):
 
     def _format_catalog_badge(self, f_item: FileItem) -> Tuple[str, object]:
         """Formats the catalog badge text and color based on the 5 explicit R2 lifecycle states."""
-        state = f_item.determine_lifecycle_state()
         count = f_item.item_count if f_item.item_count is not None else 0
+        if (
+            not f_item.diagnostic_status
+            and f_item.catalog_result is None
+            and not f_item.ocr_running
+            and f_item.item_count is not None
+            and f_item.item_count > 0
+        ):
+            return f"📦 {count} صنف / items", COLOR_CATALOG_BADGE
+
+        state = f_item.determine_lifecycle_state()
 
         if state == CatalogLifecycleState.READING:
             return "⏳ قيد القراءة... / Reading...", ("gray50", "gray60")
@@ -3099,6 +3391,11 @@ class PharmaProcurementApp(ctk.CTk):
             return
         paths = self.file_model.get_catalog_files()
         if any(path in self._catalogs_inspecting for path in paths):
+            return
+        is_valid, _ = self.file_model.validate(self.output_dir_var.get())
+        if not is_valid or any(not os.path.isfile(item.path) for item in self.file_model.files):
+            self._waiting_for_inspection = False
+            self._update_ui_state()
             return
         missing = [item.path for item in self.file_model.files
                    if item.category == "Catalog" and item.catalog_result is None]
@@ -3749,8 +4046,8 @@ class PharmaProcurementApp(ctk.CTk):
         avg_discounts_file = avg_discounts_files[0] if avg_discounts_files else None
         output_dir = self.output_dir_var.get()
 
-        if hasattr(self, "_inspection_requests"):
-            if self._waiting_for_inspection or (self.bridge is not None and self.bridge.is_running):
+        if isinstance(getattr(self, "_inspection_requests", None), dict):
+            if self._waiting_for_inspection is True or (self.bridge is not None and getattr(self.bridge, "is_running", False) is True):
                 return
             pending = []
             for item in self.file_model.files:
@@ -3961,6 +4258,7 @@ class PharmaProcurementApp(ctk.CTk):
 
     def _on_pipeline_completed(self, results: dict):
         """Handles successful pipeline completion, updating KPI cards and action buttons."""
+        self._waiting_for_inspection = False
         self.progress_bar.set(1.0)
         self.status_label.configure(
             text="✓ اكتملت العملية بنجاح! تم إنشاء تقرير المشتريات المجمع / Completed successfully!"
@@ -4062,6 +4360,7 @@ class PharmaProcurementApp(ctk.CTk):
 
     def _on_pipeline_failed(self, error_msg: str, traceback_str: str):
         """Handles pipeline failure, displaying localized error dialog."""
+        self._waiting_for_inspection = False
         self.progress_bar.set(0.0)
         self.status_label.configure(
             text=f"✕ فشلت العملية: {error_msg} / Optimization failed"
@@ -4207,7 +4506,7 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
         from src.controller import inspect_catalog, global_catalog_cache
 
         # Real controller inspection & PDFCatalogParser extraction
-        res_real = inspect_catalog(hayah_path, refresh=True)
+        res_real = inspect_catalog(hayah_path, refresh=(existing_app is None))
         df_real = res_real.dataframe
         assert len(df_real) == 571, f"Self-test expected 571 items from Hayah fixture, got {len(df_real)}"
         assert res_real.diagnostics.status == "complete", f"Self-test expected 'complete' status, got {res_real.diagnostics.status}"
@@ -4229,6 +4528,7 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
         import shutil
         import tempfile
         import pandas as pd
+        from src.box_ocr_service import shutdown_review_workers
         from src.catalog_service import CatalogCorrectionService
         from src.catalog_corrections import set_corrections_dir
         from src.catalog_diagnostics import CatalogResult, FileFingerprint, ImportDiagnostics
@@ -4241,15 +4541,28 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
         with tempfile.TemporaryDirectory() as tmpdir:
             corr_dir = os.path.join(tmpdir, "corrections")
             set_corrections_dir(corr_dir)
+            rev_win = None
+
+            def _cleanup_review_workers():
+                t = getattr(rev_win, "_preview_thread", None) if rev_win is not None else None
+                if t is not None and t.is_alive():
+                    t.join(timeout=5.0)
+                shutdown_review_workers()
+
             try:
                 tmp_pdf = os.path.join(tmpdir, "hayah_selftest.pdf")
                 shutil.copyfile(hayah_path, tmp_pdf)
+                old_attrs = dict(res_real.dataframe.attrs)
+                res_real.dataframe.attrs.clear()
+                try:
+                    base_df_copy = res_real.dataframe.copy(deep=True)
+                finally:
+                    res_real.dataframe.attrs.update(old_attrs)
                 tmp_base_res = CatalogResult(
-                    dataframe=res_real.dataframe.copy(deep=True),
+                    dataframe=base_df_copy,
                     diagnostics=res_real.diagnostics,
                     fingerprint=FileFingerprint.from_path(tmp_pdf),
                 )
-                global_catalog_cache.set(os.path.normpath(os.path.abspath(tmp_pdf)), tmp_base_res.to_dataframe())
 
                 # Session 1: Apply correction and row exclusion
                 svc1 = CatalogCorrectionService(tmp_pdf)
@@ -4274,14 +4587,14 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
                 assert "صنف اختبار الحزمة 500 مجم" in res_reloaded.dataframe["item_name"].values, "Persisted field edit not restored"
 
                 # Exercise CatalogReviewWindow UI initialization with crop & explanation controls
-                global_catalog_cache.set(os.path.normpath(os.path.abspath(tmp_pdf)), tmp_base_res.to_dataframe())
-                rev_win = CatalogReviewWindow(app, tmp_pdf)
+                rev_win = CatalogReviewWindow(app, tmp_pdf, service=svc2)
                 assert hasattr(rev_win, "auto_retry_btn"), "CatalogReviewWindow missing auto_retry_btn"
                 assert hasattr(rev_win, "replace_source_btn"), "CatalogReviewWindow missing replace_source_btn"
                 assert hasattr(rev_win, "explanation_lbl"), "CatalogReviewWindow missing explanation_lbl"
                 rev_win.withdraw()
                 rev_win.update_idletasks()
                 rev_win.destroy()
+                _cleanup_review_workers()
 
                 # Exercise ConsolidatedImportSummaryDialog UI initialization with R2 action buttons
                 test_summary = [{
@@ -4335,6 +4648,9 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
 
                 # Verify fallback font tables when system fonts are unavailable
                 orig_windir = os.environ.get("WINDIR")
+                saved_loaded = pfd._REF_TABLES_LOADED
+                saved_hash = dict(pfd._REF_HASH_TO_UNI)
+                saved_gid = dict(pfd._REF_GID_TO_UNI)
                 try:
                     os.environ["WINDIR"] = os.path.join(tmpdir, "no_windows_fonts")
                     pfd._REF_TABLES_LOADED = False
@@ -4346,9 +4662,11 @@ def run_headless_self_test(existing_app: Optional[PharmaProcurementApp] = None) 
                 finally:
                     if orig_windir is not None:
                         os.environ["WINDIR"] = orig_windir
-                    pfd._REF_TABLES_LOADED = False
-                    pfd._ensure_reference_font_tables()
+                    pfd._REF_TABLES_LOADED = saved_loaded
+                    pfd._REF_HASH_TO_UNI = saved_hash
+                    pfd._REF_GID_TO_UNI = saved_gid
             finally:
+                _cleanup_review_workers()
                 set_corrections_dir(None)
         print("[SELF-TEST] Verified crops, corrections, exclusion, revert, restart persistence, procurement blocking, and fallback fonts.")
     else:
@@ -4398,6 +4716,445 @@ def main():
                 sys.stdout.flush()
             os._exit(0)
 
+    if "--bench-review" in sys.argv:
+        idx = sys.argv.index("--bench-review")
+        if idx + 2 < len(sys.argv):
+            pdf_path = sys.argv[idx + 1]
+            out_json = sys.argv[idx + 2]
+            import json
+            import tempfile
+            import time
+            import customtkinter as ctk
+            import pandas as pd
+            from src.box_ocr_service import shutdown_review_workers
+            from src.catalog_diagnostics import (
+                CatalogResult,
+                FileFingerprint,
+                ImportDiagnostics,
+                ReviewIssue,
+                SourceIdentity,
+            )
+            from src.catalog_service import CatalogCorrectionService, STANDARD_COLUMNS
+
+            with tempfile.TemporaryDirectory(prefix="bench_review_") as tmp_dir:
+                src_doc = pymupdf.open(pdf_path)
+                if len(src_doc) < 2:
+                    dup_doc = pymupdf.open(pdf_path)
+                    try:
+                        src_doc.insert_pdf(dup_doc, from_page=0, to_page=0)
+                    finally:
+                        dup_doc.close()
+                bench_pdf = os.path.join(tmp_dir, os.path.basename(pdf_path))
+                src_doc.save(bench_pdf)
+                src_doc.close()
+
+                iss1 = ReviewIssue(
+                    source_id="p1_t0_g0_r1",
+                    identity=SourceIdentity(
+                        page=1,
+                        table=0,
+                        group=0,
+                        row=1,
+                        bbox=[138.0, 73.0, 462.0, 94.0],
+                        source_id="p1_t0_g0_r1",
+                    ),
+                    raw_cells=["", ""],
+                    rejection_reason="missing_name_and_price",
+                    resolved=False,
+                    bbox=[138.0, 73.0, 462.0, 94.0],
+                    column_bounds={"name": (200.0, 460.0), "price": (140.0, 200.0)},
+                    validation_results={"verified_column_roles": True},
+                )
+                iss2 = ReviewIssue(
+                    source_id="p2_t0_g0_r2",
+                    identity=SourceIdentity(
+                        page=2,
+                        table=0,
+                        group=0,
+                        row=2,
+                        bbox=[140.0, 96.0, 460.0, 116.0],
+                        source_id="p2_t0_g0_r2",
+                    ),
+                    raw_cells=["", ""],
+                    rejection_reason="missing_name_and_price",
+                    resolved=False,
+                    bbox=[140.0, 96.0, 460.0, 116.0],
+                    column_bounds={"name": (200.0, 460.0), "price": (140.0, 200.0)},
+                    validation_results={"verified_column_roles": True},
+                )
+                svc = CatalogCorrectionService(bench_pdf)
+                svc._base_catalog_result = CatalogResult(
+                    dataframe=pd.DataFrame(columns=STANDARD_COLUMNS),
+                    diagnostics=ImportDiagnostics(),
+                    fingerprint=FileFingerprint.from_path(bench_pdf),
+                    review_issues=[iss1, iss2],
+                    issues_by_source_id={iss1.source_id: iss1, iss2.source_id: iss2},
+                )
+                svc._catalog_result = None
+
+                parent = ctk.CTk()
+                parent.geometry("400x250")
+                parent.update()
+
+                active_phase = ["before_open"]
+                phase_gaps = {"before_open": []}
+                phases_out = {}
+                slow_callbacks = []
+                work = []
+                review_ref = [None]
+                pulse_id = [None]
+                bench_t0 = time.perf_counter()
+                last = [bench_t0]
+
+                yield_total = [0.0]
+                orig_yield = CatalogReviewWindow._yield_ui
+
+                def _timed_yield(self_win, *args, **kwargs):
+                    yt0 = time.perf_counter()
+                    try:
+                        return orig_yield(self_win, *args, **kwargs)
+                    finally:
+                        yield_total[0] += time.perf_counter() - yt0
+
+                CatalogReviewWindow._yield_ui = _timed_yield
+
+                hook_names = [
+                    "_build_left_pane",
+                    "_build_right_pane",
+                    "_refresh_issue_list",
+                    "_load_issue_into_editor",
+                    "_poll_pdf_preview",
+                    "_publish_preview_page",
+                    "_poll_box_ocr",
+                    "_on_issue_selected",
+                    "_on_next_page",
+                    "_on_prev_page",
+                    "_ocr_custom_preview_box",
+                ]
+                orig_methods = {}
+
+                def _make_wrapper(cb_name, orig_fn):
+                    def _wrapped(*args, **kwargs):
+                        t0 = time.perf_counter()
+                        y0 = yield_total[0]
+                        try:
+                            return orig_fn(*args, **kwargs)
+                        finally:
+                            dt = time.perf_counter() - t0
+                            elapsed_ms = dt * 1000.0
+                            blocking_ms = max(0.0, (dt - (yield_total[0] - y0)) * 1000.0)
+                            if elapsed_ms > 10.0 or blocking_ms > 10.0:
+                                slow_callbacks.append({
+                                    "callback": cb_name,
+                                    "phase": active_phase[0],
+                                    "t_s": round(t0 - bench_t0, 6),
+                                    "elapsed_ms": round(elapsed_ms, 3),
+                                    "blocking_ms": round(blocking_ms, 3),
+                                })
+
+                    return _wrapped
+
+                for cb_name in hook_names:
+                    orig_fn = getattr(CatalogReviewWindow, cb_name)
+                    orig_methods[cb_name] = orig_fn
+                    setattr(CatalogReviewWindow, cb_name, _make_wrapper(cb_name, orig_fn))
+
+                def _pulse():
+                    now = time.perf_counter()
+                    dt = now - last[0]
+                    last[0] = now
+                    phase_gaps.setdefault(active_phase[0], []).append(dt)
+                    if work and "gaps" in work[-1]:
+                        work[-1]["gaps"].append(dt)
+                    pulse_id[0] = parent.after(10, _pulse)
+
+                def _summarize_gaps(gaps):
+                    return {
+                        "samples": len(gaps),
+                        "maximum_heartbeat_s": round(max(gaps, default=0.0), 6),
+                        "gaps_over_50ms": sum(1 for g in gaps if g > 0.050),
+                        "gaps_over_100ms": sum(1 for g in gaps if g > 0.100),
+                    }
+
+                def _begin_phase(name):
+                    active_phase[0] = name
+                    phase_gaps.setdefault(name, [])
+                    return time.perf_counter()
+
+                def _finish_phase(name, started_t, **extra):
+                    info = {"elapsed_s": round(time.perf_counter() - started_t, 6)}
+                    info.update(_summarize_gaps(phase_gaps.get(name, [])))
+                    info.update(extra)
+                    phases_out[name] = info
+
+                def _preview_idle(win):
+                    return (
+                        win is not None
+                        and not win._preview_running
+                        and not getattr(win, "_preview_page_publish_pending", False)
+                    )
+
+                def _wait_until(cond_fn, on_ready, timeout_s=25.0, started=None):
+                    t_wait0 = time.perf_counter() if started is None else started
+                    if cond_fn() or (time.perf_counter() - t_wait0) >= timeout_s:
+                        on_ready()
+                        return
+                    parent.after(15, lambda: _wait_until(cond_fn, on_ready, timeout_s=timeout_s, started=t_wait0))
+
+                def _select_issue(win, sid):
+                    win.issue_tree.selection_set(sid)
+                    win.issue_tree.see(sid)
+                    win._on_issue_selected()
+
+                def _map_pdf_box_to_widget(win, pdf_bbox):
+                    disp_w, disp_h, page_bounds, inverse = win._current_rendered_dims
+                    display_w = win.page_image_lbl._apply_widget_scaling(disp_w)
+                    display_h = win.page_image_lbl._apply_widget_scaling(disp_h)
+                    display_x = max(0.0, (win.page_image_lbl.winfo_width() - display_w) / 2.0)
+                    display_y = max(0.0, (win.page_image_lbl.winfo_height() - display_h) / 2.0)
+                    rect = pymupdf.Rect(page_bounds)
+                    fwd = ~(pymupdf.Matrix(*inverse))
+                    pt_rect = pymupdf.Rect(pdf_bbox) * fwd
+                    rx0 = display_x + (pt_rect.x0 - rect.x0) * display_w / rect.width
+                    ry0 = display_y + (pt_rect.y0 - rect.y0) * display_h / rect.height
+                    rx1 = display_x + (pt_rect.x1 - rect.x0) * display_w / rect.width
+                    ry1 = display_y + (pt_rect.y1 - rect.y0) * display_h / rect.height
+                    return rx0, ry0, rx1, ry1
+
+                def _phase1_cold_open():
+                    t0 = _begin_phase("1_cold_open")
+                    win = CatalogReviewWindow.open_or_reuse(parent, bench_pdf, service=svc)
+                    review_ref[0] = win
+
+                    def _done():
+                        _finish_phase(
+                            "1_cold_open",
+                            t0,
+                            selected_source_id=win.selected_source_id,
+                            current_page=win.current_page,
+                            preview_dims_present=win._current_rendered_dims is not None,
+                        )
+                        parent.after(20, _phase2_select_issue)
+
+                    _wait_until(lambda: _preview_idle(win), _done)
+
+                def _phase2_select_issue():
+                    win = review_ref[0]
+                    t0 = _begin_phase("2_select_issue")
+                    _select_issue(win, "p2_t0_g0_r2")
+
+                    def _done():
+                        _finish_phase(
+                            "2_select_issue",
+                            t0,
+                            selected_source_id=win.selected_source_id,
+                            current_page=win.current_page,
+                            preview_dims_present=win._current_rendered_dims is not None,
+                        )
+                        parent.after(20, _phase3_change_page)
+
+                    _wait_until(lambda: _preview_idle(win) and win.current_page == 2, _done)
+
+                def _phase3_change_page():
+                    win = review_ref[0]
+                    t0 = _begin_phase("3_change_page")
+                    win._on_prev_page()
+
+                    def _after_prev():
+                        win._on_next_page()
+
+                        def _after_next():
+                            _finish_phase(
+                                "3_change_page",
+                                t0,
+                                current_page=win.current_page,
+                                preview_dims_present=win._current_rendered_dims is not None,
+                            )
+                            parent.after(20, _phase4_drag_and_cold_ocr)
+
+                        _wait_until(lambda: _preview_idle(win) and win.current_page == 2, _after_next)
+
+                    _wait_until(lambda: _preview_idle(win) and win.current_page == 1, _after_prev)
+
+                def _phase4_drag_and_cold_ocr():
+                    win = review_ref[0]
+                    t0 = _begin_phase("4_drag_box_and_cold_ocr")
+                    _select_issue(win, "p1_t0_g0_r1")
+
+                    def _after_issue1():
+                        rx0, ry0, rx1, ry1 = _map_pdf_box_to_widget(win, [140.0, 74.0, 460.0, 93.0])
+                        win._ocr_custom_preview_box(rx0, ry0, rx1, ry1)
+
+                        def _after_drag_preview():
+                            work.append({"trial": "cold", "started": time.perf_counter(), "gaps": []})
+                            win.read_box_btn.invoke()
+
+                            def _after_cold_ocr():
+                                trial = work[-1]
+                                gaps = trial.pop("gaps", [])
+                                sug = win._box_suggestion[1] if win._box_suggestion else None
+                                trial.update(
+                                    elapsed_s=round(time.perf_counter() - trial.pop("started"), 6),
+                                    **_summarize_gaps(gaps),
+                                    status=win.box_suggestions_lbl.cget("text"),
+                                    pending=bool(win._box_running),
+                                    proposed_name=(sug.name if sug else None),
+                                    proposed_price=(sug.price if sug else None),
+                                )
+                                _finish_phase(
+                                    "4_drag_box_and_cold_ocr",
+                                    t0,
+                                    proposed_name=trial["proposed_name"],
+                                    proposed_price=trial["proposed_price"],
+                                    status=trial["status"],
+                                )
+                                parent.after(20, _phase5_ocr_and_switch_pending)
+
+                            _wait_until(lambda: not win._box_running, _after_cold_ocr)
+
+                        _wait_until(lambda: _preview_idle(win), _after_drag_preview)
+
+                    _wait_until(
+                        lambda: _preview_idle(win) and win._current_rendered_dims is not None and win.current_page == 1,
+                        _after_issue1,
+                    )
+
+                def _phase5_ocr_and_switch_pending():
+                    win = review_ref[0]
+                    t0 = _begin_phase("5_ocr_and_switch_pending")
+                    _select_issue(win, "p2_t0_g0_r2")
+
+                    def _after_issue2():
+                        win.read_box_btn.invoke()
+
+                        def _switch_while_pending():
+                            switched_while_running = bool(win._box_running)
+                            _select_issue(win, "p1_t0_g0_r1")
+
+                            def _after_stale_settled():
+                                stale_polluted = bool(
+                                    win.name_var.get()
+                                    or win.price_var.get()
+                                    or win._box_suggestion is not None
+                                    or win.box_suggestions_lbl.cget("text")
+                                )
+                                work.append({
+                                    "trial": "warm",
+                                    "started": time.perf_counter(),
+                                    "gaps": [],
+                                    "switched_while_running": switched_while_running,
+                                    "stale_polluted": stale_polluted,
+                                })
+                                win.read_box_btn.invoke()
+
+                                def _after_warm_ocr():
+                                    trial = work[-1]
+                                    gaps = trial.pop("gaps", [])
+                                    sug = win._box_suggestion[1] if win._box_suggestion else None
+                                    trial.update(
+                                        elapsed_s=round(time.perf_counter() - trial.pop("started"), 6),
+                                        **_summarize_gaps(gaps),
+                                        status=win.box_suggestions_lbl.cget("text"),
+                                        pending=bool(win._box_running),
+                                        proposed_name=(sug.name if sug else None),
+                                        proposed_price=(sug.price if sug else None),
+                                    )
+                                    _finish_phase(
+                                        "5_ocr_and_switch_pending",
+                                        t0,
+                                        switched_while_running=switched_while_running,
+                                        stale_polluted=stale_polluted,
+                                        proposed_name=trial["proposed_name"],
+                                        proposed_price=trial["proposed_price"],
+                                        status=trial["status"],
+                                    )
+                                    parent.after(20, _phase6_close_reopen)
+
+                                _wait_until(lambda: not win._box_running, _after_warm_ocr)
+
+                            _wait_until(
+                                lambda: _preview_idle(win) and (not win._box_running) and win.current_page == 1,
+                                _after_stale_settled,
+                            )
+
+                        parent.after(15, _switch_while_pending)
+
+                    _wait_until(lambda: _preview_idle(win) and win.current_page == 2, _after_issue2)
+
+                def _phase6_close_reopen():
+                    win = review_ref[0]
+                    t0 = _begin_phase("6_close_reopen")
+                    win.close_for_reopen()
+
+                    def _do_reopen():
+                        reopened = CatalogReviewWindow.open_or_reuse(parent, bench_pdf, service=svc)
+                        reused_same_window = reopened is win
+                        review_ref[0] = reopened
+
+                        def _done():
+                            _finish_phase(
+                                "6_close_reopen",
+                                t0,
+                                reused_same_window=reused_same_window,
+                                selected_source_id=reopened.selected_source_id,
+                                preview_dims_present=reopened._current_rendered_dims is not None,
+                            )
+                            if pulse_id[0] is not None:
+                                try:
+                                    parent.after_cancel(pulse_id[0])
+                                except Exception:
+                                    pass
+                                pulse_id[0] = None
+                            parent.after(10, parent.destroy)
+
+                        _wait_until(lambda: _preview_idle(reopened), _done)
+
+                    parent.after(30, _do_reopen)
+
+                pulse_id[0] = parent.after(10, _pulse)
+                parent.after(60, _phase1_cold_open)
+                try:
+                    parent.mainloop()
+                finally:
+                    CatalogReviewWindow._yield_ui = orig_yield
+                    for cb_name, orig_fn in orig_methods.items():
+                        setattr(CatalogReviewWindow, cb_name, orig_fn)
+                    shutdown_review_workers()
+
+                before_open = _summarize_gaps(phase_gaps.get("before_open", []))
+                cold_phases = ("1_cold_open", "4_drag_box_and_cold_ocr")
+                settled_phases = ("2_select_issue", "3_change_page", "5_ocr_and_switch_pending", "6_close_reopen")
+                cold_start_gate_100ms_pass = (
+                    all(phases_out.get(p, {}).get("maximum_heartbeat_s", 1.0) <= 0.100 for p in cold_phases)
+                    and len(work) >= 1
+                    and work[0].get("maximum_heartbeat_s", 1.0) <= 0.100
+                )
+                settled_gate_50ms_pass = (
+                    before_open.get("maximum_heartbeat_s", 1.0) <= 0.050
+                    and all(phases_out.get(p, {}).get("maximum_heartbeat_s", 1.0) <= 0.050 for p in settled_phases)
+                    and len(work) >= 2
+                    and work[1].get("maximum_heartbeat_s", 1.0) <= 0.050
+                )
+                payload = {
+                    "mode": "fallback" if os.environ.get("EPO_FORCE_RAPID_FALLBACK") == "1" else "native",
+                    "frozen": bool(getattr(sys, "frozen", False)),
+                    "before_open": before_open,
+                    "phases": phases_out,
+                    "trials": work,
+                    "slow_callbacks": slow_callbacks,
+                    "overall_max_heartbeat_s": max(
+                        [before_open["maximum_heartbeat_s"]]
+                        + [p["maximum_heartbeat_s"] for p in phases_out.values()],
+                        default=0.0,
+                    ),
+                    "cold_start_gate_100ms_pass": cold_start_gate_100ms_pass,
+                    "settled_gate_50ms_pass": settled_gate_50ms_pass,
+                }
+                os.makedirs(os.path.dirname(os.path.abspath(out_json)), exist_ok=True)
+                with open(out_json, "w", encoding="utf-8") as fp:
+                    json.dump(payload, fp, ensure_ascii=False, indent=2)
+            os._exit(0)
+
     if "--self-test" in sys.argv:
         code = run_headless_self_test()
         if sys.stdout is not None:
@@ -4411,4 +5168,8 @@ def main():
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+    if "--review-worker" in sys.argv:
+        from src.box_ocr_service import run_review_worker_stdio
+        run_review_worker_stdio()
+        sys.exit(0)
     main()

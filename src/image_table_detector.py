@@ -249,13 +249,17 @@ class ImageTableDetector:
                 col_roles["code"] = code_clusters[0]["center"]
 
             valid_num_clusters = [cl for cl in num_clusters if np.median(cl["vals"]) < 10000.0]
+            dense_clusters = [cl for cl in valid_num_clusters if len(cl["vals"]) >= max(2, len(data_rows) // 3)]
+            cand_clusters = dense_clusters if len(dense_clusters) >= 2 else valid_num_clusters
 
-            if len(valid_num_clusters) >= 2:
+            if len(cand_clusters) >= 2:
                 price_cand = None
                 disc_cand = None
-                for cl in valid_num_clusters:
+                for cl in cand_clusters:
                     if any(val > 85.0 for val in cl["vals"]):
-                        if price_cand is None or max(cl["vals"]) > max(price_cand["vals"]):
+                        if price_cand is None or len(cl["vals"]) > len(price_cand["vals"]) or (
+                            len(cl["vals"]) == len(price_cand["vals"]) and max(cl["vals"]) > max(price_cand["vals"])
+                        ):
                             price_cand = cl
                     elif all(0.0 <= val <= 85.0 for val in cl["vals"]):
                         if disc_cand is None or len(cl["vals"]) > len(disc_cand["vals"]):
@@ -454,8 +458,31 @@ class ImageTableDetector:
             else:
                 sorted_name_boxes = sorted(name_boxes, key=lambda b: b["bbox"][0])
 
-            raw_name = " ".join(b["text"] for b in sorted_name_boxes).strip()
-            raw_ocr_name = " ".join(b["raw_text"] for b in sorted_name_boxes).strip()
+            def _join_name_boxes(boxes, key="text"):
+                if not boxes:
+                    return ""
+                parts = [boxes[0].get(key, "")]
+                for prev_b, cur_b in zip(boxes, boxes[1:]):
+                    ptxt = prev_b.get(key, "")
+                    ctxt = cur_b.get(key, "")
+                    pb, cb = prev_b["bbox"], cur_b["bbox"]
+                    min_h = max(1.0, min(pb[3] - pb[1], cb[3] - cb[1]))
+                    # If Windows OCR splits a multi-digit number like "10" into "1" and "0",
+                    # RTL sorting puts the rightmost digit ("0") before the leftmost ("1").
+                    if ptxt.isdigit() and ctxt.isdigit():
+                        ltr_gap = cb[0] - pb[2]
+                        rtl_gap = pb[0] - cb[2]
+                        if 0.0 <= ltr_gap <= 0.25 * min_h:
+                            parts[-1] = parts[-1] + ctxt
+                            continue
+                        if has_arabic_name and 0.0 <= rtl_gap <= 0.25 * min_h:
+                            parts[-1] = ctxt + parts[-1]
+                            continue
+                    parts.append(ctxt)
+                return " ".join(parts).strip()
+
+            raw_name = _join_name_boxes(sorted_name_boxes, "text")
+            raw_ocr_name = _join_name_boxes(sorted_name_boxes, "raw_text")
 
             price_boxes = assigned_cells.get("price", [])
             raw_price_str = " ".join(b["text"] for b in price_boxes).strip()

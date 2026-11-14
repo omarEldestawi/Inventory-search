@@ -221,7 +221,12 @@ class CatalogCorrectionService:
                             resolved=False,
                         )
 
-            current_df = base_res.dataframe.copy(deep=True)
+            old_attrs = dict(base_res.dataframe.attrs)
+            base_res.dataframe.attrs.clear()
+            try:
+                current_df = base_res.dataframe.copy(deep=True)
+            finally:
+                base_res.dataframe.attrs.update(old_attrs)
 
             # Track internal _source_id for deterministic row replacement
             if "_source_id" not in current_df.columns:

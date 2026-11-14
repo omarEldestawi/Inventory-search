@@ -229,8 +229,8 @@ class TestF23VersionPackagingTroubleshooting(unittest.TestCase):
         with open(iss_path, "r", encoding="utf-8") as f:
             iss_content = f.read()
         self.assertTrue(
-            any(v in iss_content for v in ('MyAppVersion "2.3"', 'MyAppVersion "2.4"', 'MyAppVersion "2.5"', 'MyAppVersion "2.6"', 'MyAppVersion "2.7"')),
-            "installer.iss must define MyAppVersion as '2.3', '2.4', '2.5', or '2.6'"
+            any(v in iss_content for v in ('MyAppVersion "2.3"', 'MyAppVersion "2.4"', 'MyAppVersion "2.5"', 'MyAppVersion "2.6"', 'MyAppVersion "2.7"', 'MyAppVersion "2.7.2"')),
+            "installer.iss must define MyAppVersion as '2.3'+'"
         )
 
     def test_f23_02_gui_headless_self_test(self):
@@ -242,11 +242,11 @@ class TestF23VersionPackagingTroubleshooting(unittest.TestCase):
 
     def test_f23_03_parser_revision_constant(self):
         """Verify PARSER_REVISION is the current revision and invalidates old-revision caches."""
-        self.assertEqual(PARSER_REVISION, "2026.11.07.2")
+        self.assertEqual(PARSER_REVISION, "2026.11.11.1")
 
         # Demonstrate that an old-revision ("2026.10.27.1") cache entry is rejected and re-parsed
         fp_current = FileFingerprint.from_path(HAYAH_FIXTURE_PATH)
-        self.assertEqual(fp_current.parser_revision, "2026.11.07.2")
+        self.assertEqual(fp_current.parser_revision, "2026.11.11.1")
         fp_old = FileFingerprint(
             path=fp_current.path,
             sha256=fp_current.sha256,
@@ -267,7 +267,7 @@ class TestF23VersionPackagingTroubleshooting(unittest.TestCase):
         global_catalog_cache.set(HAYAH_FIXTURE_PATH, stale_res.to_dataframe())
         fresh_res = inspect_catalog(HAYAH_FIXTURE_PATH, refresh=False)
         self.assertEqual(len(fresh_res.dataframe), 571)
-        self.assertEqual(fresh_res.fingerprint.parser_revision, "2026.11.07.2")
+        self.assertEqual(fresh_res.fingerprint.parser_revision, "2026.11.11.1")
 
     def test_f23_04_troubleshooting_guide_presence(self):
         """Verify troubleshooting documentation exists under docs/current/."""

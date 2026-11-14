@@ -72,6 +72,7 @@ class TestTarget3ProcurementE2EAllocation(unittest.TestCase):
             source_id=identity.source_id, identity=identity,
             raw_cells=["Concor 5mg 30Tab", "", "22%"],
             bbox=[50.0, 90.0, 500.0, 125.0], rejection_reason="missing_price",
+            column_bounds={"name": (50.0, 260.0), "price": (260.0, 380.0), "discount": (380.0, 500.0)},
         )
         initial = CatalogResult(
             dataframe=pd.DataFrame([builder._build_canonical_row(original)], columns=STANDARD_COLUMNS),

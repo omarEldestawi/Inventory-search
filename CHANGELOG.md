@@ -5,17 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [2.7.2] - Unreleased
+## [2.7.2] - 2026-11-14
 
 ### Added & Improved
 
 - PDF imports use digital extraction by default. Scanned pages and unresolved rows open in Review with their source locations.
 - Optimization waits for the selected catalog inspections and reuses their verified results.
-- Review reads a highlighted box on request with up to three rows of surrounding context. OCR suggestions require pharmacist confirmation before saving.
+- Review reads a highlighted box on request with up to three rows of surrounding context, powered by persistent off-Tk `--review-worker` and `_PersistentRapidWorker` background workers so UI interactions stay within the accepted `<= 100 ms` cold startup and `<= 50 ms` settled limits. OCR suggestions require pharmacist confirmation before saving.
 - The native Windows OCR worker uses bounded requests, an in-memory image payload, and process ownership on exit. The `EPO_DISABLE_NATIVE_OCR` option uses the local RapidOCR fallback for Review. Native OCR depends on installed Windows recognition languages.
 - The bundle ships one copy of the required resources and initializes the medication database only when the user has no existing copy.
-
-- The subsequent packaged run of the original four PDFs took 29.73 seconds to inspect and 153.31 seconds to save Excel, down from 178.30 and 336.42 seconds in the WIP baseline. Each PDF was parsed once with zero import OCR calls. The candidate installer is 125.69 MiB.
+- The verified installer (`EgyptianPharmaOptimizer_Setup_v2.7.2.exe`) is `125.70 MiB` (`131,801,668` bytes, SHA-256 `4AF0CA7FB8604B7AF2D42285FFFFEB4C028648960E1AACA4C13D38443AF94C46`) and the portable bundle is `405.47 MiB` (`425,170,456` bytes).
+- In the pre-Review-UI four-PDF benchmark, the packaged run took 29.73 seconds to inspect and 153.31 seconds to save Excel, down from 178.30 and 336.42 seconds in the WIP baseline, with each PDF parsed once and zero import OCR calls.
 
 ## [2.7.1] - 2026-11-08
 

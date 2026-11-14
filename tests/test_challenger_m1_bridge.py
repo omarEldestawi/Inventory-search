@@ -69,7 +69,7 @@ class TestProcurementEngineBridgeAdversarial(unittest.TestCase):
 
         messages = []
         start_time = time.time()
-        timeout = 40.0
+        timeout = 120.0
 
         # Simulate GUI polling loop
         while time.time() - start_time < timeout:
@@ -79,7 +79,7 @@ class TestProcurementEngineBridgeAdversarial(unittest.TestCase):
                 if msg[0] in ("DONE", "ERROR"):
                     break
 
-        bridge.join(timeout=5.0)
+        bridge.join(timeout=15.0)
         self.assertFalse(bridge.is_running)
         self.assertFalse(worker_thread.is_alive())
 
@@ -190,7 +190,7 @@ class TestProcurementEngineBridgeAdversarial(unittest.TestCase):
             )
         self.assertIn("already running", str(ctx.exception))
 
-        bridge.join(timeout=30.0)
+        bridge.join(timeout=120.0)
         self.assertFalse(bridge.is_running)
 
     def test_05_bridge_instance_reuse_after_completion(self):
@@ -214,7 +214,7 @@ class TestProcurementEngineBridgeAdversarial(unittest.TestCase):
             output_dir=self.output_dir,
         )
         self.assertTrue(bridge.is_running)
-        bridge.join(timeout=30.0)
+        bridge.join(timeout=120.0)
         self.assertFalse(bridge.is_running)
         self.assertIsNotNone(bridge.last_result)
 

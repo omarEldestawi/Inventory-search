@@ -253,6 +253,6 @@ class TestPipelineSafeguards:
 class TestDiagnosticsRevision:
 
     def test_parser_revision_is_bumped(self):
-        assert PARSER_REVISION == "2026.11.07.3"
+        assert PARSER_REVISION == "2026.11.11.1"
         fp = FileFingerprint(path="dummy.pdf", sha256="abc123")
-        assert fp.parser_revision == "2026.11.07.3"
+        assert fp.parser_revision == "2026.11.11.1"

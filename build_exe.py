@@ -182,6 +182,7 @@ def build():
         "--hidden-import", "src.gemini_matcher",
         "--hidden-import", "src.manual_search_window",
         "--hidden-import", "src.manual_search_adapter",
+        "--hidden-import", "src.box_ocr_service",
     ]
 
     for d in datas:

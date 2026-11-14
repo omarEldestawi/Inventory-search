@@ -93,8 +93,9 @@ class TestV113CatalogReadingAndClassification:
         doc.save(sample_pdf)
         doc.close()
 
-        # Seed the cache with pre-existing known items
-        seeded_df = pd.DataFrame([{
+        # Seed the cache with pre-existing known items (with valid fingerprint for v2.3+ cache validation)
+        from src.catalog_diagnostics import CatalogResult, ImportDiagnostics, FileFingerprint
+        raw_df = pd.DataFrame([{
             'warehouse_name': 'مخزن تجريبي',
             'item_name': 'Panadol Extra 24 Tab',
             'normalized_name': 'panadol extra 24 tab',
@@ -104,6 +105,11 @@ class TestV113CatalogReadingAndClassification:
             'discount_rate': 0.25,
             'stock_status': True
         }])
+        seeded_df = CatalogResult(
+            dataframe=raw_df,
+            diagnostics=ImportDiagnostics(accepted_rows=1, unique_records=1),
+            fingerprint=FileFingerprint.from_path(sample_pdf),
+        ).to_dataframe()
         norm_key = os.path.normpath(os.path.abspath(sample_pdf))
         global_catalog_cache.set(norm_key, seeded_df)
 
@@ -124,14 +130,14 @@ class TestV113CatalogReadingAndClassification:
         iss_path = os.path.join(PROJECT_ROOT, "installer.iss")
         with open(iss_path, "r", encoding="utf-8", errors="ignore") as f:
             iss_text = f.read()
-        assert any(v in iss_text for v in ['#define MyAppVersion "1.1.3"', '#define MyAppVersion "1.1.4"', '#define MyAppVersion "1.1.5"', '#define MyAppVersion "1.8"', '#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"', '#define MyAppVersion "2.2"', '#define MyAppVersion "2.3"'])
-        assert any(s in iss_text for s in ["EgyptianPharmaOptimizer_Setup_v1.1.3", "EgyptianPharmaOptimizer_Setup_v1.1.4", "EgyptianPharmaOptimizer_Setup_v1.1.5", "EgyptianPharmaOptimizer_Setup_v1.8", "EgyptianPharmaOptimizer_Setup_v1.9", "EgyptianPharmaOptimizer_Setup_v2.0", "EgyptianPharmaOptimizer_Setup_v2.1", "EgyptianPharmaOptimizer_Setup_v2.2", "EgyptianPharmaOptimizer_Setup_v2.3"])
+        assert any(v in iss_text for v in ['#define MyAppVersion "1.1.3"', '#define MyAppVersion "1.1.4"', '#define MyAppVersion "1.1.5"', '#define MyAppVersion "1.8"', '#define MyAppVersion "1.9"', '#define MyAppVersion "2.0"', '#define MyAppVersion "2.1"', '#define MyAppVersion "2.2"', '#define MyAppVersion "2.3"', '#define MyAppVersion "2.7.2"'])
+        assert any(s in iss_text for s in ["EgyptianPharmaOptimizer_Setup_v1.1.3", "EgyptianPharmaOptimizer_Setup_v1.1.4", "EgyptianPharmaOptimizer_Setup_v1.1.5", "EgyptianPharmaOptimizer_Setup_v1.8", "EgyptianPharmaOptimizer_Setup_v1.9", "EgyptianPharmaOptimizer_Setup_v2.0", "EgyptianPharmaOptimizer_Setup_v2.1", "EgyptianPharmaOptimizer_Setup_v2.2", "EgyptianPharmaOptimizer_Setup_v2.3", "EgyptianPharmaOptimizer_Setup_v2.7.2", "EgyptianPharmaOptimizer_Setup_v{#MyAppVersion}"])
 
         # 2. GUI Title & Label
         gui_path = os.path.join(PROJECT_ROOT, "app_gui.py")
         with open(gui_path, "r", encoding="utf-8", errors="ignore") as f:
             gui_text = f.read()
-        assert any(v in gui_text for v in ["v1.1.3", "v1.1.4", "v1.1.5", "v1.8", "v1.9", "v2.0", "v2.1", "v2.2", "v2.3"])
+        assert any(v in gui_text for v in ["v1.1.3", "v1.1.4", "v1.1.5", "v1.8", "v1.9", "v2.0", "v2.1", "v2.2", "v2.3", "v2.7.2"])
         assert "v1.1.2" not in gui_text
         assert ("Windows 11 Edition • Engine Ready" in gui_text)
 

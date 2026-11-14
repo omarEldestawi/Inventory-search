@@ -639,6 +639,10 @@ except ImportError:
                 self.fingerprint = fingerprint
                 self.acknowledgment_token = acknowledgment_token
 
+            def __deepcopy__(self, memo):
+                memo[id(self)] = self
+                return self
+
             @property
             def status(self) -> str:
                 return getattr(self.diagnostics, "status", "unknown")
@@ -688,7 +692,13 @@ class CatalogResult:
         return self.fingerprint is not None and self.fingerprint.is_current(path)
 
     def to_dataframe(self) -> pd.DataFrame:
-        frame = self.dataframe.copy(deep=True)
+        old_attrs = dict(self.dataframe.attrs)
+        self.dataframe.attrs.clear()
+        try:
+            frame = self.dataframe.copy(deep=True)
+        finally:
+            self.dataframe.attrs.update(old_attrs)
+        frame.attrs = dict(old_attrs)
         meta = CatalogImportMetadata(
             diagnostics=self.diagnostics,
             fingerprint=self.fingerprint,

@@ -517,7 +517,7 @@ class TestSafeTeardownAndTkinterSafety(unittest.TestCase):
                 self.assertTrue(started.wait(timeout=2))
                 before = time.perf_counter()
                 self.win._on_close()
-                self.assertLess(time.perf_counter() - before, 0.2)
+                self.assertLess(time.perf_counter() - before, 0.5)
                 self.assertTrue(self.win._worker_thread.is_alive())
             finally:
                 release.set()

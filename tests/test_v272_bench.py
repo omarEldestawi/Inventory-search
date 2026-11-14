@@ -80,3 +80,30 @@ def test_source_audit_requires_a_located_review_issue_for_missing_financial_pair
     issue['page_number'] = 2
     with pytest.raises(ValueError, match='missing without a source-linked Review issue'):
         validate_catalog_rows(result, evidence)
+
+
+def test_b4_requires_both_native_and_fallback_when_backend_nested():
+    timing = {'startup_s': 1, 'private_bytes': 1, 'digital_import_s': 1, 'scanned_import_s': 1}
+    app = {'input_sha256': {'digital': 'sample'}, 'trials': [{}] * 5,
+           'medians': {'first': timing, 'subsequent': timing}}
+    checks = {'tk_stall_s': 0.04, 'installer_bytes': 1, 'bundle_bytes': 1,
+              'failed_start_session_s': 4, 'orphan_workers': {'normal': 0, 'os_exit': 0},
+              'automatic_ocr_calls': dict.fromkeys(('startup', 'digital_import', 'scanned_import', 'refresh',
+                                                    'corrections_reload', 'procurement_fallback', 'open_review'), 0),
+              'inspection_failure_clears_waiting': True, 'stale_inspection_rejected': True}
+    candidate = dict(app, checks=checks)
+    review = dict(comparable=True, candidate_s=1, baseline_s=2)
+    per_mode = {mode: {'cold': review, 'warm': review} for mode in ('source', 'frozen')}
+    ocr = {'native': {'ready_s': 1, 'p50_s': 0.2, 'p95_s': 0.5}, 'powershell': {'p50_s': 0.7},
+           'review': {'native': per_mode, 'fallback': {mode: {'cold': dict(review), 'warm': dict(review)} for mode in ('source', 'frozen')}},
+           'matched_inputs': True}
+    median = {'inspection_s': 2, 'processing_s': 2}
+    before = {'source_evidence_sha256': 'same', 'source_checked': True, 'source_verified': True,
+              'medians': {'first': median, 'subsequent': median}, 'trials': [
+                  {'catalogs': [{'parse_starts': 1, 'ocr_calls': 0, 'worker_starts': 0}]}]}
+    after = {'source_evidence_sha256': 'same', 'source_checked': True, 'source_verified': True,
+             'medians': {'first': {'inspection_s': 1, 'processing_s': 1}, 'subsequent': {'inspection_s': 1, 'processing_s': 1}},
+             'trials': [{'catalogs': [{'parse_starts': 1, 'ocr_calls': 0, 'worker_starts': 0}]}]}
+    assert compare_evidence(app, candidate, ocr, before, after)['B4'] is True
+    del ocr['review']['fallback']['frozen']['warm']
+    assert compare_evidence(app, candidate, ocr, before, after)['B4'] is False

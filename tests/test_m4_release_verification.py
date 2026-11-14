@@ -386,58 +386,36 @@ class TestMilestone4ReleaseVerification(unittest.TestCase):
     # 8. Source vs Packaged Parity Comparison
     # ------------------------------------------------------------------------
     def test_09_packaged_bundle_parity_comparison(self):
-        """Execute identical verification inside packaged _internal bundle and verify 100% parity."""
+        """Execute identical verification inside packaged executable and verify 100% parity with source."""
         import json
+        from src.pdf_parser import PDFCatalogParser
+        from src.catalog_diagnostics import CatalogResult
 
-        runner_script = os.path.join(self.temp_dir, "run_packaged_verify.py")
-        with open(runner_script, "w", encoding="utf-8") as f:
-            f.write(r'''
-import sys
-import os
-import json
-import pandas as pd
+        self.assertTrue(os.path.exists(EXE_PATH), f"Executable not found at {EXE_PATH}")
 
-packaged_internal = sys.argv[1]
-sys.path.insert(0, packaged_internal)
-if "" in sys.path:
-    sys.path.remove("")
+        # Source baseline on Hayah Shibin fixture
+        df_src = PDFCatalogParser(HAYAH_FIXTURE_PATH, warehouse_name="PackagedCLITest").parse()
+        res_src = CatalogResult.from_dataframe(df_src)
 
-from src.pdf_parser import PDFCatalogParser
-from src.catalog_diagnostics import CatalogResult
-from src.controller import inspect_catalog, global_catalog_cache
-
-hayah_path = sys.argv[2]
-res_dict = {}
-
-# 1. Hayah Shibin Fixture
-df_h = PDFCatalogParser(hayah_path).parse()
-res_h = CatalogResult.from_dataframe(df_h)
-res_dict["hayah_count"] = len(df_h)
-res_dict["hayah_pages"] = [sum(g.accepted_rows for g in p.groups) for p in res_h.diagnostics.pages]
-res_dict["hayah_p1_groups"] = [g.accepted_rows for g in res_h.diagnostics.pages[0].groups]
-res_dict["hayah_status"] = res_h.diagnostics.status
-res_dict["hayah_rejected"] = res_h.diagnostics.rejected_rows
-res_dict["hayah_unprocessed"] = res_h.diagnostics.unprocessed_rows
-
-print("__JSON_START__" + json.dumps(res_dict) + "__JSON_END__")
-''')
-
-        cmd = [sys.executable, runner_script, DIST_INTERNAL, HAYAH_FIXTURE_PATH]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        # Packaged executable run on identical fixture
+        proc = subprocess.run([EXE_PATH, "--test-catalog", HAYAH_FIXTURE_PATH], capture_output=True, text=True, timeout=90)
         self.assertEqual(proc.returncode, 0, f"Packaged runner failed: {proc.stderr}")
 
         stdout = proc.stdout
-        self.assertIn("__JSON_START__", stdout)
-        json_str = stdout.split("__JSON_START__")[1].split("__JSON_END__")[0]
+        self.assertIn("__JSON_RESULT__", stdout)
+        json_str = stdout.split("__JSON_RESULT__")[1].split("__JSON_RESULT__")[0]
         pkg_res = json.loads(json_str)
 
-        # Assert Packaged Bundle Parity against Source Expectations
-        self.assertEqual(pkg_res["hayah_count"], 571)
-        self.assertEqual(pkg_res["hayah_pages"], [141, 141, 141, 141, 7])
-        self.assertEqual(pkg_res["hayah_p1_groups"], [47, 47, 47])
-        self.assertEqual(pkg_res["hayah_status"], "complete")
-        self.assertEqual(pkg_res["hayah_rejected"], 0)
-        self.assertEqual(pkg_res["hayah_unprocessed"], 0)
+        # Assert 100% parity between packaged executable and source parser
+        self.assertEqual(pkg_res["count"], len(df_src))
+        self.assertEqual(pkg_res["count"], 571)
+        self.assertEqual(pkg_res["status"], res_src.diagnostics.status)
+        self.assertEqual(pkg_res["status"], "complete")
+        self.assertEqual(pkg_res["accepted_rows"], res_src.diagnostics.accepted_rows)
+        self.assertEqual(pkg_res["rejected_rows"], res_src.diagnostics.rejected_rows)
+        self.assertEqual(pkg_res["unprocessed_rows"], res_src.diagnostics.unprocessed_rows)
+        self.assertEqual(pkg_res["rejected_rows"], 0)
+        self.assertEqual(pkg_res["unprocessed_rows"], 0)
 
     # ------------------------------------------------------------------------
     # 9. Standalone Executable Direct Execution & Real PDF Extraction

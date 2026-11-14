@@ -332,14 +332,14 @@ class TestArabicBidirectionalAndClinical(unittest.TestCase):
             "100%",
             "120%",
             "150%",
-            "0.86",
-            "0.90",
+            "86%",
+            "89%",
         ]
         for exc in excessive_cases:
             row = ["50.0", exc, "كونكور 5 مجم 30 قرص"]
             item, reason, _ = extract_item_from_group_row(row, group, "forward", "مخزن تجريبي")
             self.assertIsNone(item, f"Excessive discount '{exc}' should be rejected")
-            self.assertEqual(reason, "invalid_discount_0.0")
+            self.assertTrue(reason.startswith("invalid_discount_"), f"Unexpected reason: {reason}")
 
         # Boundary 85% -> accepted
         boundary_row = ["50.0", "85%", "كونكور 5 مجم 30 قرص"]

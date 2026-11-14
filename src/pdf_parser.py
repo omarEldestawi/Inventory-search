@@ -901,12 +901,25 @@ class PDFCatalogParser:
                             table_expected_known = True
 
                             for t_idx, t in enumerate(filtered_tables):
-                                if hasattr(t, "rows") and len(t.rows) >= 1:
-                                    t_extract = t.extract()
+                                t_rows = getattr(t, "_cached_rows", None)
+                                if t_rows is None and hasattr(t, "rows"):
+                                    t_rows = t.rows
+                                    try:
+                                        t._cached_rows = t_rows
+                                    except Exception:
+                                        pass
+                                if t_rows and len(t_rows) >= 1:
+                                    t_extract = getattr(t, "_cached_extract", None)
+                                    if t_extract is None:
+                                        t_extract = t.extract()
+                                        try:
+                                            t._cached_extract = t_extract
+                                        except Exception:
+                                            pass
                                     geom = analyze_table_geometry(t, established_layout=self._established_geometry)
                                     groups = detect_product_groups(geom, t_extract, established_groups=self._established_groups) if geom else []
                                     has_multi_groups = bool(groups and sum(1 for g in groups if g.is_valid) >= 2)
-                                    t_num_cols = len(t_extract[0]) if (t_extract and t_extract[0]) else (len(t.rows[0].cells) if t.rows else 0)
+                                    t_num_cols = len(t_extract[0]) if (t_extract and t_extract[0]) else (len(t_rows[0].cells) if t_rows else 0)
                                     t_headers = [str(c).strip() if c is not None else "" for c in t_extract[0]] if t_extract else None
                                     sample_rows = t_extract[1:10] if (t_extract and len(t_extract) > 1) else t_extract
                                     is_layout_compat = bool(
@@ -922,14 +935,14 @@ class PDFCatalogParser:
                                         and geom and is_layout_compat
                                     )
                                     is_single_row_structural = bool(
-                                        len(t.rows) == 1
+                                        len(t_rows) == 1
                                         and len(filtered_tables) == 1
                                         and groups
                                         and any(g.is_valid for g in groups)
                                     )
                                     is_repaired_single_table = bool(
                                         page_chars is not None
-                                        and len(t.rows) >= 2
+                                        and len(t_rows) >= 2
                                         and t_num_cols >= 3
                                         and groups
                                         and any(g.is_valid for g in groups)
@@ -1426,7 +1439,12 @@ class PDFCatalogParser:
                     from .catalog_recovery import run_automatic_recovery
                 except ImportError:
                     from catalog_recovery import run_automatic_recovery
-                res = run_automatic_recovery(res, pdf_path=self.pdf_path, allow_ocr=allow_ocr)
+                res = run_automatic_recovery(
+                    res,
+                    pdf_path=self.pdf_path,
+                    allow_ocr=allow_ocr,
+                    ocr_engine_preference=getattr(self, "ocr_engine", None) or "primary",
+                )
                 df = res.dataframe
 
             meta = CatalogImportMetadata(
@@ -1477,7 +1495,12 @@ class PDFCatalogParser:
                 from .catalog_recovery import run_automatic_recovery
             except ImportError:
                 from catalog_recovery import run_automatic_recovery
-            res = run_automatic_recovery(res, pdf_path=self.pdf_path, allow_ocr=allow_ocr)
+            res = run_automatic_recovery(
+                res,
+                pdf_path=self.pdf_path,
+                allow_ocr=allow_ocr,
+                ocr_engine_preference=getattr(self, "ocr_engine", None) or "primary",
+            )
             df = res.dataframe
 
         if len(df) > 0 and 'warehouse_name' in df.columns:
@@ -1732,12 +1755,19 @@ class PDFCatalogParser:
                 if len(r) == 4:
                     r1_raw = str(r[1]).strip()
                     r0_raw = str(r[0]).strip()
+                    r2_raw = str(r[2]).strip().translate(ALL_EASTERN_DIGITS)
+                    r3_raw = str(r[3]).strip().translate(ALL_EASTERN_DIGITS)
+                    has_num_pair = (
+                        bool(re.fullmatch(r'[-+]?\d+(?:[.,٫]\d+)?\s*%?', r2_raw))
+                        and bool(re.fullmatch(r'[-+]?\d+(?:[.,٫]\d+)?\s*%?', r3_raw))
+                    )
                     r1_norm = normalize_arabic_text(decode_custom_catalog_glyphs(r1_raw))
                     r0_norm = normalize_arabic_text(decode_custom_catalog_glyphs(r0_raw))
-                    if any(h in r1_norm for h in ['صنف', 'اسم', 'فنص', 'مسا', 'name', 'item', 'product', 'description', 'البيان']):
-                        continue
-                    if any(h in r0_norm for h in ['رقم', 'كود', 'مقر', 'دوك', 'code', 'barcode', 'خصم', 'مصخ', 'disc', 'discount']):
-                        continue
+                    if not has_num_pair:
+                        if any(h in r1_norm for h in ['صنف', 'اسم', 'فنص', 'مسا', 'name', 'item', 'product', 'description', 'البيان']):
+                            continue
+                        if any(h in r0_norm for h in ['رقم', 'كود', 'مقر', 'دوك', 'code', 'barcode', 'خصم', 'مصخ', 'disc', 'discount']):
+                            continue
 
                     raw_name = r[1]
                     if is_hadhaba:
@@ -3203,19 +3233,36 @@ class PDFCatalogParser:
             return []
 
         def _extract_table_rows(t_obj):
-            raw_rows = t_obj.extract() if hasattr(t_obj, 'extract') else t_obj
+            if hasattr(t_obj, 'extract'):
+                raw_rows = getattr(t_obj, '_cached_extract', None)
+                if raw_rows is None:
+                    raw_rows = t_obj.extract()
+                    try:
+                        t_obj._cached_extract = raw_rows
+                    except Exception:
+                        pass
+            else:
+                raw_rows = t_obj
             if not page_chars or not hasattr(t_obj, 'rows') or not raw_rows:
                 return raw_rows
+            t_rows = getattr(t_obj, '_cached_rows', None)
+            if t_rows is None:
+                t_rows = t_obj.rows
+                try:
+                    t_obj._cached_rows = t_rows
+                except Exception:
+                    pass
             reconstructed = []
             for r_idx, r_cells in enumerate(raw_rows):
                 non_empty = [str(c).strip() for c in r_cells if c is not None and str(c).strip()]
                 if (
                     len(non_empty) == 1
-                    and r_idx < len(t_obj.rows)
-                    and hasattr(t_obj.rows[r_idx], 'bbox')
-                    and t_obj.rows[r_idx].bbox
+                    and t_rows
+                    and r_idx < len(t_rows)
+                    and hasattr(t_rows[r_idx], 'bbox')
+                    and t_rows[r_idx].bbox
                 ):
-                    rb = t_obj.rows[r_idx].bbox
+                    rb = t_rows[r_idx].bbox
                     # Check if this is a left-half ArwaSoft table (x0 ~ 31, x1 ~ 303)
                     if rb[0] < 60 and 280 <= rb[2] <= 315 and (rb[3] - rb[1]) < 35:
                         d_s = reconstruct_cell_text_from_chars(page_chars, (rb[0], rb[1], 75.0, rb[3]))

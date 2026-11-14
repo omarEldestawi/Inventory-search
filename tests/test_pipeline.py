@@ -402,8 +402,14 @@ class TestTier2BoundaryAndCornerCases:
             )
         assert "catalog" in str(exc_info.value).lower()
 
-    def test_pipeline_duplicate_items_in_order_aggregated(self, sample_catalog_pdfs, temp_output_dir):
+    def test_pipeline_duplicate_items_in_order_aggregated(self, temp_output_dir):
         """Tier 2: Duplicate items in order are summed together into a single allocation row."""
+        dup_catalog_path = os.path.join(temp_output_dir, "dup_catalog.xlsx")
+        pd.DataFrame([
+            {"اسم الصنف": "Panadol Extra 24 Tab", "السعر": 50.0, "الخصم": 25},
+            {"اسم الصنف": "Brufen 400mg 30 Tab", "السعر": 40.0, "الخصم": 20},
+        ]).to_excel(dup_catalog_path, index=False)
+
         dup_order_path = os.path.join(temp_output_dir, "order_with_duplicates.xlsx")
         dup_data = [
             {"اسم الصنف": "Panadol Extra 24 Tab", "الكمية المطلوبة": 10},
@@ -414,7 +420,7 @@ class TestTier2BoundaryAndCornerCases:
 
         res = run_procurement_pipeline(
             order_files=[dup_order_path],
-            catalog_files=[sample_catalog_pdfs[0]],
+            catalog_files=[dup_catalog_path],
             output_dir=temp_output_dir,
         )
 
@@ -422,11 +428,12 @@ class TestTier2BoundaryAndCornerCases:
         # 2 unique items
         assert kpis["total_items"] == 2
 
-        # Check master comparison quantity for Panadol
+        # Check master comparison quantity for Panadol is unconditionally verified (10 + 15 == 25)
         master_df = res["results"]["master_comparison"]
+        assert not master_df.empty and "اسم الصنف في أمر الشراء" in master_df.columns
         panadol_row = master_df[master_df["اسم الصنف في أمر الشراء"].str.contains("Panadol", na=False)]
-        if not panadol_row.empty:
-            assert panadol_row["الكمية"].iloc[0] == 25
+        assert not panadol_row.empty
+        assert panadol_row["الكمية"].iloc[0] == 25
 
     def test_pipeline_all_items_out_of_stock(self, sample_catalog_pdfs, temp_output_dir):
         """Tier 2: Order where 100% of items are not in any catalog -> cleanly routed to out_of_stock."""

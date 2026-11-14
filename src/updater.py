@@ -66,7 +66,8 @@ def check_for_updates(current_version: str, timeout: int = 10) -> UpdateCheckRes
         "User-Agent": f"EgyptianPharmaOptimizer-Updater/{current_version}",
         "Accept": "application/vnd.github.v3+json"
     }
-    req = Request(API_URL, headers=headers)
+    api_url = os.environ.get("EPO_UPDATE_API_URL", API_URL)
+    req = Request(api_url, headers=headers)
     try:
         with urlopen(req, timeout=timeout) as response:
             if response.status != 200:

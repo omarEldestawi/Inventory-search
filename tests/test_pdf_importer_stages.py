@@ -671,7 +671,7 @@ def test_stage6_cache_protection_evaluates_quality_not_row_count_alone(tmp_path,
     degraded_res = CatalogResult(dataframe=good_df.copy(), diagnostics=degraded_diag, fingerprint=good_res.fingerprint)
     assert is_replacement_quality_degraded(good_res, degraded_res) is True
 
-    # 3. A replacement with FEWER rows (190, e.g. after excluding 1 row) but 'complete' status and 0 defects is NOT degraded
+    # 3. A replacement with FEWER rows (190) under equal status and 0 defects is flagged as degraded by the v2.6.2+ row-count drop guard
     clean_smaller_diag = ImportDiagnostics(
         pages=[
             PageDiagnostics(
@@ -689,4 +689,4 @@ def test_stage6_cache_protection_evaluates_quality_not_row_count_alone(tmp_path,
         diagnostics=clean_smaller_diag,
         fingerprint=good_res.fingerprint,
     )
-    assert is_replacement_quality_degraded(good_res, clean_smaller_res) is False
+    assert is_replacement_quality_degraded(good_res, clean_smaller_res) is True
